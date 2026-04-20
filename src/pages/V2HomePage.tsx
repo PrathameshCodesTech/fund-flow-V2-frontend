@@ -4,6 +4,7 @@ import { useOpsDashboard } from "@/lib/hooks/useV2Dashboard";
 import { INVOICE_STATUS_LABELS } from "@/lib/types/v2invoice";
 import { FINANCE_HANDOFF_STATUS_LABELS } from "@/lib/types/v2finance";
 import { cn } from "@/lib/utils";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Loader2,
   AlertTriangle,
@@ -166,6 +167,7 @@ const V2HomePage = () => {
         </button>
       }
     >
+      <ScrollArea className="flex-1">
       <div className="mx-auto max-w-7xl px-6 py-6 space-y-6">
 
         {/* ── KPI Strip ───────────────────────────────────────────────────── */}
@@ -473,6 +475,7 @@ const V2HomePage = () => {
           </div>
         </div>
       </div>
+      </ScrollArea>
     </V2Shell>
   );
 };

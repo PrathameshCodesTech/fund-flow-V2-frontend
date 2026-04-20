@@ -261,11 +261,193 @@ export interface ReviewTimelineEvent {
   created_at: string;
 }
 
+// ── Runtime Split Allocation ──────────────────────────────────────────────────
+
+export type InvoiceAllocationStatus =
+  | "draft"
+  | "submitted"
+  | "branch_pending"
+  | "approved"
+  | "rejected"
+  | "correction_required"
+  | "cancelled";
+
+export const ALLOCATION_STATUS_LABELS: Record<InvoiceAllocationStatus, string> = {
+  draft: "Draft",
+  submitted: "Submitted",
+  branch_pending: "Awaiting Approval",
+  approved: "Approved",
+  rejected: "Rejected",
+  correction_required: "Correction Required",
+  cancelled: "Cancelled",
+};
+
+export interface AllocationEligibleApprover {
+  id: number;
+  email: string;
+  first_name: string;
+  last_name: string;
+}
+
+export interface AllowedSplitEntity {
+  split_option_id: number;
+  entity_id: number;
+  entity_name: string;
+  business_unit_id?: number;
+  business_unit_name?: string;
+  eligible_approvers: AllocationEligibleApprover[];
+  categories?: Array<{
+    id: number;
+    name: string;
+    code?: string;
+  }>;
+  subcategories?: Array<{
+    id: number;
+    name: string;
+    category_id: number | null;
+    category_name?: string | null;
+  }>;
+  campaigns?: Array<{
+    id: number;
+    name: string;
+    code?: string;
+    category_id: number | null;
+    subcategory_id: number | null;
+    budget_id: number | null;
+    approved_amount?: string;
+  }>;
+  budgets?: Array<{
+    id: number;
+    name: string;
+    category_id: number | null;
+    subcategory_id: number | null;
+    scope_node_id: number | null;
+    scope_node_name?: string | null;
+    allocated_amount?: string;
+    available_amount?: string;
+    currency?: string;
+  }>;
+  default_category_id: number | null;
+  default_category_name: string | null;
+  default_subcategory_id: number | null;
+  default_subcategory_name: string | null;
+  default_campaign_id: number | null;
+  default_campaign_name: string | null;
+  default_budget_id: number | null;
+}
+
+export interface SplitStepConfig {
+  allocation_total_policy: string;
+  require_category: boolean;
+  require_subcategory: boolean;
+  require_budget: boolean;
+  require_campaign: boolean;
+  allow_multiple_lines_per_entity: boolean;
+  approver_selection_mode: string;
+}
+
+export interface ExistingAllocationLine {
+  id: number;
+  entity_id: number;
+  entity_name: string;
+  category_id: number | null;
+  subcategory_id: number | null;
+  campaign_id: number | null;
+  budget_id: number | null;
+  amount: string;
+  selected_approver_id: number | null;
+  status: InvoiceAllocationStatus;
+  rejection_reason: string;
+  note: string;
+  branch_id: number | null;
+  revision_number: number;
+}
+
+export interface SplitOptionsData {
+  invoice: {
+    id: number;
+    title: string;
+    amount: string;
+    currency: string;
+    vendor_name: string | null;
+    scope_node_id: number;
+    scope_node_name: string;
+  };
+  allowed_entities: AllowedSplitEntity[];
+  existing_allocations: ExistingAllocationLine[];
+  step_config: SplitStepConfig;
+}
+
+export interface AllocationLine {
+  entity: number;
+  category?: number | null;
+  subcategory?: number | null;
+  campaign?: number | null;
+  budget?: number | null;
+  amount: string;
+  selected_approver: number;
+  note?: string;
+}
+
+export interface SubmitSplitRequest {
+  allocations: AllocationLine[];
+  note?: string;
+}
+
+export interface SubmitSplitResult {
+  allocations: Array<{
+    id: number;
+    entity_id: number;
+    amount: string;
+    status: string;
+    branch_id: number | null;
+  }>;
+  branches: Array<{
+    id: number;
+    target_scope_node_id: number;
+    assigned_user_id: number;
+  }>;
+  budget_reservation_results: Array<{
+    allocation_id: number;
+    status: string;
+    projected_utilization: string;
+  }>;
+}
+
+export interface AllocationContextLine {
+  id: number;
+  entity_id: number;
+  entity_name: string | null;
+  amount: string;
+  percentage: string | null;
+  category_id: number | null;
+  category_name: string | null;
+  subcategory_id: number | null;
+  subcategory_name: string | null;
+  campaign_id: number | null;
+  campaign_name: string | null;
+  budget_id: number | null;
+  selected_approver: ReviewUser | null;
+  status: InvoiceAllocationStatus;
+  rejection_reason: string;
+  note: string;
+  branch_id: number | null;
+  revision_number: number;
+}
+
+export interface AllocationContext {
+  is_runtime_split: boolean;
+  step_config: SplitStepConfig;
+  allocations: AllocationContextLine[];
+}
+
 export interface TaskReviewData {
   task: ReviewTaskMeta;
   subject: ReviewSubject;
   workflow: ReviewWorkflow;
   timeline: ReviewTimelineEvent[];
+  allocation_context?: AllocationContext | null;
+  branch_allocation?: AllocationContextLine | null;
 }
 
 // ── Request shapes ────────────────────────────────────────────────────────────

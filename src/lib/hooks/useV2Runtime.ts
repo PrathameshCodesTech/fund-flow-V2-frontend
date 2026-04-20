@@ -14,6 +14,12 @@ import {
   getAssignmentPlan,
   assignDraftStep,
   getTaskReview,
+  getSplitOptions,
+  submitSplit,
+  listSplitOptions,
+  createSplitOption,
+  updateSplitOption,
+  deleteSplitOption,
 } from "../api/v2runtime";
 import type {
   CreateFromInvoiceRequest,
@@ -25,6 +31,7 @@ import type {
   ReassignBranchRequest,
   AssignmentPlan,
   TaskKind,
+  SubmitSplitRequest,
 } from "../types/v2runtime";
 
 // ── Instances ────────────────────────────────────────────────────────────────
@@ -202,5 +209,69 @@ export function useTaskReview(taskKind: TaskKind | null, id: string | null) {
     queryKey: ["v2", "taskReview", taskKind, id],
     queryFn: () => getTaskReview(taskKind!, id!),
     enabled: !!(taskKind && id),
+  });
+}
+
+// ── Runtime Split Allocation ──────────────────────────────────────────────────
+
+export function useSplitOptions(instanceStepId: string | null) {
+  return useQuery({
+    queryKey: ["v2", "splitOptions", instanceStepId],
+    queryFn: () => getSplitOptions(instanceStepId!),
+    enabled: !!instanceStepId,
+  });
+}
+
+export function useSubmitSplit() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ instanceStepId, data }: { instanceStepId: string; data: SubmitSplitRequest }) =>
+      submitSplit(instanceStepId, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["v2", "tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["v2", "instances"] });
+      queryClient.invalidateQueries({ queryKey: ["v2", "splitOptions"] });
+      queryClient.invalidateQueries({ queryKey: ["v2", "taskReview"] });
+    },
+  });
+}
+
+// ── Workflow Split Options CRUD ────────────────────────────────────────────────
+
+export function useSplitOptionsAdmin(params?: { workflow_step?: string }) {
+  return useQuery({
+    queryKey: ["v2", "adminSplitOptions", params],
+    queryFn: () => listSplitOptions(params),
+  });
+}
+
+export function useCreateSplitOption() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: Parameters<typeof createSplitOption>[0]) => createSplitOption(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["v2", "adminSplitOptions"] });
+    },
+  });
+}
+
+export function useUpdateSplitOption() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Parameters<typeof updateSplitOption>[1] }) =>
+      updateSplitOption(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["v2", "adminSplitOptions"] });
+    },
+  });
+}
+
+export function useDeleteSplitOption() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => deleteSplitOption(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["v2", "adminSplitOptions"] });
+    },
   });
 }

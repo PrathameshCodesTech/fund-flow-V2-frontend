@@ -242,3 +242,83 @@ export type BudgetListResponse = PaginatedResponse<Budget>;
 export type RuleListResponse = PaginatedResponse<BudgetRule>;
 export type ConsumptionListResponse = PaginatedResponse<BudgetConsumption>;
 export type VarianceRequestListResponse = PaginatedResponse<BudgetVarianceRequest>;
+
+// ── Budget Overview ───────────────────────────────────────────────────────────
+
+export interface BudgetOverviewSummary {
+  total_allocated: string;
+  total_reserved: string;
+  total_consumed: string;
+  total_available: string;
+  regions_count: number;
+  parks_count: number;
+  campaigns_count: number;
+  budgets_count: number;
+}
+
+export interface BudgetRegionOverview {
+  id: number;
+  name: string;
+  allocated_amount: string;
+  reserved_amount: string;
+  consumed_amount: string;
+  available_amount: string;
+  utilization_percent: number;
+  parks_count: number;
+  budgets_count: number;
+}
+
+export interface BudgetSubcategoryTop {
+  id: number;
+  name: string;
+  amount: string;
+}
+
+export interface BudgetParkOverview {
+  id: number;
+  region_id: number;
+  region_name: string;
+  name: string;
+  allocated_amount: string;
+  reserved_amount: string;
+  consumed_amount: string;
+  available_amount: string;
+  utilization_percent: number;
+  budgets_count: number;
+  top_subcategories: BudgetSubcategoryTop[];
+}
+
+export interface BudgetCategoryOverview {
+  id: number;
+  name: string;
+  allocated_amount: string;
+  budgets_count: number;
+  campaigns_count: number;
+}
+
+export interface BudgetSubcategoryOverview {
+  id: number;
+  name: string;
+  category_name: string;
+  allocated_amount: string;
+}
+
+export interface BudgetCampaignOverview {
+  id: number;
+  name: string;
+  scope_node_name: string;
+  region_name: string;
+  category_name: string;
+  subcategory_name: string;
+  approved_amount: string;
+  status: string;
+}
+
+export interface BudgetOverviewPayload {
+  summary: BudgetOverviewSummary;
+  regions: BudgetRegionOverview[];
+  parks: BudgetParkOverview[];
+  categories: BudgetCategoryOverview[];
+  subcategories: BudgetSubcategoryOverview[];
+  campaigns: BudgetCampaignOverview[];
+}

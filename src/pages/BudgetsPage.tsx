@@ -1,7 +1,12 @@
 import { useState } from "react";
 import { useForm } from "react-hook-form";
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid,
+  Tooltip, ResponsiveContainer, Cell,
+} from "recharts";
 import { V2Shell } from "@/components/v2/V2Shell";
 import { ApiError } from "@/lib/api/client";
+import { cn } from "@/lib/utils";
 import {
   useOrganizations,
   useScopeNodes,
@@ -26,6 +31,7 @@ import {
   useUpdateRule,
   useDeleteRule,
   useReviewVarianceRequest,
+  useBudgetOverview,
 } from "@/lib/hooks/useV2Budget";
 import type {
   BudgetCategory,
@@ -89,6 +95,16 @@ import {
   XCircle,
   Eye,
   RefreshCcw,
+  LayoutDashboard,
+  List,
+  BarChart3,
+  ChevronDown,
+  ChevronRight,
+  MapPin,
+  TrendingUp,
+  DollarSign,
+  Target,
+  Bookmark,
 } from "lucide-react";
 
 // ── Status Badges ─────────────────────────────────────────────────────────────
@@ -1448,12 +1464,367 @@ function ConsumptionList({
 
 // ── Main Page ────────────────────────────────────────────────────────────────
 
+// ── Helpers ─────────────────────────────────────────────────────────────────────
+
+function fmtCurrency(amount: string | number | null | undefined): string {
+  if (amount == null || amount === "") return "—";
+  const num = typeof amount === "string" ? parseFloat(amount) : amount;
+  if (isNaN(num)) return "—";
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(num);
+}
+
+function UtilBar({ pct }: { pct: number }) {
+  const color = pct >= 90 ? "bg-red-500" : pct >= 70 ? "bg-amber-500" : "bg-green-500";
+  return (
+    <div className="h-1.5 bg-secondary rounded-full overflow-hidden w-20">
+      <div className={cn("h-full rounded-full", color)} style={{ width: `${Math.min(100, pct)}%` }} />
+    </div>
+  );
+}
+
+// ── KPI Strip ─────────────────────────────────────────────────────────────────
+
+function KpiStrip({ data }: { data: any }) {
+  const s = data?.summary;
+  if (!s) return null;
+  const kpis = [
+    { label: "Total Allocated", value: fmtCurrency(s.total_allocated), icon: DollarSign, color: "text-blue-600" },
+    { label: "Reserved", value: fmtCurrency(s.total_reserved), icon: Bookmark, color: "text-amber-600" },
+    { label: "Consumed", value: fmtCurrency(s.total_consumed), icon: ArrowDownToLine, color: "text-orange-600" },
+    { label: "Available", value: fmtCurrency(s.total_available), icon: Wallet, color: "text-green-600" },
+    { label: "Regions", value: String(s.regions_count), icon: MapPin, color: "text-purple-600" },
+    { label: "Parks", value: String(s.parks_count), icon: Target, color: "text-cyan-600" },
+    { label: "Budget Lines", value: String(s.budgets_count), icon: BarChart3, color: "text-indigo-600" },
+    { label: "Campaigns", value: String(s.campaigns_count), icon: TrendingUp, color: "text-pink-600" },
+  ];
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2">
+      {kpis.map((k) => (
+        <div key={k.label} className="rounded-lg border bg-card p-3">
+          <div className="flex items-center gap-1.5 mb-1.5">
+            <k.icon className={cn("h-3.5 w-3.5", k.color)} />
+            <span className="text-[10px] text-muted-foreground leading-none">{k.label}</span>
+          </div>
+          <p className="text-sm font-bold text-foreground truncate">{k.value}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── Region Cards ───────────────────────────────────────────────────────────────
+
+const REGION_COLORS: Record<string, string> = {
+  North: "border-l-blue-400",
+  South: "border-l-green-400",
+  West: "border-l-orange-400",
+  Incity: "border-l-purple-400",
+};
+
+function RegionCards({ regions }: { regions: any[] }) {
+  if (!regions?.length) return null;
+  return (
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      {regions.map((r) => (
+        <div key={r.id} className={cn(
+          "rounded-lg border bg-card p-3 border-l-4 pl-3",
+          REGION_COLORS[r.name] ?? "border-l-gray-400"
+        )}>
+          <p className="text-sm font-semibold text-foreground mb-2">{r.name}</p>
+          <div className="space-y-1.5">
+            <div className="flex justify-between text-xs">
+              <span className="text-muted-foreground">Allocated</span>
+              <span className="font-medium tabular-nums">{fmtCurrency(r.allocated_amount)}</span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-muted-foreground">Parks</span>
+              <span className="font-medium">{r.parks_count}</span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-muted-foreground">Budgets</span>
+              <span className="font-medium">{r.budgets_count}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] text-muted-foreground">Utilization</span>
+              <span className={cn(
+                "text-[10px] font-bold tabular-nums",
+                r.utilization_percent >= 90 ? "text-red-600" : r.utilization_percent >= 70 ? "text-amber-600" : "text-green-600"
+              )}>{r.utilization_percent}%</span>
+            </div>
+            <UtilBar pct={r.utilization_percent} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── Region / Park Matrix ───────────────────────────────────────────────────────
+
+function ParkRow({ park }: { park: any }) {
+  const [open, setOpen] = useState(false);
+  const hasSubcats = park.top_subcategories?.length > 0;
+
+  return (
+    <div className="border-b border-border last:border-0">
+      <div
+        className="flex items-center gap-3 px-3 py-2 hover:bg-accent/40 cursor-pointer"
+        onClick={() => hasSubcats && setOpen(!open)}
+      >
+        <span className="w-4 shrink-0">
+          {hasSubcats ? (open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />) : null}
+        </span>
+        <span className="flex-1 min-w-0">
+          <span className="text-sm font-medium truncate">{park.name}</span>
+        </span>
+        <div className="flex items-center gap-4 shrink-0">
+          <div className="text-right">
+            <p className="text-xs font-medium tabular-nums">{fmtCurrency(park.allocated_amount)}</p>
+            <p className="text-[10px] text-muted-foreground">{park.budgets_count} budget{park.budgets_count !== 1 ? "s" : ""}</p>
+          </div>
+          <div className="flex items-center gap-1.5 w-28">
+            <UtilBar pct={park.utilization_percent} />
+            <span className="text-[10px] tabular-nums w-8 text-right font-medium">{park.utilization_percent}%</span>
+          </div>
+        </div>
+      </div>
+      {open && hasSubcats && (
+        <div className="bg-secondary/20 px-6 py-2 border-t border-border">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+            {park.top_subcategories.map((sc: any) => (
+              <div key={sc.id} className="rounded bg-card border px-2 py-1">
+                <p className="text-[10px] text-muted-foreground truncate">{sc.name}</p>
+                <p className="text-xs font-semibold tabular-nums">{fmtCurrency(sc.amount)}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ParkMatrix({ parks, regions }: { parks: any[]; regions: any[] }) {
+  const [expandedRegions, setExpandedRegions] = useState<Record<number, boolean>>({});
+
+  const toggleRegion = (id: number) =>
+    setExpandedRegions(prev => ({ ...prev, [id]: !prev[id] }));
+
+  if (!parks?.length) return null;
+
+  // Group parks by region
+  const parksByRegion: Record<number, any[]> = {};
+  for (const park of parks) {
+    if (!parksByRegion[park.region_id]) parksByRegion[park.region_id] = [];
+    parksByRegion[park.region_id].push(park);
+  }
+
+  return (
+    <div className="rounded-lg border bg-card overflow-hidden">
+      <div className="px-4 py-2 border-b border-border bg-secondary/20 flex items-center gap-2">
+        <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
+        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Region / Park Matrix</span>
+      </div>
+      {/* Header row */}
+      <div className="flex items-center gap-3 px-3 py-1.5 bg-muted/30 border-b border-border">
+        <span className="w-4" />
+        <span className="flex-1 text-[10px] font-semibold text-muted-foreground uppercase">Park / Location</span>
+        <span className="shrink-0 text-[10px] font-semibold text-muted-foreground uppercase w-24 text-right">Allocated</span>
+        <span className="shrink-0 text-[10px] font-semibold text-muted-foreground uppercase w-28 text-right">Utilization</span>
+      </div>
+      {regions.map((region: any) => {
+        const regionParks = parksByRegion[region.id] ?? [];
+        const isOpen = expandedRegions[region.id] !== false; // default open
+        return (
+          <div key={region.id}>
+            {/* Region header */}
+            <div
+              className="flex items-center gap-3 px-3 py-2 bg-secondary/10 hover:bg-secondary/20 cursor-pointer border-b border-border"
+              onClick={() => toggleRegion(region.id)}
+            >
+              {isOpen ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />}
+              <span className="flex-1 text-sm font-semibold">{region.name}</span>
+              <span className="text-xs text-muted-foreground">{regionParks.length} park{regionParks.length !== 1 ? "s" : ""}</span>
+            </div>
+            {isOpen && regionParks.map((park: any) => (
+              <ParkRow key={park.id} park={park} />
+            ))}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Category Chart ────────────────────────────────────────────────────────────
+
+const CAT_COLORS = ["#3b82f6","#8b5cf6","#ec4899","#f59e0b","#10b981","#06b6d4","#6366f1"];
+
+function CategoryChart({ categories }: { categories: any[] }) {
+  if (!categories?.length) return null;
+  const data = categories.slice(0, 10).map((c: any, i: number) => ({
+    name: c.name.length > 22 ? c.name.slice(0, 22) + "…" : c.name,
+    amount: parseFloat(c.allocated_amount || 0),
+    count: c.budgets_count,
+    color: CAT_COLORS[i % CAT_COLORS.length],
+  }));
+  return (
+    <div className="h-52">
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart data={data} margin={{ left: 0, right: 10, top: 5, bottom: 5 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+          <XAxis dataKey="name" tick={{ fontSize: 9 }} angle={-20} textAnchor="end" interval={0} />
+          <YAxis tick={{ fontSize: 9 }} tickFormatter={v => `₹${(v/100000).toFixed(0)}L`} />
+          <Tooltip formatter={(v: number) => [fmtCurrency(v), "Allocated"]} />
+          <Bar dataKey="amount" radius={[3, 3, 0, 0]} name="Allocated">
+            {data.map((d, i) => <Cell key={i} fill={d.color} />)}
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+// ── Campaign Table ────────────────────────────────────────────────────────────
+
+function CampaignTable({ campaigns }: { campaigns: any[] }) {
+  if (!campaigns?.length) return null;
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="border-b">
+            {["Campaign", "Location", "Region", "Category", "Subcategory", "Approved Amt", "Status"].map(h => (
+              <th key={h} className="pb-1.5 text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wider px-2 first:pl-3">{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-border">
+          {campaigns.slice(0, 25).map((c: any) => (
+            <tr key={c.id} className="hover:bg-accent/30">
+              <td className="px-2 py-1.5 font-medium text-foreground truncate max-w-[160px]">{c.name}</td>
+              <td className="px-2 py-1.5 text-muted-foreground truncate max-w-[120px]">{c.scope_node_name}</td>
+              <td className="px-2 py-1.5 text-muted-foreground">{c.region_name}</td>
+              <td className="px-2 py-1.5 text-muted-foreground truncate max-w-[120px]">{c.category_name}</td>
+              <td className="px-2 py-1.5 text-muted-foreground truncate max-w-[120px]">{c.subcategory_name}</td>
+              <td className="px-2 py-1.5 font-semibold tabular-nums text-right">{fmtCurrency(c.approved_amount)}</td>
+              <td className="px-2 py-1.5">
+                <span className={cn(
+                  "inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium",
+                  c.status === "internally_approved" ? "bg-green-100 text-green-800" :
+                  c.status === "pending" ? "bg-yellow-100 text-yellow-800" : "bg-gray-100 text-gray-800"
+                )}>{c.status}</span>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ── Budgets Dashboard Tab ──────────────────────────────────────────────────────
+
+function BudgetsDashboardTab() {
+  const { data, isLoading } = useBudgetOverview();
+
+  if (isLoading) {
+    return (
+      <div className="flex min-h-[360px] items-center justify-center">
+        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (!data) {
+    return (
+      <div className="flex min-h-[360px] items-center justify-center text-sm text-muted-foreground">
+        No budget overview data available.
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-full">
+      <div className="flex flex-col gap-5 px-6 py-5">
+        <div className="rounded-2xl border border-border bg-card/70 p-5 shadow-sm shrink-0">
+          <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-primary">Budget Control Center</p>
+              <h2 className="mt-1 text-2xl font-semibold tracking-tight text-foreground">
+                Marketing budget by region, category, campaign, and utilization
+              </h2>
+              <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
+                Live view of seeded FY budget lines, available funds, campaign coverage, and regional allocation health.
+              </p>
+            </div>
+            <div className="rounded-xl border border-border bg-background/70 px-4 py-3 text-right">
+              <p className="text-xs text-muted-foreground">Total available</p>
+              <p className="text-xl font-semibold tabular-nums text-emerald-500">
+                {fmtCurrency(data.summary?.total_available ?? 0)}
+              </p>
+            </div>
+          </div>
+        </div>
+
+      {/* KPI Strip */}
+      <KpiStrip data={data} />
+
+      {/* Region Cards */}
+      {data.regions?.length > 0 && (
+        <div>
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Budget by Region</p>
+          <RegionCards regions={data.regions} />
+        </div>
+      )}
+
+      {/* Two column: Park Matrix + Category Chart */}
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+        <div className="lg:col-span-3">
+          <ParkMatrix parks={data.parks} regions={data.regions} />
+        </div>
+        <div className="lg:col-span-2">
+          <div className="rounded-lg border bg-card overflow-hidden">
+            <div className="px-4 py-2 border-b border-border bg-secondary/20 flex items-center gap-2">
+              <BarChart3 className="h-3.5 w-3.5 text-muted-foreground" />
+              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Category Breakdown</span>
+            </div>
+            <div className="p-3">
+              <CategoryChart categories={data.categories} />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Campaign Activity */}
+      {data.campaigns?.length > 0 && (
+        <div className="rounded-lg border bg-card overflow-hidden">
+          <div className="px-4 py-2 border-b border-border bg-secondary/20 flex items-center gap-2">
+            <TrendingUp className="h-3.5 w-3.5 text-muted-foreground" />
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Campaign Activity</span>
+            <span className="ml-1 text-[10px] text-muted-foreground">({data.campaigns.length} total)</span>
+          </div>
+          <CampaignTable campaigns={data.campaigns} />
+        </div>
+      )}
+      </div>
+    </div>
+  );
+}
+
+
 export default function BudgetsPage() {
   const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const [selectedBudgetId, setSelectedBudgetId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("budgets");
+  const [budgetViewMode, setBudgetViewMode] = useState<"dashboard" | "list">("dashboard");
 
   // Filter states per tab
   const [budgetStatusFilter, setBudgetStatusFilter] = useState<string>("all");
@@ -1469,8 +1840,10 @@ export default function BudgetsPage() {
   const { data: categories = [], isLoading: catsLoading } = useCategories(
     selectedOrgId ? { org: selectedOrgId } : undefined,
   );
+  const activeCategoryId =
+    selectedCategoryId && selectedCategoryId !== "__all__" ? selectedCategoryId : null;
   const { data: subcategories = [], isLoading: subsLoading } = useSubCategories(
-    selectedCategoryId ? { category: selectedCategoryId } : undefined,
+    activeCategoryId ? { category: activeCategoryId } : undefined,
   );
   const { data: budgets = [], isLoading: budgetsLoading, refetch: refetchBudgets } = useBudgets(
     selectedNodeId && selectedNodeId !== "__all__"
@@ -1497,30 +1870,61 @@ export default function BudgetsPage() {
         return (
           {
             left: (
-              <div className="flex min-h-11 items-center gap-2">
-                <Label className="text-xs text-muted-foreground">Status</Label>
-                <Select value={budgetStatusFilter} onValueChange={setBudgetStatusFilter}>
-                  <SelectTrigger className="w-32">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All</SelectItem>
-                    <SelectItem value="draft">Draft</SelectItem>
-                    <SelectItem value="active">Active</SelectItem>
-                    <SelectItem value="exhausted">Exhausted</SelectItem>
-                    <SelectItem value="frozen">Frozen</SelectItem>
-                    <SelectItem value="closed">Closed</SelectItem>
-                  </SelectContent>
-                </Select>
+              <div className="flex min-h-11 items-center gap-3">
+                {/* View mode toggle */}
+                <div className="flex items-center border rounded-md overflow-hidden">
+                  <button
+                    onClick={() => setBudgetViewMode("dashboard")}
+                    className={cn(
+                      "flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium transition-colors",
+                      budgetViewMode === "dashboard"
+                        ? "bg-primary text-primary-foreground"
+                        : "hover:bg-accent"
+                    )}
+                  >
+                    <LayoutDashboard className="h-3.5 w-3.5" />
+                    Dashboard
+                  </button>
+                  <button
+                    onClick={() => setBudgetViewMode("list")}
+                    className={cn(
+                      "flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium transition-colors",
+                      budgetViewMode === "list"
+                        ? "bg-primary text-primary-foreground"
+                        : "hover:bg-accent"
+                    )}
+                  >
+                    <List className="h-3.5 w-3.5" />
+                    List
+                  </button>
+                </div>
+                {budgetViewMode === "list" && (
+                  <>
+                    <Label className="text-xs text-muted-foreground">Status</Label>
+                    <Select value={budgetStatusFilter} onValueChange={setBudgetStatusFilter}>
+                      <SelectTrigger className="w-32">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All</SelectItem>
+                        <SelectItem value="draft">Draft</SelectItem>
+                        <SelectItem value="active">Active</SelectItem>
+                        <SelectItem value="exhausted">Exhausted</SelectItem>
+                        <SelectItem value="frozen">Frozen</SelectItem>
+                        <SelectItem value="closed">Closed</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </>
+                )}
               </div>
             ),
-            right: (
+            right: budgetViewMode === "list" ? (
               <CreateBudgetDialog
                 orgId={selectedOrgId}
                 scopeNodeId={selectedNodeId}
                 onSuccess={() => refetchBudgets()}
               />
-            ),
+            ) : null,
           }
         );
       case "categories":
@@ -1544,7 +1948,7 @@ export default function BudgetsPage() {
                 <Label className="text-xs text-muted-foreground">Category</Label>
                 <Select
                   value={selectedCategoryId ?? ""}
-                  onValueChange={(v) => setSelectedCategoryId(v)}
+                  onValueChange={(v) => setSelectedCategoryId(v === "__all__" ? null : v)}
                 >
                   <SelectTrigger className="w-48">
                     <SelectValue placeholder="All categories" />
@@ -1671,8 +2075,8 @@ export default function BudgetsPage() {
       }
     >
       {/* Tabbed content */}
-      <div className="flex-1 overflow-hidden">
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <div className="border-b border-border px-6 pt-3">
             <TabsList className="gap-1">
               <TabsTrigger value="budgets">Budgets</TabsTrigger>
@@ -1699,42 +2103,42 @@ export default function BudgetsPage() {
           </div>
 
           {/* BUDGETS TAB */}
-          <TabsContent value="budgets" className="mt-0 flex flex-1 flex-col overflow-hidden">
+          <TabsContent value="budgets" className="m-0 data-[state=inactive]:hidden flex min-h-0 flex-1 flex-col overflow-hidden">
             <ScrollArea className="flex-1">
-              <BudgetList budgets={budgets} isLoading={budgetsLoading} />
+              {budgetViewMode === "dashboard" ? (
+                <BudgetsDashboardTab />
+              ) : (
+                <BudgetList budgets={budgets} isLoading={budgetsLoading} />
+              )}
             </ScrollArea>
           </TabsContent>
 
           {/* CATEGORIES TAB */}
-          <TabsContent value="categories" className="mt-0 flex flex-1 flex-col overflow-hidden">
+          <TabsContent value="categories" className="m-0 data-[state=inactive]:hidden flex min-h-0 flex-1 flex-col overflow-hidden">
             <ScrollArea className="flex-1">
               <CategoryList categories={categories} isLoading={catsLoading} />
             </ScrollArea>
           </TabsContent>
 
           {/* SUBCATEGORIES TAB */}
-          <TabsContent value="subcategories" className="mt-0 flex flex-1 flex-col overflow-hidden">
+          <TabsContent value="subcategories" className="m-0 data-[state=inactive]:hidden flex min-h-0 flex-1 flex-col overflow-hidden">
             <ScrollArea className="flex-1">
               <SubCategoryList
-                subcategories={
-                  selectedCategoryId && selectedCategoryId !== "__all__"
-                    ? subcategories.filter((sc) => sc.category === selectedCategoryId)
-                    : subcategories
-                }
+                subcategories={subcategories}
                 isLoading={subsLoading}
               />
             </ScrollArea>
           </TabsContent>
 
           {/* RULES TAB */}
-          <TabsContent value="rules" className="mt-0 flex flex-1 flex-col overflow-hidden">
+          <TabsContent value="rules" className="m-0 data-[state=inactive]:hidden flex min-h-0 flex-1 flex-col overflow-hidden">
             <ScrollArea className="flex-1">
               <RuleList rules={rules} isLoading={rulesLoading} />
             </ScrollArea>
           </TabsContent>
 
           {/* VARIANCE REQUESTS TAB */}
-          <TabsContent value="variance-requests" className="mt-0 flex flex-1 flex-col overflow-hidden">
+          <TabsContent value="variance-requests" className="m-0 data-[state=inactive]:hidden flex min-h-0 flex-1 flex-col overflow-hidden">
             <ScrollArea className="flex-1">
               <VarianceRequestList
                 varianceRequests={varianceRequests}
@@ -1744,7 +2148,7 @@ export default function BudgetsPage() {
           </TabsContent>
 
           {/* CONSUMPTIONS TAB */}
-          <TabsContent value="consumptions" className="mt-0 flex flex-1 flex-col overflow-hidden">
+          <TabsContent value="consumptions" className="m-0 data-[state=inactive]:hidden flex min-h-0 flex-1 flex-col overflow-hidden">
             <ScrollArea className="flex-1">
               <ConsumptionList consumptions={consumptions} isLoading={consumptionsLoading} />
             </ScrollArea>

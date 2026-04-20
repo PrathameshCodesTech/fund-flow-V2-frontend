@@ -218,18 +218,93 @@ export interface Blocker {
 // ── Insights ─────────────────────────────────────────────────────────────────
 
 export interface InsightsPayload {
-  invoice_status_distribution: { status: string; count: number }[];
-  entity_volume: EntityVolumeItem[];
-  finance_turnaround: FinanceTurnaroundItem[];
+  invoice_status_distribution: InvoiceStatusDistItem[];
+  monthly_invoice_trend: MonthlyTrendItem[];
+  entity_spend: EntitySpendItem[];
+  category_spend: CategorySpendItem[];
+  subcategory_spend: SubcategorySpendItem[];
+  campaign_spend: CampaignSpendItem[];
+  budget_utilization: BudgetUtilItem[];
   stage_turnaround: StageTurnaroundItem[];
   bottleneck_stages: BottleneckStageItem[];
+  finance_turnaround: FinanceTurnaroundPayload;
+  top_vendors: TopVendorItem[];
+  risk_alerts: RiskAlertItem[];
+  // Legacy
+  entity_volume: EntityVolumeItem[];
 }
 
-export interface EntityVolumeItem {
-  scope_node__id: string;
-  scope_node__name: string;
+export interface InvoiceStatusDistItem {
+  status: string;
+  label: string;
   count: number;
-  total_amount: number | null;
+  amount: string;
+}
+
+export interface MonthlyTrendItem {
+  month: string;
+  count: number;
+  amount: string;
+}
+
+export interface EntitySpendItem {
+  entity_id: number;
+  entity_name: string;
+  amount: string;
+  invoice_count: number;
+}
+
+export interface CategorySpendItem {
+  category_id: number;
+  category_name: string;
+  amount: string;
+  allocation_count: number;
+}
+
+export interface SubcategorySpendItem {
+  subcategory_id: number;
+  subcategory_name: string;
+  category_name: string;
+  amount: string;
+  allocation_count: number;
+}
+
+export interface CampaignSpendItem {
+  campaign_id: number;
+  campaign_name: string;
+  amount: string;
+  allocation_count: number;
+}
+
+export interface BudgetUtilItem {
+  budget_id: number;
+  budget_name: string;
+  allocated_amount: string;
+  consumed_amount: string;
+  remaining_amount: string;
+  utilization_percent: number;
+}
+
+export interface StageTurnaroundItem {
+  stage_name: string;
+  avg_hours: number;
+  completed_count: number;
+}
+
+export interface BottleneckStageItem {
+  id: number;
+  created_at: string;
+  instance_group__step_group__name: string;
+  workflow_step__name: string;
+  assigned_user__email: string | null;
+  instance_group__instance__subject_type: string;
+  instance_group__instance__subject_id: number;
+  instance_group__instance__subject_scope_node__name: string;
+}
+
+export interface FinanceTurnaroundPayload {
+  summary: { avg_hours: number; completed_count: number };
+  items: FinanceTurnaroundItem[];
 }
 
 export interface FinanceTurnaroundItem {
@@ -242,21 +317,25 @@ export interface FinanceTurnaroundItem {
   acted_at: string;
 }
 
-export interface StageTurnaroundItem {
-  group_name: string;
-  avg_turnaround_hours: number;
-  count: number;
+export interface TopVendorItem {
+  vendor_id: number;
+  vendor_name: string;
+  invoice_count: number;
+  amount: string;
 }
 
-export interface BottleneckStageItem {
-  id: number;
-  created_at: string;
-  instance_group__step_group__name: string;
-  workflow_step__name: string;
-  assigned_user__email: string | null;
-  instance_group__instance__subject_type: string;
-  instance_group__instance__subject_id: number;
-  instance_group__instance__subject_scope_node__name: string;
+export interface RiskAlertItem {
+  severity: "warning" | "critical" | "info";
+  title: string;
+  description: string;
+  metric_value: string;
+}
+
+export interface EntityVolumeItem {
+  scope_node__id: string;
+  scope_node__name: string;
+  count: number;
+  total_amount: number | null;
 }
 
 // ── API Functions ─────────────────────────────────────────────────────────────

@@ -26,6 +26,7 @@ import {
   listVarianceRequests,
   getVarianceRequest,
   reviewVarianceRequest,
+  getBudgetOverview,
 } from "../api/v2budget";
 import type {
   CreateCategoryRequest,
@@ -313,5 +314,15 @@ export function useReviewVarianceRequest() {
         queryKey: ["v2", "budget", "varianceRequests"],
       });
     },
+  });
+}
+
+// ── Overview ──────────────────────────────────────────────────────────────────
+
+export function useBudgetOverview() {
+  return useQuery({
+    queryKey: ["v2", "budget", "overview"],
+    queryFn: getBudgetOverview,
+    staleTime: 60_000,
   });
 }

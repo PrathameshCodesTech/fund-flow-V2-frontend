@@ -64,6 +64,111 @@ export interface PublicFinanceToken {
   subject_type: string;
   subject_name: string;
   handoff_status: string;
+  // Rich invoice fields (present when module === "invoice")
+  handoff?: InvoiceFinanceHandoff;
+  invoice?: InvoiceFinanceData;
+  vendor?: InvoiceFinanceVendor;
+  documents?: InvoiceFinanceDocument[];
+  allocations?: InvoiceFinanceAllocation[];
+  workflow?: InvoiceFinanceWorkflow;
+  timeline?: InvoiceFinanceTimelineEvent[];
+}
+
+export interface InvoiceFinanceHandoff {
+  id: number;
+  status: string;
+  sent_at: string | null;
+  created_at: string;
+  finance_reference_id: string | null;
+  recipient_count: number;
+  recipient_emails: string[];
+}
+
+export interface InvoiceFinanceData {
+  id: number;
+  title: string;
+  amount: string;
+  currency: string;
+  status: string;
+  po_number: string | null;
+  vendor_invoice_number: string | null;
+  invoice_date: string | null;
+  due_date: string | null;
+  description: string | null;
+  scope_node_id: number;
+  scope_node_name: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface InvoiceFinanceVendor {
+  id: number;
+  vendor_name: string;
+  email: string | null;
+  phone: string | null;
+  gstin: string | null;
+  pan: string | null;
+  sap_vendor_id: string | null;
+}
+
+export interface InvoiceFinanceDocument {
+  id: number;
+  file_name: string;
+  document_type: string;
+  uploaded_at: string | null;
+  url: string | null;
+}
+
+export interface InvoiceFinanceAllocation {
+  id: number;
+  entity_name: string | null;
+  amount: string;
+  category_name: string | null;
+  subcategory_name: string | null;
+  campaign_name: string | null;
+  budget_name: string | null;
+  selected_approver_email: string | null;
+  status: string;
+  note: string | null;
+}
+
+export interface InvoiceFinanceWorkflowStep {
+  name: string;
+  status: string;
+  assigned_user_email: string | null;
+  acted_at: string | null;
+  note: string | null;
+}
+
+export interface InvoiceFinanceWorkflowBranch {
+  entity_name: string | null;
+  status: string;
+  assigned_user_email: string | null;
+  acted_at: string | null;
+  note: string | null;
+}
+
+export interface InvoiceFinanceWorkflowGroup {
+  name: string;
+  status: string;
+  display_order: number;
+  steps: InvoiceFinanceWorkflowStep[];
+  branches: InvoiceFinanceWorkflowBranch[];
+}
+
+export interface InvoiceFinanceWorkflow {
+  instance_id: number | null;
+  status: string | null;
+  template_name: string | null;
+  version_number: number | null;
+  groups: InvoiceFinanceWorkflowGroup[];
+}
+
+export interface InvoiceFinanceTimelineEvent {
+  event_type: string;
+  actor_email: string | null;
+  created_at: string;
+  metadata: Record<string, unknown>;
 }
 
 export interface FinanceApproveRequest {

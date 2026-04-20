@@ -1016,7 +1016,65 @@ function CreateApprovalStepDialog({
             </FormField>
           )}
 
-          {watch("step_kind") !== "SPLIT_BY_SCOPE" && watch("step_kind") !== "JOIN_BRANCHES" && (
+          {watch("step_kind") === "RUNTIME_SPLIT_ALLOCATION" && (
+            <>
+              <FormField
+                label="Splitter Role"
+                error={errors.required_role?.message}
+                hint="Role of the user who performs the invoice split allocation"
+              >
+                <select
+                  value={requiredRole}
+                  onChange={(e) => setValue("required_role", e.target.value, { shouldValidate: true })}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                >
+                  <option value="">Select role...</option>
+                  {roles.map((r) => (
+                    <option key={r.id} value={r.id}>{r.name}</option>
+                  ))}
+                </select>
+              </FormField>
+
+              <FormField label="Allocation Total Policy" hint="Whether split total must equal invoice amount">
+                <select
+                  value={watch("allocation_total_policy" as never) ?? "MUST_EQUAL_INVOICE_TOTAL"}
+                  onChange={(e) => setValue("allocation_total_policy" as never, e.target.value as never)}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                >
+                  <option value="MUST_EQUAL_INVOICE_TOTAL">Must Equal Invoice Total</option>
+                  <option value="CAN_BE_PARTIAL">Can Be Partial</option>
+                </select>
+              </FormField>
+
+              <div className="grid grid-cols-2 gap-3">
+                {(
+                  [
+                    ["require_category", "Require Category"],
+                    ["require_subcategory", "Require Subcategory"],
+                    ["require_budget", "Require Budget"],
+                    ["require_campaign", "Require Campaign"],
+                    ["allow_multiple_lines_per_entity", "Multiple Lines / Entity"],
+                  ] as const
+                ).map(([field, label]) => (
+                  <label key={field} className="flex items-center gap-2 text-sm cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      className="rounded border-input"
+                      checked={!!(watch(field as never))}
+                      onChange={(e) => setValue(field as never, e.target.checked as never)}
+                    />
+                    {label}
+                  </label>
+                ))}
+              </div>
+
+              <p className="text-xs text-muted-foreground border border-border rounded-md px-3 py-2 bg-muted/20">
+                Save the step first, then open it again to configure split entities.
+              </p>
+            </>
+          )}
+
+          {watch("step_kind") !== "SPLIT_BY_SCOPE" && watch("step_kind") !== "JOIN_BRANCHES" && watch("step_kind") !== "RUNTIME_SPLIT_ALLOCATION" && (
             <>
           <FormField
             label="Required Role"
@@ -1378,6 +1436,13 @@ function EditApprovalStepDialog({
       split_target_nodes: step.split_target_nodes ?? undefined,
       split_target_mode: step.split_target_mode ?? undefined,
       join_policy: step.join_policy ?? undefined,
+      allocation_total_policy: (step as any).allocation_total_policy ?? undefined,
+      approver_selection_mode: (step as any).approver_selection_mode ?? undefined,
+      require_category: (step as any).require_category ?? false,
+      require_subcategory: (step as any).require_subcategory ?? false,
+      require_budget: (step as any).require_budget ?? false,
+      require_campaign: (step as any).require_campaign ?? false,
+      allow_multiple_lines_per_entity: (step as any).allow_multiple_lines_per_entity ?? false,
     },
   });
 
@@ -1419,6 +1484,13 @@ function EditApprovalStepDialog({
           split_target_nodes: data.split_target_nodes || undefined,
           split_target_mode: data.split_target_mode || undefined,
           join_policy: data.join_policy || undefined,
+          allocation_total_policy: data.allocation_total_policy,
+          approver_selection_mode: data.approver_selection_mode,
+          require_category: data.require_category,
+          require_subcategory: data.require_subcategory,
+          require_budget: data.require_budget,
+          require_campaign: data.require_campaign,
+          allow_multiple_lines_per_entity: data.allow_multiple_lines_per_entity,
         },
       });
       setOpen(false);
@@ -1577,7 +1649,64 @@ function EditApprovalStepDialog({
               </FormField>
             )}
 
-            {watch("step_kind") !== "SPLIT_BY_SCOPE" && watch("step_kind") !== "JOIN_BRANCHES" && (
+            {watch("step_kind") === "RUNTIME_SPLIT_ALLOCATION" && (
+              <>
+                <FormField
+                  label="Splitter Role"
+                  error={errors.required_role?.message}
+                  hint="Role of the user who performs the invoice split allocation"
+                >
+                  <select
+                    value={requiredRole}
+                    onChange={(e) => setValue("required_role", e.target.value, { shouldValidate: true })}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                  >
+                    <option value="">Select role...</option>
+                    {roles.map((r) => (
+                      <option key={r.id} value={r.id}>{r.name}</option>
+                    ))}
+                  </select>
+                </FormField>
+                <FormField label="Allocation Total Policy" hint="Whether split total must equal invoice amount">
+                  <select
+                    value={watch("allocation_total_policy" as never) ?? "MUST_EQUAL_INVOICE_TOTAL"}
+                    onChange={(e) => setValue("allocation_total_policy" as never, e.target.value as never)}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                  >
+                    <option value="MUST_EQUAL_INVOICE_TOTAL">Must Equal Invoice Total</option>
+                    <option value="CAN_BE_PARTIAL">Can Be Partial</option>
+                  </select>
+                </FormField>
+                <div className="grid grid-cols-2 gap-3">
+                  {(
+                    [
+                      ["require_category", "Require Category"],
+                      ["require_subcategory", "Require Subcategory"],
+                      ["require_budget", "Require Budget"],
+                      ["require_campaign", "Require Campaign"],
+                      ["allow_multiple_lines_per_entity", "Multiple Lines / Entity"],
+                    ] as const
+                  ).map(([field, label]) => (
+                    <label key={field} className="flex items-center gap-2 text-sm cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        className="rounded border-input"
+                        checked={!!(watch(field as never))}
+                        onChange={(e) => setValue(field as never, e.target.checked as never)}
+                      />
+                      {label}
+                    </label>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground border border-border rounded-md px-3 py-2 bg-muted/20">
+                  Allowed entities and per-entity approver pools are configured per split option (admin setup required).
+                </p>
+
+                <SplitOptionsManager stepId={step.id} orgId={orgId} />
+              </>
+            )}
+
+            {watch("step_kind") !== "SPLIT_BY_SCOPE" && watch("step_kind") !== "JOIN_BRANCHES" && watch("step_kind") !== "RUNTIME_SPLIT_ALLOCATION" && (
               <>
                 <FormField
                   label="Required Role"
@@ -2470,5 +2599,259 @@ const WorkflowConfigPage = () => {
     </V2Shell>
   );
 };
+
+// ── Split Options Manager (RUNTIME_SPLIT_ALLOCATION config) ───────────────────
+
+function SplitOptionsManager({ stepId, orgId }: { stepId: string; orgId: string | null }) {
+  const { data: options = [], isLoading } = useSplitOptionsAdmin({ workflow_step: stepId });
+  const createOpt = useCreateSplitOption();
+  const updateOpt = useUpdateSplitOption();
+  const deleteOpt = useDeleteSplitOption();
+  const { data: nodes = [] } = useScopeNodes(orgId ?? undefined);
+  const { data: roles = [] } = useRoles();
+  const [collapsed, setCollapsed] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+
+  if (isLoading) return <Loader2 className="h-4 w-4 animate-spin" />;
+
+  return (
+    <div className="border border-border rounded-lg p-3 space-y-2">
+      <div className="flex items-center justify-between">
+        <button
+          onClick={() => setCollapsed(!collapsed)}
+          className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"
+        >
+          {collapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+          Split Entities ({options.length})
+        </button>
+        <SplitOptionForm
+          stepId={stepId}
+          onSubmit={async (data) => {
+            try {
+              await createOpt.mutateAsync({ ...data, workflow_step: stepId });
+            } catch {}
+          }}
+          trigger={
+            <button className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700">
+              <Plus className="h-3 w-3" /> Add Entity
+            </button>
+          }
+        />
+      </div>
+
+      {!collapsed && options.length === 0 && (
+        <p className="text-xs text-muted-foreground pl-5">No entities configured yet.</p>
+      )}
+
+      {!collapsed && options.map((opt) => (
+        <div key={opt.id} className="border border-border rounded-md p-2 text-xs space-y-1">
+          {editingId === opt.id ? (
+            <SplitOptionForm
+              stepId={stepId}
+              initial={opt}
+              onSubmit={async (data) => {
+                try {
+                  await updateOpt.mutateAsync({ id: opt.id, data });
+                  setEditingId(null);
+                } catch {}
+              }}
+              onCancel={() => setEditingId(null)}
+              trigger={<span />}
+            />
+          ) : (
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <span className="font-medium">{opt.entity_name ?? opt.entity}</span>
+                {opt.approver_role_name && (
+                  <p className="text-muted-foreground">Role: {opt.approver_role_name}</p>
+                )}
+                {opt.category_name && <p className="text-muted-foreground">Cat: {opt.category_name}</p>}
+                {opt.campaign_name && <p className="text-muted-foreground">Camp: {opt.campaign_name}</p>}
+                {opt.budget_name && <p className="text-muted-foreground">Bud: {opt.budget_name}</p>}
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setEditingId(opt.id)}
+                  className="text-xs text-blue-600 hover:text-blue-700"
+                >
+                  Edit
+                </button>
+                <button
+                  onClick={() => deleteOpt.mutate(opt.id)}
+                  className="text-xs text-destructive hover:text-destructive/80"
+                >
+                  <Trash2 className="h-3 w-3" />
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SplitOptionForm({
+  stepId,
+  initial,
+  onSubmit,
+  onCancel,
+  trigger,
+}: {
+  stepId: string;
+  initial?: WorkflowSplitOption;
+  onSubmit: (data: {
+    entity: number;
+    approver_role?: number | null;
+    allowed_approvers?: number[];
+    category?: number | null;
+    subcategory?: number | null;
+    campaign?: number | null;
+    budget?: number | null;
+    is_active?: boolean;
+    display_order?: number;
+  }) => Promise<void>;
+  onCancel?: () => void;
+  trigger: React.ReactNode;
+}) {
+  const { data: nodes = [] } = useScopeNodes(undefined);
+  const { data: roles = [] } = useRoles();
+  const [open, setOpen] = useState(false);
+  const [form, setForm] = useState({
+    entity: initial?.entity ?? "",
+    approver_role: initial?.approver_role ?? "",
+    category: initial?.category ?? "",
+    subcategory: initial?.subcategory ?? "",
+    campaign: initial?.campaign ?? "",
+    budget: initial?.budget ?? "",
+    is_active: initial?.is_active ?? true,
+  });
+
+  const handleOpen = () => {
+    if (initial) {
+      setForm({
+        entity: initial.entity ?? "",
+        approver_role: initial.approver_role ?? "",
+        category: initial.category ?? "",
+        subcategory: initial.subcategory ?? "",
+        campaign: initial.campaign ?? "",
+        budget: initial.budget ?? "",
+        is_active: initial.is_active ?? true,
+      });
+    }
+    setOpen(true);
+  };
+
+  const handleSubmit = async () => {
+    await onSubmit({
+      entity: Number(form.entity),
+      approver_role: form.approver_role ? Number(form.approver_role) : undefined,
+      category: form.category ? Number(form.category) : undefined,
+      subcategory: form.subcategory ? Number(form.subcategory) : undefined,
+      campaign: form.campaign ? Number(form.campaign) : undefined,
+      budget: form.budget ? Number(form.budget) : undefined,
+      is_active: form.is_active,
+    });
+    setOpen(false);
+  };
+
+  if (!open) {
+    return <div onClick={handleOpen}>{trigger}</div>;
+  }
+
+  return (
+    <div className="border border-blue-200 bg-blue-50 rounded-md p-2 space-y-2 text-xs">
+      <div className="grid grid-cols-2 gap-2">
+        <label className="flex flex-col gap-0.5">
+          <span className="text-[10px] text-muted-foreground">Entity *</span>
+          <select
+            value={form.entity}
+            onChange={(e) => setForm((f) => ({ ...f, entity: e.target.value }))}
+            className="border rounded px-1 py-0.5 text-xs"
+          >
+            <option value="">Select...</option>
+            {nodes.map((n) => (
+              <option key={n.id} value={n.id}>{n.name}</option>
+            ))}
+          </select>
+        </label>
+        <label className="flex flex-col gap-0.5">
+          <span className="text-[10px] text-muted-foreground">Approver Role</span>
+          <select
+            value={form.approver_role}
+            onChange={(e) => setForm((f) => ({ ...f, approver_role: e.target.value }))}
+            className="border rounded px-1 py-0.5 text-xs"
+          >
+            <option value="">None</option>
+            {roles.map((r) => (
+              <option key={r.id} value={r.id}>{r.name}</option>
+            ))}
+          </select>
+        </label>
+        <label className="flex flex-col gap-0.5">
+          <span className="text-[10px] text-muted-foreground">Category</span>
+          <input
+            type="number"
+            placeholder="Category ID"
+            value={form.category}
+            onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
+            className="border rounded px-1 py-0.5 text-xs"
+          />
+        </label>
+        <label className="flex flex-col gap-0.5">
+          <span className="text-[10px] text-muted-foreground">Subcategory</span>
+          <input
+            type="number"
+            placeholder="Subcategory ID"
+            value={form.subcategory}
+            onChange={(e) => setForm((f) => ({ ...f, subcategory: e.target.value }))}
+            className="border rounded px-1 py-0.5 text-xs"
+          />
+        </label>
+        <label className="flex flex-col gap-0.5">
+          <span className="text-[10px] text-muted-foreground">Campaign</span>
+          <input
+            type="number"
+            placeholder="Campaign ID"
+            value={form.campaign}
+            onChange={(e) => setForm((f) => ({ ...f, campaign: e.target.value }))}
+            className="border rounded px-1 py-0.5 text-xs"
+          />
+        </label>
+        <label className="flex flex-col gap-0.5">
+          <span className="text-[10px] text-muted-foreground">Budget</span>
+          <input
+            type="number"
+            placeholder="Budget ID"
+            value={form.budget}
+            onChange={(e) => setForm((f) => ({ ...f, budget: e.target.value }))}
+            className="border rounded px-1 py-0.5 text-xs"
+          />
+        </label>
+      </div>
+      <label className="flex items-center gap-1.5">
+        <input
+          type="checkbox"
+          checked={form.is_active}
+          onChange={(e) => setForm((f) => ({ ...f, is_active: e.target.checked }))}
+        />
+        Active
+      </label>
+      <div className="flex gap-2 pt-1">
+        <button
+          onClick={handleSubmit}
+          className="px-2 py-0.5 bg-blue-600 text-white rounded text-[11px] hover:bg-blue-700"
+        >
+          {initial ? "Update" : "Add"}
+        </button>
+        {onCancel ? (
+          <button onClick={onCancel} className="px-2 py-0.5 border rounded text-[11px]">Cancel</button>
+        ) : (
+          <button onClick={() => setOpen(false)} className="px-2 py-0.5 border rounded text-[11px]">Cancel</button>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export default WorkflowConfigPage;

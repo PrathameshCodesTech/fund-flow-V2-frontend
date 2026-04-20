@@ -68,6 +68,30 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
 export function useTheme() {
   const ctx = useContext(ThemeContext);
-  if (!ctx) throw new Error("useTheme must be inside ThemeProvider");
+  if (!ctx) {
+    const mode: ThemeMode = document.documentElement.classList.contains("dark")
+      ? "dark"
+      : "light";
+    const colorTheme: ColorTheme =
+      document.documentElement.getAttribute("data-color") === "green"
+        ? "green"
+        : "blue";
+
+    return {
+      mode,
+      colorTheme,
+      toggleMode: () => {
+        const nextMode: ThemeMode = document.documentElement.classList.contains("dark")
+          ? "light"
+          : "dark";
+        applyTheme(nextMode, colorTheme);
+        localStorage.setItem("mf-theme", nextMode);
+      },
+      setColorTheme: (color: ColorTheme) => {
+        applyTheme(mode, color);
+        localStorage.setItem("mf-color-theme", color);
+      },
+    };
+  }
   return ctx;
 }

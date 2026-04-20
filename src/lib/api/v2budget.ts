@@ -24,6 +24,7 @@ import type {
   RuleListResponse,
   ConsumptionListResponse,
   VarianceRequestListResponse,
+  BudgetOverviewPayload,
 } from "../types/v2budget";
 
 // ── Categories ───────────────────────────────────────────────────────────────
@@ -183,4 +184,10 @@ export async function reviewVarianceRequest(
     `/api/v1/budgets/variance-requests/${id}/review/`,
     data,
   );
+}
+
+// ── Overview ──────────────────────────────────────────────────────────────────
+
+export async function getBudgetOverview(): Promise<BudgetOverviewPayload> {
+  return apiClient.get("/api/v1/budgets/overview/");
 }

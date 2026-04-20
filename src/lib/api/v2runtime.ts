@@ -13,7 +13,11 @@ import type {
   WorkflowInstanceStep,
   WorkflowInstanceBranch,
   TaskReviewData,
+  SplitOptionsData,
+  SubmitSplitRequest,
+  SubmitSplitResult,
 } from "../types/v2runtime";
+import type { WorkflowSplitOption } from "../types/v2workflow";
 
 // ── Instance List ─────────────────────────────────────────────────────────────
 
@@ -130,6 +134,28 @@ export function getTaskReview(taskKind: "step" | "branch", id: string): Promise<
   return apiClient.get<TaskReviewData>(`/api/v1/workflow/tasks/${taskKind}/${id}/review/`);
 }
 
+// ── Runtime Split Allocation ──────────────────────────────────────────────────
+
+export function getSplitOptions(instanceStepId: string): Promise<SplitOptionsData> {
+  return apiClient.get<SplitOptionsData>(
+    `/api/v1/workflow/instance-steps/${instanceStepId}/split-options/`,
+  );
+}
+
+export function submitSplit(
+  instanceStepId: string,
+  data: SubmitSplitRequest,
+): Promise<SubmitSplitResult> {
+  return apiClient.post<SubmitSplitResult>(
+    `/api/v1/workflow/instance-steps/${instanceStepId}/submit-split/`,
+    data,
+  );
+}
+
+export function getInvoiceAllocations(invoiceId: string): Promise<unknown[]> {
+  return apiClient.get<unknown[]>(`/api/v1/invoices/${invoiceId}/allocations/`);
+}
+
 // ── Assignment Plan ────────────────────────────────────────────────────────────
 
 export function getAssignmentPlan(instanceId: string): Promise<AssignmentPlan> {
@@ -148,4 +174,47 @@ export function assignDraftStep(
     `/api/v1/workflow/instance-steps/${instanceStepId}/assign/`,
     { user_id: userId },
   );
+}
+
+// ── Workflow Split Options (admin config) ────────────────────────────────────
+
+export function listSplitOptions(params?: {
+  workflow_step?: string;
+}): Promise<WorkflowSplitOption[]> {
+  return apiClient.get<WorkflowSplitOption[]>("/api/v1/workflow/split-options/", params);
+}
+
+export function createSplitOption(data: {
+  workflow_step: string;
+  entity: number;
+  approver_role?: number | null;
+  allowed_approvers?: number[];
+  category?: number | null;
+  subcategory?: number | null;
+  campaign?: number | null;
+  budget?: number | null;
+  is_active?: boolean;
+  display_order?: number;
+}): Promise<WorkflowSplitOption> {
+  return apiClient.post<WorkflowSplitOption>("/api/v1/workflow/split-options/", data);
+}
+
+export function updateSplitOption(
+  id: string,
+  data: Partial<{
+    approver_role: number | null;
+    allowed_approvers: number[];
+    category: number | null;
+    subcategory: number | null;
+    campaign: number | null;
+    budget: number | null;
+    is_active: boolean;
+    display_order: number;
+  }>,
+): Promise<WorkflowSplitOption> {
+  return apiClient.patch<WorkflowSplitOption>(`/api/v1/workflow/split-options/${id}/`, data);
+}
+
+export function deleteSplitOption(id: string): Promise<void> {
+  return apiClient.delete<void>(`/api/v1/workflow/split-options/${id}/`);
 }
