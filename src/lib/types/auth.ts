@@ -79,8 +79,12 @@ export interface LoginResponse {
 
 // ── V2 Backend Types ────────────────────────────────────────────────────────────
 // These reflect the actual V2 backend serializers.
-// V2's /me/ returns a simple UserSerializer (no roles/capabilities).
 // V2's /login/ returns { user, access, refresh } — no user_context wrapper.
+
+export interface V2AssignedRole {
+  code: string;
+  name: string;
+}
 
 /** V2 UserSerializer — returned by GET /api/v1/auth/me/ and POST /api/v1/auth/login/ */
 export interface V2User {
@@ -88,6 +92,15 @@ export interface V2User {
   email: string;
   first_name: string;
   last_name: string;
+  employee_id: string | null;
+  is_active: boolean;
+  is_staff: boolean;
+  is_superuser: boolean;
+  assigned_roles: V2AssignedRole[];
+  /** True when the user has an active UserVendorAssignment (vendor portal user). */
+  is_vendor_portal_user: boolean;
+  vendor_id: string | null;
+  vendor_name: string | null;
 }
 
 /** V2 login response: { user: V2User, access: string, refresh: string } */

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { V2Shell } from "@/components/v2/V2Shell";
+import { useAuth } from "@/contexts/AuthContext";
 import { useFinanceHandoffs, useFinanceHandoff, useResendFinanceHandoff } from "@/lib/hooks/useV2Finance";
 import {
   FINANCE_HANDOFF_STATUS_LABELS,
@@ -68,6 +69,10 @@ function HandoffDetailPanel({
   const { data: handoff, isLoading } = useFinanceHandoff(handoffId);
   const resendHandoff = useResendFinanceHandoff();
   const [resendError, setResendError] = useState<string | null>(null);
+  const { user } = useAuth();
+  const canResend = (user?.roles ?? []).some((r) =>
+    ["tenant_admin", "org_admin", "finance_team"].includes(r),
+  );
 
   const handleResend = async () => {
     setResendError(null);
@@ -185,8 +190,8 @@ function HandoffDetailPanel({
         )}
       </div>
 
-      {/* Resend action — only for pending/sent */}
-      {(handoff.status === "pending" || handoff.status === "sent") && (
+      {/* Resend action — finance_team / admin only, pending/sent status only */}
+      {canResend && (handoff.status === "pending" || handoff.status === "sent") && (
         <div className="space-y-2">
           <Button
             size="sm"

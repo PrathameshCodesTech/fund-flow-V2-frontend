@@ -7,7 +7,8 @@ import { ShellUtilityBar } from "@/components/v2/ShellUtilityBar";
 import { ShellContextBar } from "@/components/v2/ShellContextBar";
 import { CommandPalette } from "@/components/v2/CommandPalette";
 import { V2Footer } from "@/components/v2/V2Footer";
-import { NAV_GROUPS, itemsForGroup, type NavGroup } from "@/lib/shell/nav";
+import { NAV_GROUPS, itemsForGroup, visibleGroups, type NavGroup } from "@/lib/shell/nav";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface Breadcrumb {
   label: string;
@@ -35,6 +36,8 @@ export function V2Shell({
 }: V2ShellProps) {
   const location = useLocation();
   const [commandOpen, setCommandOpen] = useState(false);
+  const { user } = useAuth();
+  const userRoles = user?.roles ?? [];
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-background">
@@ -54,13 +57,13 @@ export function V2Shell({
           <aside className="flex w-52 shrink-0 flex-col border-r border-border bg-sidebar">
             <ScrollArea className="flex-1 py-3">
               <nav className="space-y-4 px-2">
-                {NAV_GROUPS.map((group) => (
+                {visibleGroups(userRoles).map((group) => (
                   <div key={group.label}>
                     <p className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                       {group.label}
                     </p>
                     <div className="space-y-0.5">
-                      {itemsForGroup(group.label as NavGroup).map(
+                      {itemsForGroup(group.label as NavGroup, userRoles).map(
                         ({ label, to, icon: Icon }) => {
                           const isActive =
                             to === "/"

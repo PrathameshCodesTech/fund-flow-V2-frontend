@@ -1,13 +1,18 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
+import {
+  BrowserRouter,
+  Route,
+  Routes,
+  useLocation,
+  Navigate,
+} from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
-import { useQuery } from "@tanstack/react-query";
-import { getMyVendor } from "@/lib/api/v2vendor";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { NotificationProvider } from "@/contexts/NotificationContext";
+import { hasRouteAccess, NAV_ITEMS, KNOWN_PUBLIC_ROUTES } from "@/lib/shell/nav";
 import LoginPage from "./pages/LoginPage.tsx";
 import V2HomePage from "./pages/V2HomePage.tsx";
 import ScopeNodesPage from "./pages/ScopeNodesPage.tsx";
@@ -32,35 +37,58 @@ import VendorPortalPage from "./pages/VendorPortalPage.tsx";
 import FinanceHandoffsPage from "./pages/FinanceHandoffsPage.tsx";
 import FinanceReviewPage from "./pages/FinanceReviewPage.tsx";
 import PeoplePage from "./pages/PeoplePage.tsx";
+import ForbiddenPage from "./pages/ForbiddenPage.tsx";
 
 const queryClient = new QueryClient();
 
-// Public vendor token routes — always accessible regardless of auth state.
-// Both unauthenticated vendors AND authenticated internal users (e.g. finance team)
-// opening an onboarding/finance link while already logged in must reach these pages.
-const PUBLIC_VENDOR_ROUTES = (
-  <Routes>
-    <Route path="/vendor/register" element={<VendorRegistrationPage />} />
-    <Route path="/vendor/activate/:uid/:token" element={<VendorActivatePage />} />
-    <Route path="/vendor/onboarding/:token" element={<VendorOnboardingPage />} />
-    <Route path="/vendor/finance/:token" element={<VendorFinanceActionPage />} />
-    <Route path="/finance/review/:token" element={<FinanceReviewPage />} />
-    <Route path="/activate/:uid/:token" element={<ActivatePage />} />
-  </Routes>
-);
+// ── Route guard ───────────────────────────────────────────────────────────────
+
+function GuardedRoute({
+  navPath,
+  element,
+}: {
+  navPath: string;
+  element: React.ReactElement;
+}) {
+  const { user } = useAuth();
+  const userRoles = user?.roles ?? [];
+  if (!hasRouteAccess(userRoles, navPath)) {
+    return <ForbiddenPage />;
+  }
+  return element;
+}
+
+/** Forbidden when non-vendor tries to open the vendor portal. */
+function VendorPortalGuard({
+  element,
+}: {
+  element: React.ReactElement;
+}) {
+  const { user } = useAuth();
+  if (user?.isVendorPortalUser) return element;
+  return <ForbiddenPage />;
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function defaultRoute(userRoles: string[]): string {
+  for (const item of NAV_ITEMS) {
+    if (hasRouteAccess(userRoles, item.to)) return item.to;
+  }
+  return "/";
+}
+
+function isPublicRoute(pathname: string): boolean {
+  return KNOWN_PUBLIC_ROUTES.some((p) => pathname.startsWith(p));
+}
+
+// ── AppRoutes ────────────────────────────────────────────────────────────────
 
 function AppRoutes() {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, user } = useAuth();
   const location = useLocation();
-  const vendorAccount = useQuery({
-    queryKey: ["v2", "vendor", "route-guard", "my-vendor"],
-    queryFn: getMyVendor,
-    enabled: isAuthenticated,
-    retry: false,
-    staleTime: 5 * 60_000,
-  });
+  const userRoles = user?.roles ?? [];
 
-  // While restoring session from token, show nothing to avoid flashing login
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -68,15 +96,6 @@ function AppRoutes() {
       </div>
     );
   }
-
-  // Public vendor token pages take priority regardless of auth state.
-  // This ensures an authenticated internal user opening a finance/onboarding link
-  // reaches the correct public page instead of the authenticated shell.
-  const publicVendorMatch =
-    location.pathname.startsWith("/vendor/activate") ||
-    location.pathname.startsWith("/vendor/onboarding") ||
-    location.pathname.startsWith("/vendor/finance") ||
-    location.pathname.startsWith("/finance/review");
 
   if (!isAuthenticated) {
     return (
@@ -92,50 +111,103 @@ function AppRoutes() {
     );
   }
 
-  if (publicVendorMatch) {
-    return PUBLIC_VENDOR_ROUTES;
-  }
-
-  if (vendorAccount.isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
-  }
-
-  if (vendorAccount.isSuccess) {
+  if (isPublicRoute(location.pathname)) {
     return (
       <Routes>
-        <Route path="/vendor-portal" element={<VendorPortalPage />} />
-        <Route path="*" element={<VendorPortalPage />} />
+        <Route path="/vendor/register" element={<VendorRegistrationPage />} />
+        <Route path="/vendor/activate/:uid/:token" element={<VendorActivatePage />} />
+        <Route path="/vendor/onboarding/:token" element={<VendorOnboardingPage />} />
+        <Route path="/vendor/finance/:token" element={<VendorFinanceActionPage />} />
+        <Route path="/finance/review/:token" element={<FinanceReviewPage />} />
+        <Route path="/activate/:uid/:token" element={<ActivatePage />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     );
   }
 
+  // ── Vendor portal user → vendor portal only ────────────────────────────────
+  if (user?.isVendorPortalUser) {
+    return (
+      <Routes>
+        <Route path="/vendor-portal" element={<VendorPortalPage />} />
+        <Route
+          path="*"
+          element={<Navigate to="/vendor-portal" replace />}
+        />
+      </Routes>
+    );
+  }
+
+  // ── Internal user → internal shell ─────────────────────────────────────────
+  const fallback = defaultRoute(userRoles);
+
   return (
     <Routes>
-      <Route path="/" element={<V2HomePage />} />
-      <Route path="/scope-nodes" element={<ScopeNodesPage />} />
-      <Route path="/access-control" element={<AccessControlPage />} />
-      <Route path="/workflow-config" element={<WorkflowConfigPage />} />
-      <Route path="/invoices" element={<InvoicesPage />} />
-      <Route path="/invoices/:id/control-tower" element={<InvoiceControlTowerPage />} />
-      <Route path="/tasks" element={<TasksPage />} />
-      <Route path="/module-activation" element={<ModuleActivationPage />} />
-      <Route path="/budgets" element={<BudgetsPage />} />
-      <Route path="/campaigns" element={<CampaignsPage />} />
-      <Route path="/vendors" element={<VendorsPage />} />
-      <Route path="/vendor-portal" element={<VendorPortalPage />} />
-      <Route path="/workflow-drafts/:instanceId/assign" element={<WorkflowDraftAssignPage />} />
-      <Route path="/notifications" element={<NotificationsPage />} />
-      <Route path="/finance-handoffs" element={<FinanceHandoffsPage />} />
-      <Route path="/people" element={<PeoplePage />} />
-      <Route path="/insights" element={<InsightsPage />} />
-      <Route path="*" element={<V2HomePage />} />
+      {/* Root redirect to first allowed nav item */}
+      <Route path="/" element={<GuardedRoute navPath="/" element={<V2HomePage />} />} />
+
+      {/* Operations */}
+      <Route path="/invoices" element={<GuardedRoute navPath="/invoices" element={<InvoicesPage />} />} />
+      <Route
+        path="/invoices/:id/control-tower"
+        element={<GuardedRoute navPath="/invoices" element={<InvoiceControlTowerPage />} />}
+      />
+      <Route path="/tasks" element={<GuardedRoute navPath="/tasks" element={<TasksPage />} />} />
+      <Route
+        path="/finance-handoffs"
+        element={<GuardedRoute navPath="/finance-handoffs" element={<FinanceHandoffsPage />} />}
+      />
+      <Route path="/vendors" element={<GuardedRoute navPath="/vendors" element={<VendorsPage />} />} />
+      <Route path="/campaigns" element={<GuardedRoute navPath="/campaigns" element={<CampaignsPage />} />} />
+
+      {/* Planning */}
+      <Route path="/budgets" element={<GuardedRoute navPath="/budgets" element={<BudgetsPage />} />} />
+      <Route path="/insights" element={<GuardedRoute navPath="/insights" element={<InsightsPage />} />} />
+
+      {/* Setup */}
+      <Route path="/people" element={<GuardedRoute navPath="/people" element={<PeoplePage />} />} />
+      <Route
+        path="/scope-nodes"
+        element={<GuardedRoute navPath="/scope-nodes" element={<ScopeNodesPage />} />}
+      />
+      <Route
+        path="/access-control"
+        element={<GuardedRoute navPath="/access-control" element={<AccessControlPage />} />}
+      />
+      <Route
+        path="/workflow-config"
+        element={<GuardedRoute navPath="/workflow-config" element={<WorkflowConfigPage />} />}
+      />
+      <Route
+        path="/module-activation"
+        element={<GuardedRoute navPath="/module-activation" element={<ModuleActivationPage />} />}
+      />
+
+      {/* Non-nav internal routes */}
+      <Route
+        path="/notifications"
+        element={<GuardedRoute navPath="/notifications" element={<NotificationsPage />} />}
+      />
+      <Route
+        path="/workflow-drafts/:instanceId/assign"
+        element={
+          <GuardedRoute
+            navPath="/workflow-drafts/:instanceId/assign"
+            element={<WorkflowDraftAssignPage />}
+          />
+        }
+      />
+
+      {/* Vendor portal — forbidden for internal users */}
+      <Route path="/vendor-portal" element={<VendorPortalGuard element={<VendorPortalPage />} />} />
+
+      {/* Catch-all: unknown internal route → first allowed or Forbidden */}
+      <Route path="*" element={<Navigate to={fallback} replace />} />
     </Routes>
   );
 }
+
+// ── App ───────────────────────────────────────────────────────────────────────
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -145,7 +217,9 @@ const App = () => (
           <NotificationProvider>
             <Toaster />
             <Sonner />
-            <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+            <BrowserRouter
+              future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+            >
               <AppRoutes />
             </BrowserRouter>
           </NotificationProvider>
