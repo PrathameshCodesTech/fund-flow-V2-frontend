@@ -12,7 +12,7 @@ export type ConsumptionStatus = "pending" | "applied" | "reversed";
 export type VarianceStatus = "pending" | "approved" | "rejected" | "cancelled";
 export type SourceType = "campaign" | "invoice" | "manual_adjustment";
 
-// ── Labels ───────────────────────────────────────────────────────────────────
+// ── Labels ────────────────────────────────────────────────────────────────────
 
 export const PERIOD_TYPE_LABELS: Record<PeriodType, string> = {
   yearly: "Yearly",
@@ -55,7 +55,7 @@ export const SOURCE_TYPE_LABELS: Record<SourceType, string> = {
   manual_adjustment: "Manual Adjustment",
 };
 
-// ── Models ───────────────────────────────────────────────────────────────────
+// ── Models ────────────────────────────────────────────────────────────────────
 
 export interface BudgetCategory {
   id: string;
@@ -80,17 +80,38 @@ export interface BudgetSubCategory {
   category_code?: string;
 }
 
+// ── BudgetLine ────────────────────────────────────────────────────────────────
+
+export interface BudgetLine {
+  id: string;
+  budget: string;
+  category: string;
+  subcategory: string | null;
+  allocated_amount: string;
+  reserved_amount: string;
+  consumed_amount: string;
+  // expanded
+  category_name?: string;
+  subcategory_name?: string;
+  available_amount?: string;
+  utilization_percent?: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Budget {
   id: string;
   org: string;
   scope_node: string;
-  category: string;
-  subcategory: string | null;
+  // header fields (name+code replace category-level allocation)
+  name: string;
+  code: string;
+  // no category/subcategory — those live on BudgetLine
   financial_year: string;
   period_type: PeriodType;
   period_start: string | null;
   period_end: string | null;
-  allocated_amount: string; // DecimalField → string
+  allocated_amount: string;
   reserved_amount: string;
   consumed_amount: string;
   currency: string;
@@ -102,11 +123,11 @@ export interface Budget {
   updated_at: string;
   // expanded
   scope_node_name?: string;
-  category_name?: string;
-  subcategory_name?: string;
   // computed helpers
   available_amount?: string;
   utilization_percent?: number;
+  has_rule?: boolean;
+  lines?: BudgetLine[];
 }
 
 export interface BudgetRule {
@@ -127,6 +148,7 @@ export interface BudgetRule {
 export interface BudgetConsumption {
   id: string;
   budget: string;
+  budget_line: string | null; // optional FK to BudgetLine
   source_type: SourceType;
   source_id: string;
   amount: string;
@@ -143,6 +165,7 @@ export interface BudgetConsumption {
 export interface BudgetVarianceRequest {
   id: string;
   budget: string;
+  budget_line: string | null; // optional FK to BudgetLine
   source_type: SourceType;
   source_id: string;
   requested_amount: string;
@@ -188,26 +211,96 @@ export interface UpdateSubCategoryRequest {
   is_active?: boolean;
 }
 
+// ── BudgetLine request shapes ────────────────────────────────────────────────
+
+export interface CreateBudgetLineRequest {
+  category: string;
+  subcategory?: string | null;
+  allocated_amount: string;
+}
+
+export interface UpdateBudgetLineRequest {
+  category?: string;
+  subcategory?: string | null;
+  allocated_amount?: string;
+}
+
+// ── Budget request shapes ─────────────────────────────────────────────────────
+
 export interface CreateBudgetRequest {
   org?: string;
   scope_node: string;
-  category: string;
-  subcategory?: string;
-  financial_year: string;
+  name: string;
+  code: string;
+  financial_year?: string;
   period_type?: PeriodType;
   period_start?: string;
   period_end?: string;
   allocated_amount: string;
   currency?: string;
   status?: BudgetStatus;
+  lines?: CreateBudgetLineRequest[];
 }
 
 export interface UpdateBudgetRequest {
+  name?: string;
+  code?: string;
+  financial_year?: string;
+  period_type?: PeriodType;
+  period_start?: string;
+  period_end?: string;
   allocated_amount?: string;
   currency?: string;
   status?: BudgetStatus;
-  period_start?: string;
-  period_end?: string;
+  // Nested line upsert: include existing lines with id to update, new lines without id;
+  // absent lines with zero usage are deleted by backend; absent with usage → error
+  lines?: (CreateBudgetLineRequest & { id?: string })[];
+}
+
+// ── Reserve / Consume / Release request shapes ────────────────────────────────
+
+export interface ReserveBudgetLineRequest {
+  budget_line_id: number;
+  amount: string;
+  source_type: SourceType;
+  source_id: string;
+  note?: string;
+}
+
+export interface ConsumeBudgetLineRequest {
+  budget_line_id: number;
+  amount: string;
+  source_type: SourceType;
+  source_id: string;
+  note?: string;
+}
+
+export interface ReleaseBudgetLineRequest {
+  budget_line_id: number;
+  amount: string;
+  source_type: SourceType;
+  source_id: string;
+  note?: string;
+}
+
+// ── Runtime response shapes ───────────────────────────────────────────────────
+
+export interface ReserveBudgetLineResponse {
+  status: "reserved" | "reserved_with_warning" | "variance_required";
+  projected_utilization: string;
+  current_utilization: string;
+  consumption: BudgetConsumption | null;
+  variance_request: BudgetVarianceRequest | null;
+}
+
+export interface ConsumeBudgetLineResponse {
+  status: "consumed";
+  consumption: BudgetConsumption;
+}
+
+export interface ReleaseBudgetLineResponse {
+  status: "released";
+  consumption: BudgetConsumption;
 }
 
 export interface CreateRuleRequest {
@@ -239,6 +332,7 @@ export interface ReviewVarianceRequest {
 export type CategoryListResponse = PaginatedResponse<BudgetCategory>;
 export type SubCategoryListResponse = PaginatedResponse<BudgetSubCategory>;
 export type BudgetListResponse = PaginatedResponse<Budget>;
+export type BudgetLineListResponse = PaginatedResponse<BudgetLine>;
 export type RuleListResponse = PaginatedResponse<BudgetRule>;
 export type ConsumptionListResponse = PaginatedResponse<BudgetConsumption>;
 export type VarianceRequestListResponse = PaginatedResponse<BudgetVarianceRequest>;

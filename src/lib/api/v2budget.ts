@@ -6,6 +6,7 @@ import type {
   BudgetCategory,
   BudgetSubCategory,
   Budget,
+  BudgetLine,
   BudgetRule,
   BudgetConsumption,
   BudgetVarianceRequest,
@@ -13,14 +14,23 @@ import type {
   UpdateCategoryRequest,
   CreateSubCategoryRequest,
   UpdateSubCategoryRequest,
+  CreateBudgetLineRequest,
+  UpdateBudgetLineRequest,
   CreateBudgetRequest,
   UpdateBudgetRequest,
+  ReserveBudgetLineRequest,
+  ConsumeBudgetLineRequest,
+  ReleaseBudgetLineRequest,
+  ReserveBudgetLineResponse,
+  ConsumeBudgetLineResponse,
+  ReleaseBudgetLineResponse,
   CreateRuleRequest,
   UpdateRuleRequest,
   ReviewVarianceRequest,
   CategoryListResponse,
   SubCategoryListResponse,
   BudgetListResponse,
+  BudgetLineListResponse,
   RuleListResponse,
   ConsumptionListResponse,
   VarianceRequestListResponse,
@@ -92,8 +102,6 @@ export async function deleteSubCategory(id: string): Promise<void> {
 export async function listBudgets(params?: {
   org?: string;
   scope_node?: string;
-  category?: string;
-  subcategory?: string;
   financial_year?: string;
   status?: string;
 }): Promise<BudgetListResponse> {
@@ -119,6 +127,59 @@ export async function updateBudget(
 
 export async function deleteBudget(id: string): Promise<void> {
   return apiClient.delete(`/api/v1/budgets/${id}/`);
+}
+
+// ── BudgetLines (standalone CRUD) ─────────────────────────────────────────────
+
+export async function listBudgetLines(params?: {
+  budget?: string;
+  category?: string;
+}): Promise<BudgetLineListResponse> {
+  return apiClient.get("/api/v1/budgets/lines/", params);
+}
+
+export async function getBudgetLine(id: string): Promise<BudgetLine> {
+  return apiClient.get(`/api/v1/budgets/lines/${id}/`);
+}
+
+export async function createBudgetLine(
+  data: CreateBudgetLineRequest & { budget: string },
+): Promise<BudgetLine> {
+  return apiClient.post("/api/v1/budgets/lines/", data);
+}
+
+export async function updateBudgetLine(
+  id: string,
+  data: UpdateBudgetLineRequest,
+): Promise<BudgetLine> {
+  return apiClient.patch(`/api/v1/budgets/lines/${id}/`, data);
+}
+
+export async function deleteBudgetLine(id: string): Promise<void> {
+  return apiClient.delete(`/api/v1/budgets/lines/${id}/`);
+}
+
+// ── Runtime: Reserve / Consume / Release ─────────────────────────────────────
+
+export async function reserveBudgetLine(
+  budgetId: string,
+  data: ReserveBudgetLineRequest,
+): Promise<ReserveBudgetLineResponse> {
+  return apiClient.post(`/api/v1/budgets/${budgetId}/reserve/`, data);
+}
+
+export async function consumeBudgetLine(
+  budgetId: string,
+  data: ConsumeBudgetLineRequest,
+): Promise<ConsumeBudgetLineResponse> {
+  return apiClient.post(`/api/v1/budgets/${budgetId}/consume/`, data);
+}
+
+export async function releaseBudgetLine(
+  budgetId: string,
+  data: ReleaseBudgetLineRequest,
+): Promise<ReleaseBudgetLineResponse> {
+  return apiClient.post(`/api/v1/budgets/${budgetId}/release/`, data);
 }
 
 // ── Rules ────────────────────────────────────────────────────────────────────
@@ -153,6 +214,7 @@ export async function deleteRule(id: string): Promise<void> {
 
 export async function listConsumptions(params?: {
   budget?: string;
+  budget_line?: string;
   source_type?: string;
   source_id?: string;
   consumption_type?: string;

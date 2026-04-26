@@ -33,13 +33,11 @@ export function useCampaigns(params?: {
   category?: string;
   subcategory?: string;
   budget?: string;
+  page?: number;
 }) {
   return useQuery({
     queryKey: ["v2", "campaigns", params],
-    queryFn: async () => {
-      const res = await listCampaigns(params);
-      return res.results;
-    },
+    queryFn: () => listCampaigns(params),
   });
 }
 

@@ -145,7 +145,7 @@ export function useWorkflowSteps(groupId?: string) {
 export function useUpdateTemplate() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: { name?: string; module?: string; scope_node?: string } }) =>
+    mutationFn: ({ id, data }: { id: string; data: { name?: string; module?: string; scope_node?: string; description?: string; is_active?: boolean; is_default?: boolean } }) =>
       updateTemplate(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["v2", "workflowTemplates"] });

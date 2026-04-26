@@ -25,6 +25,7 @@ export async function listCampaigns(params?: {
   category?: string;
   subcategory?: string;
   budget?: string;
+  page?: number;
 }): Promise<CampaignListResponse> {
   return apiClient.get("/api/v1/campaigns/", params);
 }

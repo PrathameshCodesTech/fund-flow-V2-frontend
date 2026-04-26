@@ -60,7 +60,7 @@ function KpiCard({ label, value, sub, icon: Icon, to, urgency = "normal" }: KpiC
   return (
     <div
       className={cn(
-        "rounded-xl border border-border bg-card p-4 transition-shadow hover:shadow-md",
+        "min-w-0 rounded-xl border border-border bg-card p-4 transition-shadow hover:shadow-md",
         to && "cursor-pointer",
       )}
       onClick={to ? () => navigate(to) : undefined}
@@ -168,10 +168,10 @@ const V2HomePage = () => {
       }
     >
       <ScrollArea className="flex-1">
-      <div className="mx-auto max-w-7xl px-6 py-6 space-y-6">
+      <div className="w-full px-4 py-4 sm:px-6 sm:py-6 space-y-6">
 
         {/* ── KPI Strip ───────────────────────────────────────────────────── */}
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-7">
           <KpiCard
             label="Pending Tasks"
             value={kpis?.pending_task_count}
@@ -230,13 +230,13 @@ const V2HomePage = () => {
           />
         </div>
 
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
 
           {/* ── Left column ───────────────────────────────────────────────── */}
-          <div className="space-y-4 lg:col-span-2">
+          <div className="space-y-4 min-w-0 xl:col-span-2">
 
             {/* Needs Attention */}
-            <div className="rounded-xl border border-border bg-card">
+            <div className="min-w-0 rounded-xl border border-border bg-card">
               <SectionHeader
                 title="Needs Attention"
                 icon={AlertTriangle}
@@ -308,7 +308,7 @@ const V2HomePage = () => {
             </div>
 
             {/* Lifecycle Summary */}
-            <div className="rounded-xl border border-border bg-card">
+            <div className="min-w-0 rounded-xl border border-border bg-card">
               <SectionHeader
                 title="Invoice Lifecycle"
                 icon={FileText}
@@ -345,10 +345,10 @@ const V2HomePage = () => {
           </div>
 
           {/* ── Right column ───────────────────────────────────────────────── */}
-          <div className="space-y-4">
+          <div className="space-y-4 min-w-0">
 
             {/* My Pending Tasks */}
-            <div className="rounded-xl border border-border bg-card">
+            <div className="min-w-0 rounded-xl border border-border bg-card">
               <SectionHeader
                 title="My Tasks"
                 icon={CheckCircle2}
@@ -387,7 +387,7 @@ const V2HomePage = () => {
             </div>
 
             {/* Recent Finance Handoffs */}
-            <div className="rounded-xl border border-border bg-card">
+            <div className="min-w-0 rounded-xl border border-border bg-card">
               <SectionHeader
                 title="Recent Handoffs"
                 icon={Landmark}
@@ -431,7 +431,7 @@ const V2HomePage = () => {
             </div>
 
             {/* Recent Vendor Submissions */}
-            <div className="rounded-xl border border-border bg-card">
+            <div className="min-w-0 rounded-xl border border-border bg-card">
               <SectionHeader
                 title="Recent Vendor Submissions"
                 icon={Users}

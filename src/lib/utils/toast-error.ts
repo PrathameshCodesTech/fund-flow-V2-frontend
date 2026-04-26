@@ -14,6 +14,32 @@ export function extractErrorMessage(
   fallback = "An unexpected error occurred. Please try again."
 ): string {
   if (error instanceof ApiError) {
+    // Handle {errors: {field: [msg]}} shape from submission validation
+    if (error.errors && typeof error.errors === "object" && !Array.isArray(error.errors)) {
+      const errs = error.errors as Record<string, unknown>;
+      const fieldPriority = [
+        "vendor_invoice_number",
+        "invoice_number",
+        "total_amount",
+        "invoice_date",
+        "currency",
+        "po_number",
+        "due_date",
+        "vendor_status",
+        "send_to_option_id",
+        "allocations",
+        "status",
+        "workflow",
+        "reason",
+      ];
+      for (const field of fieldPriority) {
+        const val = errs[field];
+        if (Array.isArray(val) && val.length > 0 && typeof val[0] === "string") {
+          return val[0] as string;
+        }
+      }
+    }
+
     // Check specific field errors first (common in invoice operations)
     const fieldPriority = [
       "allocations",

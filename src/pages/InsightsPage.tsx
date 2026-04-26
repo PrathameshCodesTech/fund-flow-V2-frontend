@@ -114,9 +114,9 @@ function KpiStrip({ data }: { data: any }) {
   ];
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
       {kpis.map((kpi) => (
-        <Card key={kpi.label} className="p-3">
+        <Card key={kpi.label} className="min-w-0 p-3">
           <div className="flex items-center gap-2 mb-2">
             <kpi.icon className={cn("h-4 w-4", kpi.color)} />
             <span className="text-xs text-muted-foreground">{kpi.label}</span>
@@ -497,7 +497,7 @@ function SectionCard({ title, icon, children, action }: {
   action?: React.ReactNode;
 }) {
   return (
-    <div className="rounded-xl border border-border bg-card overflow-hidden">
+    <div className="min-w-0 rounded-xl border border-border bg-card overflow-hidden">
       <div className="px-5 py-3 border-b border-border flex items-center gap-2">
         <span className="text-primary">{icon}</span>
         <h3 className="text-sm font-semibold">{title}</h3>
@@ -526,7 +526,7 @@ const InsightsPage = () => {
       }
     >
       <ScrollArea className="flex-1">
-        <div className="mx-auto max-w-7xl px-6 py-6 space-y-6">
+        <div className="w-full px-4 py-4 sm:px-6 sm:py-6 space-y-6">
 
         {isLoading && (
           <div className="flex items-center justify-center h-64">
@@ -557,8 +557,8 @@ const InsightsPage = () => {
             )}
 
             {/* ── Row 1: Status + Monthly Trend ─────────────────────────── */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-              <div className="lg:col-span-1">
+            <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+              <div className="min-w-0 xl:col-span-1">
                 <SectionCard
                   title="Invoice Status Distribution"
                   icon={<BarChart3 className="h-4 w-4" />}
@@ -571,7 +571,7 @@ const InsightsPage = () => {
                   <StatusDistChart data={data.invoice_status_distribution} />
                 </SectionCard>
               </div>
-              <div className="lg:col-span-2">
+              <div className="min-w-0 xl:col-span-2">
                 <SectionCard
                   title="Monthly Invoice Value Trend"
                   icon={<TrendingUp className="h-4 w-4" />}
@@ -582,7 +582,7 @@ const InsightsPage = () => {
             </div>
 
             {/* ── Row 2: Entity Spend + Category Spend ───────────────────── */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
               <SectionCard
                 title="Entity-wise Spend"
                 icon={<Users className="h-4 w-4" />}
@@ -598,7 +598,7 @@ const InsightsPage = () => {
             </div>
 
             {/* ── Row 3: Subcategory + Campaign ─────────────────────────── */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
               <SectionCard
                 title="Subcategory Details"
                 icon={<Target className="h-4 w-4" />}
@@ -614,7 +614,7 @@ const InsightsPage = () => {
             </div>
 
             {/* ── Row 4: Budget Util + Stage Turnaround ─────────────────── */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
               <SectionCard
                 title="Budget Utilization"
                 icon={<DollarSign className="h-4 w-4" />}
@@ -630,7 +630,7 @@ const InsightsPage = () => {
             </div>
 
             {/* ── Row 5: Top Vendors + Finance Turnaround ────────────────── */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
               <SectionCard
                 title="Top Vendors"
                 icon={<Users className="h-4 w-4" />}

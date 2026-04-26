@@ -132,3 +132,26 @@ export function attachWorkflow(
     data,
   );
 }
+
+// ── Invoice Payment ──────────────────────────────────────────────────────────
+
+import type { InvoicePayment, RecordPaymentRequest } from '../types/invoice-payment';
+
+export async function getInvoicePayment(invoiceId: string): Promise<InvoicePayment | null> {
+  try {
+    return await apiClient.get<InvoicePayment>(`/api/v1/invoices/${invoiceId}/payment/`);
+  } catch {
+    // 404 means no payment recorded yet
+    return null;
+  }
+}
+
+export async function recordInvoicePayment(
+  invoiceId: string,
+  data: RecordPaymentRequest,
+): Promise<InvoicePayment> {
+  return apiClient.post<InvoicePayment>(
+    `/api/v1/invoices/${invoiceId}/record-payment/`,
+    data,
+  );
+}

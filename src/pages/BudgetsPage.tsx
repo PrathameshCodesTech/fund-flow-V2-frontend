@@ -11,6 +11,7 @@ import {
   useOrganizations,
   useScopeNodes,
 } from "@/lib/hooks/useScopeNodes";
+import type { ScopeNode } from "@/lib/types/core";
 import {
   useCategories,
   useSubCategories,
@@ -37,6 +38,7 @@ import type {
   BudgetCategory,
   BudgetSubCategory,
   Budget,
+  BudgetLine,
   BudgetRule,
   BudgetConsumption,
   BudgetVarianceRequest,
@@ -48,6 +50,7 @@ import type {
   CreateCategoryRequest,
   CreateSubCategoryRequest,
   CreateBudgetRequest,
+  CreateBudgetLineRequest,
   CreateRuleRequest,
 } from "@/lib/types/v2budget";
 import {
@@ -608,30 +611,59 @@ function CreateBudgetDialog({
   const { data: subcategories = [] } = useSubCategories();
   const { data: nodes = [] } = useScopeNodes(orgId ?? undefined);
 
-  const {
-    register,
-    handleSubmit,
-    reset,
-    setValue,
-    watch,
-    formState: { errors, isSubmitting },
-  } = useForm<CreateBudgetRequest & { scope_node_id: string; category_id: string; subcategory_id: string }>();
+  // Dynamic line builder state
+  const [lines, setLines] = useState<CreateBudgetLineRequest[]>([
+    { category: "", subcategory: null, allocated_amount: "" },
+  ]);
+  const [selectedScopeNodeId, setSelectedScopeNodeId] = useState<string>(scopeNodeId ?? "");
+  const [financialYear, setFinancialYear] = useState("2026-27");
+  const [periodType, setPeriodType] = useState<PeriodType>("yearly");
+  const [currency, setCurrency] = useState("INR");
 
-  const selectedCategoryId = watch("category_id");
+  const linesTotal = lines.reduce(
+    (sum, l) => sum + (parseFloat(l.allocated_amount) || 0),
+    0,
+  );
 
-  const onSubmit = async (data: Record<string, string>) => {
+  const addLine = () => {
+    setLines((prev) => [...prev, { category: "", subcategory: null, allocated_amount: "" }]);
+  };
+
+  const removeLine = (index: number) => {
+    setLines((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const updateLine = (index: number, field: keyof CreateBudgetLineRequest, value: string) => {
+    setLines((prev) =>
+      prev.map((line, i) =>
+        i === index ? { ...line, [field]: value } : line,
+      ),
+    );
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!scopeNodeId) return;
+    if (lines.length === 0) return;
+    if (lines.some((l) => !l.category || !l.allocated_amount)) return;
+
     try {
       await create.mutateAsync({
-        scope_node: data.scope_node_id,
-        category: data.category_id,
-        subcategory: data.subcategory_id || undefined,
-        financial_year: data.financial_year,
-        period_type: (data.period_type || "yearly") as PeriodType,
-        allocated_amount: data.allocated_amount,
-        currency: data.currency || "INR",
+        scope_node: selectedScopeNodeId,
+        name: `FY${financialYear.replace("-", "")} Budget`,
+        code: `FY${financialYear.replace("-", "")}-${scopeNodeId.slice(-4).toUpperCase()}`,
+        financial_year: financialYear,
+        period_type: periodType,
+        allocated_amount: String(linesTotal),
+        currency,
+        status: "draft",
+        lines,
       });
       setOpen(false);
-      reset();
+      setLines([{ category: "", subcategory: null, allocated_amount: "" }]);
+      setSelectedScopeNodeId("");
+      setFinancialYear("2026-27");
+      setCurrency("INR");
       onSuccess?.();
     } catch { /* error via create.error */ }
   };
@@ -651,62 +683,38 @@ function CreateBudgetDialog({
           New Budget
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto" aria-describedby={undefined}>
         <DialogHeader>
           <DialogTitle>Create Budget</DialogTitle>
         </DialogHeader>
-        <form id="create-budget-form" onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          <div className="space-y-1.5">
-            <Label>Scope Node *</Label>
-            <Select onValueChange={(v) => setValue("scope_node_id", v)} defaultValue="">
-              <SelectTrigger><SelectValue placeholder="Select scope node..." /></SelectTrigger>
-              <SelectContent>
-                {nodes.map((n) => (
-                  <SelectItem key={n.id} value={n.id}>{n.name} ({n.code})</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {errors.scope_node && <FieldError message="Required" />}
-          </div>
-
-          <div className="space-y-1.5">
-            <Label>Category *</Label>
-            <Select onValueChange={(v) => { setValue("category_id", v); setValue("subcategory_id", ""); }}>
-              <SelectTrigger><SelectValue placeholder="Select category..." /></SelectTrigger>
-              <SelectContent>
-                {categories.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>{c.name} ({c.code})</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {errors.category && <FieldError message="Required" />}
-          </div>
-
-          {selectedCategoryId && (
+        <form id="create-budget-form" onSubmit={handleSubmit} className="space-y-5">
+          {/* Header fields */}
+          <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <Label>Subcategory</Label>
-              <Select onValueChange={(v) => setValue("subcategory_id", v)} defaultValue="">
-                <SelectTrigger><SelectValue placeholder="Optional..." /></SelectTrigger>
+              <Label>Scope Node *</Label>
+              <Select value={selectedScopeNodeId} onValueChange={setSelectedScopeNodeId}>
+                <SelectTrigger><SelectValue placeholder="Select scope node..." /></SelectTrigger>
                 <SelectContent>
-                  {subcategories
-                    .filter((sc) => sc.category === selectedCategoryId)
-                    .map((sc) => (
-                      <SelectItem key={sc.id} value={sc.id}>{sc.name} ({sc.code})</SelectItem>
-                    ))}
+                  {nodes.map((n) => (
+                    <SelectItem key={n.id} value={n.id}>{n.name} ({n.code})</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
-          )}
+            <div className="space-y-1.5">
+              <Label>Financial Year *</Label>
+              <Input
+                value={financialYear}
+                onChange={(e) => setFinancialYear(e.target.value)}
+                placeholder="e.g. 2026-27"
+              />
+            </div>
+          </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <Label>Financial Year *</Label>
-              <Input {...register("financial_year", { required: "Required" })} placeholder="e.g. 2026-27" className={errors.financial_year ? "border-destructive" : ""} />
-              {errors.financial_year && <FieldError message={errors.financial_year.message} />}
-            </div>
-            <div className="space-y-1.5">
               <Label>Period Type</Label>
-              <Select defaultValue="yearly" onValueChange={(v) => setValue("period_type", v)}>
+              <Select value={periodType} onValueChange={(v) => setPeriodType(v as PeriodType)}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {(["yearly", "quarterly", "monthly", "campaign"] as PeriodType[]).map((pt) => (
@@ -715,24 +723,87 @@ function CreateBudgetDialog({
                 </SelectContent>
               </Select>
             </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <Label>Allocated Amount *</Label>
-              <Input
-                {...register("allocated_amount", { required: "Required" })}
-                type="number"
-                step="0.01"
-                min="0.01"
-                placeholder="0.00"
-                className={errors.allocated_amount ? "border-destructive" : ""}
-              />
-              {errors.allocated_amount && <FieldError message={errors.allocated_amount.message} />}
-            </div>
             <div className="space-y-1.5">
               <Label>Currency</Label>
-              <Input {...register("currency")} defaultValue="INR" placeholder="INR" />
+              <Input value={currency} onChange={(e) => setCurrency(e.target.value)} placeholder="INR" />
+            </div>
+          </div>
+
+          {/* Line builder */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <Label>Budget Lines</Label>
+              <Button type="button" variant="outline" size="sm" onClick={addLine}>
+                <Plus className="h-3.5 w-3.5 mr-1" /> Add Line
+              </Button>
+            </div>
+
+            {lines.map((line, index) => (
+              <div key={index} className="flex gap-2 items-end">
+                <div className="flex-1 space-y-1">
+                  <Label className="text-xs">Category *</Label>
+                  <Select
+                    value={line.category}
+                    onValueChange={(v) => updateLine(index, "category", v)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select category..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {categories.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>{c.name} ({c.code})</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex-1 space-y-1">
+                  <Label className="text-xs">Subcategory</Label>
+                  <Select
+                    value={line.subcategory ?? ""}
+                    onValueChange={(v) => updateLine(index, "subcategory", v || null)}
+                    disabled={!line.category}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Optional..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {line.category && subcategories
+                        .filter((sc) => sc.category === line.category)
+                        .map((sc) => (
+                          <SelectItem key={sc.id} value={sc.id}>{sc.name} ({sc.code})</SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="w-36 space-y-1">
+                  <Label className="text-xs">Amount *</Label>
+                  <Input
+                    value={line.allocated_amount}
+                    onChange={(e) => updateLine(index, "allocated_amount", e.target.value)}
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    placeholder="0.00"
+                  />
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => removeLine(index)}
+                  disabled={lines.length === 1}
+                  className="shrink-0 text-destructive"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            ))}
+
+            <div className="flex justify-end pt-1">
+              <p className="text-sm">
+                <span className="text-muted-foreground">Total: </span>
+                <span className="font-medium">{currency} {linesTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              </p>
             </div>
           </div>
 
@@ -742,7 +813,11 @@ function CreateBudgetDialog({
         </form>
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-          <Button type="submit" form="create-budget-form" disabled={isSubmitting || create.isPending}>
+          <Button
+            type="submit"
+            form="create-budget-form"
+            disabled={create.isPending || !selectedScopeNodeId || lines.length === 0}
+          >
             {create.isPending ? <><Loader2 className="mr-1.5 h-4 w-4 animate-spin" />Creating...</> : "Create Budget"}
           </Button>
         </DialogFooter>
@@ -763,25 +838,99 @@ function EditBudgetDialog({
   const [open, setOpen] = useState(false);
   const update = useUpdateBudget();
 
-  const {
-    register,
-    handleSubmit,
-    reset,
-    formState: { errors, isSubmitting },
-  } = useForm<{ allocated_amount: string; status: BudgetStatus }>({
-    defaultValues: {
-      allocated_amount: budget.allocated_amount,
-      status: budget.status,
-    },
-  });
+  const { data: categories = [] } = useCategories(budget.org ? { org: budget.org } : undefined);
+  const { data: subcategories = [] } = useSubCategories();
 
-  const onSubmit = async (data: Record<string, string>) => {
+  // Line editor state
+  const [lines, setLines] = useState<(BudgetLine & { _deleted?: boolean })[]>([]);
+  const [currency, setCurrency] = useState(budget.currency || "INR");
+
+  const isLineLocked = (line: BudgetLine) => {
+    const allocated = parseFloat(line.allocated_amount || "0") || 0;
+    const reserved = parseFloat(line.reserved_amount || "0") || 0;
+    const consumed = parseFloat(line.consumed_amount || "0") || 0;
+    return allocated > 0 && reserved + consumed >= allocated;
+  };
+
+  const linesTotal = lines
+    .filter((l) => !l._deleted)
+    .reduce((sum, l) => sum + (parseFloat(l.allocated_amount) || 0), 0);
+
+  const addLine = () => {
+    setLines((prev) => [
+      ...prev,
+      {
+        id: `new-${Date.now()}`,
+        budget: budget.id,
+        category: "",
+        subcategory: null,
+        allocated_amount: "",
+        reserved_amount: "0",
+        consumed_amount: "0",
+        _deleted: false,
+      } as BudgetLine & { _deleted?: boolean },
+    ]);
+  };
+
+  const removeLine = (index: number) => {
+    setLines((prev) =>
+      prev.map((l, i) => (i === index ? { ...l, _deleted: true } : l))
+    );
+  };
+
+  const updateLine = (
+    index: number,
+    field: keyof BudgetLine,
+    value: string | null,
+  ) => {
+    setLines((prev) =>
+      prev.map((l, i) => (i === index ? { ...l, [field]: value } : l))
+    );
+  };
+
+  // Populate lines from budget when dialog opens
+  const handleOpenChange = (o: boolean) => {
+    if (o) {
+      setLines(
+        (budget.lines || []).map((l) => ({ ...l, _deleted: false })),
+      );
+    }
+    setOpen(o);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    // Filter out deleted lines and new lines that have no category/amount
+    const payload_lines = lines
+      .filter((l) => !l._deleted)
+      .filter((l) => l.category && l.allocated_amount)
+      .map((l) => {
+        if (String(l.id ?? "").startsWith("new-")) {
+          // New line — no id field
+          return {
+            category: l.category,
+            subcategory: l.subcategory || null,
+            allocated_amount: l.allocated_amount,
+          };
+        }
+        // Existing line — include id for update
+        return {
+          id: String(l.id ?? ""),
+          category: l.category,
+          subcategory: l.subcategory || null,
+          allocated_amount: l.allocated_amount,
+        };
+      });
+
     try {
       await update.mutateAsync({
         id: budget.id,
         data: {
-          allocated_amount: data.allocated_amount,
-          status: data.status as BudgetStatus,
+          name: (document.getElementById("edit-name") as HTMLInputElement)?.value ?? budget.name,
+          code: (document.getElementById("edit-code") as HTMLInputElement)?.value ?? budget.code,
+          allocated_amount: String(linesTotal),
+          currency,
+          lines: payload_lines,
         },
       });
       setOpen(false);
@@ -789,48 +938,180 @@ function EditBudgetDialog({
     } catch { /* error via update.error */ }
   };
 
+  const submitError =
+    update.isError && update.error instanceof ApiError
+      ? update.error.message
+      : update.isError
+      ? "Failed to update budget"
+      : null;
+
   return (
-    <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) reset(); }}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         <Button variant="ghost" size="sm" className="gap-1">
           <Pencil className="h-3.5 w-3.5" />
         </Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto" aria-describedby={undefined}>
         <DialogHeader>
           <DialogTitle>Edit Budget</DialogTitle>
         </DialogHeader>
-        <form id="edit-budget-form" onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          <div className="space-y-1.5">
-            <Label>Allocated Amount *</Label>
-            <Input
-              {...register("allocated_amount", { required: "Required" })}
-              type="number"
-              step="0.01"
-              min="0"
-              className={errors.allocated_amount ? "border-destructive" : ""}
-            />
-            {errors.allocated_amount && <FieldError message={errors.allocated_amount.message} />}
+        <form id="edit-budget-form" onSubmit={handleSubmit} className="space-y-5">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label>Name *</Label>
+              <Input
+                id="edit-name"
+                defaultValue={budget.name}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Code *</Label>
+              <Input
+                id="edit-code"
+                defaultValue={budget.code}
+              />
+            </div>
           </div>
-          <div className="space-y-1.5">
-            <Label>Status</Label>
-            <Select
-              defaultValue={budget.status}
-              onValueChange={(v) => setValue("status", v as BudgetStatus)}
-            >
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {(["draft", "active", "exhausted", "frozen", "closed"] as BudgetStatus[]).map((s) => (
-                  <SelectItem key={s} value={s}>{BUDGET_STATUS_LABELS[s]}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label>Allocated Amount</Label>
+              <Input
+                value={currency}
+                onChange={(e) => setCurrency(e.target.value)}
+                placeholder="INR"
+              />
+            </div>
+            <div className="flex items-end">
+              <p className="text-sm">
+                <span className="text-muted-foreground">Running total: </span>
+                <span className="font-medium">
+                  {currency}{" "}
+                  {linesTotal.toLocaleString(undefined, {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })}
+                </span>
+              </p>
+            </div>
           </div>
+
+          {/* Lines */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <Label>Budget Lines</Label>
+              <Button type="button" variant="outline" size="sm" onClick={addLine}>
+                <Plus className="h-3.5 w-3.5 mr-1" /> Add Line
+              </Button>
+            </div>
+
+            {lines
+              .filter((l) => !l._deleted)
+              .map((line, index) => {
+                const locked = isLineLocked(line);
+                return (
+                <div key={line.id} className="flex gap-2 items-end">
+                  <div className="flex-1 space-y-1">
+                    <Label className="text-xs">Category *</Label>
+                    <Select
+                      value={line.category}
+                      onValueChange={(v) => updateLine(index, "category", v)}
+                      disabled={locked}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select category..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {categories.map((c) => (
+                          <SelectItem key={c.id} value={c.id}>
+                            {c.name} ({c.code})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex-1 space-y-1">
+                    <Label className="text-xs">Subcategory</Label>
+                    <Select
+                      value={line.subcategory ?? ""}
+                      onValueChange={(v) =>
+                        updateLine(index, "subcategory", v || null)
+                      }
+                      disabled={!line.category || locked}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Optional..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {line.category &&
+                          subcategories
+                            .filter((sc) => sc.category === line.category)
+                            .map((sc) => (
+                              <SelectItem key={sc.id} value={sc.id}>
+                                {sc.name} ({sc.code})
+                              </SelectItem>
+                            ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="w-36 space-y-1">
+                    <Label className="text-xs">Amount *</Label>
+                    <Input
+                      value={line.allocated_amount}
+                      onChange={(e) =>
+                        updateLine(index, "allocated_amount", e.target.value)
+                      }
+                      disabled={locked}
+                      type="number"
+                      step="0.01"
+                      min="0.01"
+                      placeholder="0.00"
+                    />
+                    {locked && (
+                      <p className="text-[11px] text-muted-foreground">
+                        Locked: fully reserved/consumed.
+                      </p>
+                    )}
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => removeLine(index)}
+                    disabled={locked}
+                    className="shrink-0 text-destructive"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              )})}
+
+            {lines.filter((l) => !l._deleted).length === 0 && (
+              <p className="text-sm text-muted-foreground py-2">
+                No lines yet. Add one above.
+              </p>
+            )}
+          </div>
+
+          {submitError && (
+            <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {submitError}
+            </p>
+          )}
         </form>
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-          <Button type="submit" form="edit-budget-form" disabled={isSubmitting || update.isPending}>
-            {update.isPending ? <><Loader2 className="mr-1.5 h-4 w-4 animate-spin" />Saving...</> : "Save Changes"}
+          <Button
+            type="submit"
+            form="edit-budget-form"
+            disabled={update.isPending}
+          >
+            {update.isPending ? (
+              <><Loader2 className="mr-1.5 h-4 w-4 animate-spin" />Saving...</>
+            ) : (
+              "Save Changes"
+            )}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -1316,38 +1597,216 @@ function BudgetList({
   if (budgets.length === 0) {
     return <EmptyState message="No budgets found." icon={Wallet} />;
   }
-  return (
-    <div className="divide-y divide-border">
-      {budgets.map((b) => {
-        const allocated = parseFloat(b.allocated_amount ?? "0");
-        const reserved = parseFloat(b.reserved_amount ?? "0");
-        const consumed = parseFloat(b.consumed_amount ?? "0");
-        const available = allocated - reserved - consumed;
-        const utilization = allocated > 0 ? ((reserved + consumed) / allocated) * 100 : 0;
 
-        return (
-          <div key={b.id} className="flex items-center justify-between px-4 py-3 hover:bg-accent/50">
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2 mb-1">
-                <p className="text-sm font-medium truncate">{b.category_name ?? b.category}</p>
-                {b.subcategory_name && (
-                  <span className="text-xs text-muted-foreground">› {b.subcategory_name}</span>
-                )}
-                <BudgetStatusBadge status={b.status} />
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {b.scope_node_name ?? b.scope_node} &middot; FY {b.financial_year} &middot; {b.currency} {allocated.toLocaleString()}
-                &middot; <span className={utilization > 90 ? "text-orange-600" : ""}>Util {utilization.toFixed(1)}%</span>
-                &middot; Available: {b.currency} {available.toLocaleString()}
-              </p>
+  return (
+    <div className="space-y-4 px-4 py-4">
+      {budgets.map((budget) => (
+        <BudgetAllocationCard key={budget.id} budget={budget} />
+      ))}
+    </div>
+  );
+}
+
+function buildBudgetCategoryGroups(lines: BudgetLine[] | undefined) {
+  const groups = new Map<string, {
+    key: string;
+    name: string;
+    lines: BudgetLine[];
+    allocated: number;
+    reserved: number;
+    consumed: number;
+    available: number;
+    utilization: number;
+  }>();
+
+  for (const line of lines ?? []) {
+    const groupKey = line.category ?? line.category_name ?? "uncategorized";
+    const groupName = line.category_name ?? "Uncategorized";
+    const allocated = parseFloat(line.allocated_amount ?? "0");
+    const reserved = parseFloat(line.reserved_amount ?? "0");
+    const consumed = parseFloat(line.consumed_amount ?? "0");
+    const available = allocated - reserved - consumed;
+
+    if (!groups.has(groupKey)) {
+      groups.set(groupKey, {
+        key: groupKey,
+        name: groupName,
+        lines: [],
+        allocated: 0,
+        reserved: 0,
+        consumed: 0,
+        available: 0,
+        utilization: 0,
+      });
+    }
+
+    const group = groups.get(groupKey)!;
+    group.lines.push(line);
+    group.allocated += allocated;
+    group.reserved += reserved;
+    group.consumed += consumed;
+    group.available += available;
+  }
+
+  return Array.from(groups.values())
+    .map((group) => ({
+      ...group,
+      lines: [...group.lines].sort((a, b) => {
+        const aName = a.subcategory_name ?? a.category_name ?? "";
+        const bName = b.subcategory_name ?? b.category_name ?? "";
+        return aName.localeCompare(bName);
+      }),
+      utilization: group.allocated > 0 ? ((group.reserved + group.consumed) / group.allocated) * 100 : 0,
+    }))
+    .sort((a, b) => b.allocated - a.allocated);
+}
+
+function BudgetAllocationCard({
+  budget,
+  defaultOpen = false,
+}: {
+  budget: Budget;
+  defaultOpen?: boolean;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  const [openCategories, setOpenCategories] = useState<Record<string, boolean>>({});
+
+  const allocated = parseFloat(budget.allocated_amount ?? "0");
+  const reserved = parseFloat(budget.reserved_amount ?? "0");
+  const consumed = parseFloat(budget.consumed_amount ?? "0");
+  const available = allocated - reserved - consumed;
+  const utilization = allocated > 0 ? ((reserved + consumed) / allocated) * 100 : 0;
+  const categoryGroups = buildBudgetCategoryGroups(budget.lines);
+  const categoryCount = categoryGroups.length;
+  const subcategoryCount = categoryGroups.reduce((sum, group) => sum + group.lines.length, 0);
+
+  const toggleCategory = (key: string) => {
+    setOpenCategories((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  return (
+    <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
+      <div
+        className="flex cursor-pointer flex-col gap-4 border-b border-border px-4 py-4 hover:bg-accent/20 md:flex-row md:items-start md:justify-between"
+        onClick={() => setOpen((prev) => !prev)}
+      >
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            {open ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+            <p className="text-sm font-semibold text-foreground">{budget.name}</p>
+            <span className="text-xs text-muted-foreground">({budget.code})</span>
+            <BudgetStatusBadge status={budget.status} />
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {budget.scope_node_name ?? budget.scope_node} &middot; FY {budget.financial_year} &middot; {categoryCount} categor{categoryCount === 1 ? "y" : "ies"} &middot; {subcategoryCount} subcategor{subcategoryCount === 1 ? "y" : "ies"}
+          </p>
+          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <div className="rounded-lg border bg-background/70 px-3 py-2">
+              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Allocated</p>
+              <p className="mt-1 text-sm font-semibold tabular-nums">{fmtCurrency(allocated)}</p>
             </div>
-            <div className="flex items-center gap-1 ml-4 shrink-0">
-              <EditBudgetDialog budget={b} />
-              <DeleteBudgetDialog budget={b} />
+            <div className="rounded-lg border bg-background/70 px-3 py-2">
+              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Reserved</p>
+              <p className="mt-1 text-sm font-semibold tabular-nums">{fmtCurrency(reserved)}</p>
+            </div>
+            <div className="rounded-lg border bg-background/70 px-3 py-2">
+              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Consumed</p>
+              <p className="mt-1 text-sm font-semibold tabular-nums">{fmtCurrency(consumed)}</p>
+            </div>
+            <div className="rounded-lg border bg-background/70 px-3 py-2">
+              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Available</p>
+              <p className="mt-1 text-sm font-semibold tabular-nums">{fmtCurrency(available)}</p>
             </div>
           </div>
-        );
-      })}
+        </div>
+        <div className="flex shrink-0 items-start gap-3">
+          <div className="min-w-[132px] rounded-lg border bg-background/70 px-3 py-2 text-right">
+            <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Utilization</p>
+            <p className={cn(
+              "mt-1 text-sm font-semibold tabular-nums",
+              utilization >= 90 ? "text-red-600" : utilization >= 70 ? "text-amber-600" : "text-emerald-600"
+            )}>{utilization.toFixed(1)}%</p>
+            <div className="mt-2 flex justify-end">
+              <UtilBar pct={utilization} />
+            </div>
+          </div>
+          <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+            <EditBudgetDialog budget={budget} />
+            <DeleteBudgetDialog budget={budget} />
+          </div>
+        </div>
+      </div>
+
+      {open && (
+        <div className="bg-background/50 px-4 py-4">
+          {categoryGroups.length === 0 ? (
+            <EmptyState message="No category allocations configured for this budget." icon={FolderOpen} />
+          ) : (
+            <div className="overflow-hidden rounded-lg border">
+              <div className="grid grid-cols-[minmax(0,1.8fr)_repeat(4,minmax(88px,0.7fr))] gap-2 bg-muted/40 px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                <div>Category / Subcategory</div>
+                <div className="text-right">Allocated</div>
+                <div className="text-right">Reserved</div>
+                <div className="text-right">Consumed</div>
+                <div className="text-right">Available</div>
+              </div>
+
+              {categoryGroups.map((group) => {
+                const isCategoryOpen = openCategories[group.key] ?? false;
+
+                return (
+                  <div key={group.key} className="border-t border-border first:border-t-0">
+                    <div
+                      className="grid cursor-pointer grid-cols-[minmax(0,1.8fr)_repeat(4,minmax(88px,0.7fr))] gap-2 bg-card px-3 py-3 hover:bg-accent/20"
+                      onClick={() => toggleCategory(group.key)}
+                    >
+                      <div className="flex min-w-0 items-center gap-2">
+                        {isCategoryOpen ? <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />}
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-foreground">{group.name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {group.lines.length} line{group.lines.length !== 1 ? "s" : ""} &middot; Utilization {group.utilization.toFixed(1)}%
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right text-sm font-medium tabular-nums">{fmtCurrency(group.allocated)}</div>
+                      <div className="text-right text-sm font-medium tabular-nums">{fmtCurrency(group.reserved)}</div>
+                      <div className="text-right text-sm font-medium tabular-nums">{fmtCurrency(group.consumed)}</div>
+                      <div className="text-right text-sm font-medium tabular-nums">{fmtCurrency(group.available)}</div>
+                    </div>
+
+                    {isCategoryOpen && (
+                      <div className="bg-secondary/20">
+                        {group.lines.map((line) => {
+                          const lineAllocated = parseFloat(line.allocated_amount ?? "0");
+                          const lineReserved = parseFloat(line.reserved_amount ?? "0");
+                          const lineConsumed = parseFloat(line.consumed_amount ?? "0");
+                          const lineAvailable = lineAllocated - lineReserved - lineConsumed;
+
+                          return (
+                            <div
+                              key={line.id}
+                              className="grid grid-cols-[minmax(0,1.8fr)_repeat(4,minmax(88px,0.7fr))] gap-2 border-t border-border/70 px-3 py-2 text-sm"
+                            >
+                              <div className="min-w-0 pl-6">
+                                <p className="truncate text-foreground">{line.subcategory_name ?? "Direct allocation"}</p>
+                              </div>
+                              <div className="text-right tabular-nums text-muted-foreground">{fmtCurrency(lineAllocated)}</div>
+                              <div className="text-right tabular-nums text-muted-foreground">{fmtCurrency(lineReserved)}</div>
+                              <div className="text-right tabular-nums text-muted-foreground">{fmtCurrency(lineConsumed)}</div>
+                              <div className="text-right tabular-nums text-muted-foreground">{fmtCurrency(lineAvailable)}</div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -1519,21 +1978,87 @@ function KpiStrip({ data }: { data: any }) {
 
 // ── Region Cards ───────────────────────────────────────────────────────────────
 
-const REGION_COLORS: Record<string, string> = {
-  North: "border-l-blue-400",
-  South: "border-l-green-400",
-  West: "border-l-orange-400",
-  Incity: "border-l-purple-400",
-};
+const SCOPE_CARD_ACCENTS = [
+  "border-l-slate-400",
+  "border-l-blue-400",
+  "border-l-green-400",
+  "border-l-orange-400",
+  "border-l-purple-400",
+  "border-l-cyan-400",
+  "border-l-pink-400",
+];
+
+function buildRegionSummariesFromBudgets(budgets: Budget[], nodes: ScopeNode[]) {
+  const nodeMap = new Map(nodes.map((node) => [node.id, node]));
+  const groups = new Map<string, {
+    id: string;
+    name: string;
+    path: string;
+    depth: number;
+    allocated_amount: string;
+    reserved_amount: string;
+    consumed_amount: string;
+    available_amount: string;
+    utilization_percent: number;
+    parks_count: number;
+    budgets_count: number;
+  }>();
+
+  for (const budget of budgets) {
+    const scopeNode = nodeMap.get(budget.scope_node);
+    const name = budget.scope_node_name ?? scopeNode?.name ?? budget.scope_node ?? "Unassigned";
+    const key = budget.scope_node ?? name;
+    const allocated = parseFloat(budget.allocated_amount ?? "0");
+    const reserved = parseFloat(budget.reserved_amount ?? "0");
+    const consumed = parseFloat(budget.consumed_amount ?? "0");
+
+    if (!groups.has(key)) {
+      groups.set(key, {
+        id: key,
+        name,
+        path: scopeNode?.path ?? name,
+        depth: scopeNode?.depth ?? 0,
+        allocated_amount: "0",
+        reserved_amount: "0",
+        consumed_amount: "0",
+        available_amount: "0",
+        utilization_percent: 0,
+        parks_count: 0,
+        budgets_count: 0,
+      });
+    }
+
+    const group = groups.get(key)!;
+    const currentAllocated = parseFloat(group.allocated_amount);
+    const currentReserved = parseFloat(group.reserved_amount);
+    const currentConsumed = parseFloat(group.consumed_amount);
+    const nextAllocated = currentAllocated + allocated;
+    const nextReserved = currentReserved + reserved;
+    const nextConsumed = currentConsumed + consumed;
+    const nextAvailable = nextAllocated - nextReserved - nextConsumed;
+
+    group.allocated_amount = String(nextAllocated);
+    group.reserved_amount = String(nextReserved);
+    group.consumed_amount = String(nextConsumed);
+    group.available_amount = String(nextAvailable);
+    group.utilization_percent = nextAllocated > 0 ? Number((((nextReserved + nextConsumed) / nextAllocated) * 100).toFixed(1)) : 0;
+    group.budgets_count += 1;
+  }
+
+  return Array.from(groups.values()).sort((a, b) => {
+    if (a.depth !== b.depth) return a.depth - b.depth;
+    return a.path.localeCompare(b.path);
+  });
+}
 
 function RegionCards({ regions }: { regions: any[] }) {
   if (!regions?.length) return null;
   return (
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-      {regions.map((r) => (
+      {regions.map((r, index) => (
         <div key={r.id} className={cn(
           "rounded-lg border bg-card p-3 border-l-4 pl-3",
-          REGION_COLORS[r.name] ?? "border-l-gray-400"
+          SCOPE_CARD_ACCENTS[index % SCOPE_CARD_ACCENTS.length]
         )}>
           <p className="text-sm font-semibold text-foreground mb-2">{r.name}</p>
           <div className="space-y-1.5">
@@ -1542,8 +2067,8 @@ function RegionCards({ regions }: { regions: any[] }) {
               <span className="font-medium tabular-nums">{fmtCurrency(r.allocated_amount)}</span>
             </div>
             <div className="flex justify-between text-xs">
-              <span className="text-muted-foreground">Parks</span>
-              <span className="font-medium">{r.parks_count}</span>
+              <span className="text-muted-foreground">Available</span>
+              <span className="font-medium tabular-nums">{fmtCurrency(r.available_amount)}</span>
             </div>
             <div className="flex justify-between text-xs">
               <span className="text-muted-foreground">Budgets</span>
@@ -1566,97 +2091,196 @@ function RegionCards({ regions }: { regions: any[] }) {
 
 // ── Region / Park Matrix ───────────────────────────────────────────────────────
 
-function ParkRow({ park }: { park: any }) {
-  const [open, setOpen] = useState(false);
-  const hasSubcats = park.top_subcategories?.length > 0;
+type ScopeBudgetTreeNode = {
+  id: string;
+  name: string;
+  path: string;
+  depth: number;
+  budgets: Budget[];
+  children: ScopeBudgetTreeNode[];
+  allocated: number;
+  reserved: number;
+  consumed: number;
+  available: number;
+  utilization: number;
+};
+
+function buildScopeBudgetTree(nodes: ScopeNode[], budgets: Budget[]): ScopeBudgetTreeNode[] {
+  const nodeMap = new Map(nodes.map((node) => [node.id, node]));
+  const budgetNodeIds = new Set<string>();
+
+  for (const budget of budgets) {
+    if (budget.scope_node) budgetNodeIds.add(budget.scope_node);
+  }
+
+  const relevantNodeIds = new Set<string>();
+  for (const nodeId of budgetNodeIds) {
+    let currentId: string | null | undefined = nodeId;
+    while (currentId) {
+      if (relevantNodeIds.has(currentId)) break;
+      relevantNodeIds.add(currentId);
+      currentId = nodeMap.get(currentId)?.parent;
+    }
+  }
+
+  const treeMap = new Map<string, ScopeBudgetTreeNode>();
+  for (const id of relevantNodeIds) {
+    const node = nodeMap.get(id);
+    if (!node) continue;
+    const directBudgets = budgets
+      .filter((budget) => budget.scope_node === id)
+      .sort((a, b) => a.name.localeCompare(b.name));
+    const allocated = directBudgets.reduce((sum, budget) => sum + parseFloat(budget.allocated_amount ?? "0"), 0);
+    const reserved = directBudgets.reduce((sum, budget) => sum + parseFloat(budget.reserved_amount ?? "0"), 0);
+    const consumed = directBudgets.reduce((sum, budget) => sum + parseFloat(budget.consumed_amount ?? "0"), 0);
+    treeMap.set(id, {
+      id,
+      name: node.name,
+      path: node.path,
+      depth: node.depth,
+      budgets: directBudgets,
+      children: [],
+      allocated,
+      reserved,
+      consumed,
+      available: allocated - reserved - consumed,
+      utilization: allocated > 0 ? ((reserved + consumed) / allocated) * 100 : 0,
+    });
+  }
+
+  const roots: ScopeBudgetTreeNode[] = [];
+  for (const [id, treeNode] of treeMap.entries()) {
+    const parentId = nodeMap.get(id)?.parent;
+    if (parentId && treeMap.has(parentId)) {
+      treeMap.get(parentId)!.children.push(treeNode);
+    } else {
+      roots.push(treeNode);
+    }
+  }
+
+  const finalize = (node: ScopeBudgetTreeNode): ScopeBudgetTreeNode => {
+    node.children = node.children
+      .map(finalize)
+      .sort((a, b) => a.path.localeCompare(b.path));
+    const childAllocated = node.children.reduce((sum, child) => sum + child.allocated, 0);
+    const childReserved = node.children.reduce((sum, child) => sum + child.reserved, 0);
+    const childConsumed = node.children.reduce((sum, child) => sum + child.consumed, 0);
+    node.allocated += childAllocated;
+    node.reserved += childReserved;
+    node.consumed += childConsumed;
+    node.available = node.allocated - node.reserved - node.consumed;
+    node.utilization = node.allocated > 0 ? ((node.reserved + node.consumed) / node.allocated) * 100 : 0;
+    return node;
+  };
+
+  return roots
+    .map(finalize)
+    .sort((a, b) => a.path.localeCompare(b.path));
+}
+
+function ScopeBudgetTreeRow({
+  node,
+  level = 0,
+}: {
+  node: ScopeBudgetTreeNode;
+  level?: number;
+}) {
+  const [open, setOpen] = useState(level < 1);
+  const hasChildren = node.children.length > 0;
+  const hasBudgets = node.budgets.length > 0;
+  const canExpand = hasChildren || hasBudgets;
 
   return (
     <div className="border-b border-border last:border-0">
       <div
-        className="flex items-center gap-3 px-3 py-2 hover:bg-accent/40 cursor-pointer"
-        onClick={() => hasSubcats && setOpen(!open)}
+        className={cn(
+          "grid grid-cols-[minmax(0,1.8fr)_repeat(4,minmax(88px,0.7fr))] gap-2 px-3 py-2 hover:bg-accent/30",
+          canExpand ? "cursor-pointer" : ""
+        )}
+        onClick={() => canExpand && setOpen((prev) => !prev)}
       >
-        <span className="w-4 shrink-0">
-          {hasSubcats ? (open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />) : null}
-        </span>
-        <span className="flex-1 min-w-0">
-          <span className="text-sm font-medium truncate">{park.name}</span>
-        </span>
-        <div className="flex items-center gap-4 shrink-0">
-          <div className="text-right">
-            <p className="text-xs font-medium tabular-nums">{fmtCurrency(park.allocated_amount)}</p>
-            <p className="text-[10px] text-muted-foreground">{park.budgets_count} budget{park.budgets_count !== 1 ? "s" : ""}</p>
+        <div className="flex min-w-0 items-center gap-2" style={{ paddingLeft: `${level * 14}px` }}>
+          <span className="w-4 shrink-0">
+            {canExpand ? (open ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />) : null}
+          </span>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-medium text-foreground">{node.name}</p>
+            <p className="text-[10px] text-muted-foreground">
+              {node.budgets.length} direct budget{node.budgets.length !== 1 ? "s" : ""} &middot; {node.children.length} child node{node.children.length !== 1 ? "s" : ""}
+            </p>
           </div>
-          <div className="flex items-center gap-1.5 w-28">
-            <UtilBar pct={park.utilization_percent} />
-            <span className="text-[10px] tabular-nums w-8 text-right font-medium">{park.utilization_percent}%</span>
+        </div>
+        <div className="text-right text-sm font-medium tabular-nums">{fmtCurrency(node.allocated)}</div>
+        <div className="text-right text-sm font-medium tabular-nums">{fmtCurrency(node.reserved)}</div>
+        <div className="text-right text-sm font-medium tabular-nums">{fmtCurrency(node.consumed)}</div>
+        <div className="text-right">
+          <div className="text-sm font-medium tabular-nums">{fmtCurrency(node.available)}</div>
+          <div className="mt-1 flex items-center justify-end gap-2">
+            <UtilBar pct={node.utilization} />
+            <span className="text-[10px] tabular-nums text-muted-foreground">{node.utilization.toFixed(1)}%</span>
           </div>
         </div>
       </div>
-      {open && hasSubcats && (
-        <div className="bg-secondary/20 px-6 py-2 border-t border-border">
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
-            {park.top_subcategories.map((sc: any) => (
-              <div key={sc.id} className="rounded bg-card border px-2 py-1">
-                <p className="text-[10px] text-muted-foreground truncate">{sc.name}</p>
-                <p className="text-xs font-semibold tabular-nums">{fmtCurrency(sc.amount)}</p>
+
+      {open && (
+        <div className="bg-secondary/10">
+          {hasBudgets && (
+            <div className="border-t border-border/70 px-3 py-2">
+              <div className="space-y-2">
+                {node.budgets.map((budget) => (
+                  <div key={budget.id} className="rounded-md border bg-card px-3 py-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-foreground">{budget.name}</p>
+                        <p className="text-[10px] text-muted-foreground">{budget.code}</p>
+                      </div>
+                      <div className="text-right text-xs tabular-nums">
+                        <p>{fmtCurrency(budget.allocated_amount)}</p>
+                        <p className="text-muted-foreground">Available {fmtCurrency((parseFloat(budget.allocated_amount ?? "0") - parseFloat(budget.reserved_amount ?? "0") - parseFloat(budget.consumed_amount ?? "0")))}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            </div>
+          )}
+          {hasChildren && node.children.map((child) => (
+            <ScopeBudgetTreeRow key={child.id} node={child} level={level + 1} />
+          ))}
         </div>
       )}
     </div>
   );
 }
 
-function ParkMatrix({ parks, regions }: { parks: any[]; regions: any[] }) {
-  const [expandedRegions, setExpandedRegions] = useState<Record<number, boolean>>({});
+function ScopeBudgetMatrix({
+  budgets,
+  nodes,
+}: {
+  budgets: Budget[];
+  nodes: ScopeNode[];
+}) {
+  const tree = buildScopeBudgetTree(nodes, budgets);
 
-  const toggleRegion = (id: number) =>
-    setExpandedRegions(prev => ({ ...prev, [id]: !prev[id] }));
-
-  if (!parks?.length) return null;
-
-  // Group parks by region
-  const parksByRegion: Record<number, any[]> = {};
-  for (const park of parks) {
-    if (!parksByRegion[park.region_id]) parksByRegion[park.region_id] = [];
-    parksByRegion[park.region_id].push(park);
-  }
+  if (!tree.length) return null;
 
   return (
     <div className="rounded-lg border bg-card overflow-hidden">
       <div className="px-4 py-2 border-b border-border bg-secondary/20 flex items-center gap-2">
         <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
-        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Region / Park Matrix</span>
+        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Scope Budget Matrix</span>
+        <span className="text-[10px] text-muted-foreground">Live from scope hierarchy and budget headers</span>
       </div>
-      {/* Header row */}
-      <div className="flex items-center gap-3 px-3 py-1.5 bg-muted/30 border-b border-border">
-        <span className="w-4" />
-        <span className="flex-1 text-[10px] font-semibold text-muted-foreground uppercase">Park / Location</span>
-        <span className="shrink-0 text-[10px] font-semibold text-muted-foreground uppercase w-24 text-right">Allocated</span>
-        <span className="shrink-0 text-[10px] font-semibold text-muted-foreground uppercase w-28 text-right">Utilization</span>
+      <div className="grid grid-cols-[minmax(0,1.8fr)_repeat(4,minmax(88px,0.7fr))] gap-2 bg-muted/30 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground border-b border-border">
+        <div>Scope Node</div>
+        <div className="text-right">Allocated</div>
+        <div className="text-right">Reserved</div>
+        <div className="text-right">Consumed</div>
+        <div className="text-right">Available</div>
       </div>
-      {regions.map((region: any) => {
-        const regionParks = parksByRegion[region.id] ?? [];
-        const isOpen = expandedRegions[region.id] !== false; // default open
-        return (
-          <div key={region.id}>
-            {/* Region header */}
-            <div
-              className="flex items-center gap-3 px-3 py-2 bg-secondary/10 hover:bg-secondary/20 cursor-pointer border-b border-border"
-              onClick={() => toggleRegion(region.id)}
-            >
-              {isOpen ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />}
-              <span className="flex-1 text-sm font-semibold">{region.name}</span>
-              <span className="text-xs text-muted-foreground">{regionParks.length} park{regionParks.length !== 1 ? "s" : ""}</span>
-            </div>
-            {isOpen && regionParks.map((park: any) => (
-              <ParkRow key={park.id} park={park} />
-            ))}
-          </div>
-        );
-      })}
+      {tree.map((node) => (
+        <ScopeBudgetTreeRow key={node.id} node={node} />
+      ))}
     </div>
   );
 }
@@ -1730,8 +2354,17 @@ function CampaignTable({ campaigns }: { campaigns: any[] }) {
 
 // ── Budgets Dashboard Tab ──────────────────────────────────────────────────────
 
-function BudgetsDashboardTab() {
+function BudgetsDashboardTab({
+  budgets,
+  budgetsLoading,
+  nodes,
+}: {
+  budgets: Budget[];
+  budgetsLoading: boolean;
+  nodes: ScopeNode[];
+}) {
   const { data, isLoading } = useBudgetOverview();
+  const derivedRegions = buildRegionSummariesFromBudgets(budgets, nodes);
 
   if (isLoading) {
     return (
@@ -1776,17 +2409,17 @@ function BudgetsDashboardTab() {
       <KpiStrip data={data} />
 
       {/* Region Cards */}
-      {data.regions?.length > 0 && (
+      {derivedRegions.length > 0 && (
         <div>
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Budget by Region</p>
-          <RegionCards regions={data.regions} />
+          <RegionCards regions={derivedRegions} />
         </div>
       )}
 
       {/* Two column: Park Matrix + Category Chart */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
         <div className="lg:col-span-3">
-          <ParkMatrix parks={data.parks} regions={data.regions} />
+          <ScopeBudgetMatrix budgets={budgets} nodes={nodes} />
         </div>
         <div className="lg:col-span-2">
           <div className="rounded-lg border bg-card overflow-hidden">
@@ -1812,6 +2445,15 @@ function BudgetsDashboardTab() {
           <CampaignTable campaigns={data.campaigns} />
         </div>
       )}
+
+      <div className="rounded-lg border bg-card overflow-hidden">
+        <div className="px-4 py-2 border-b border-border bg-secondary/20 flex items-center gap-2">
+          <FolderOpen className="h-3.5 w-3.5 text-muted-foreground" />
+          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Budget Allocation Drilldown</span>
+          <span className="ml-1 text-[10px] text-muted-foreground">Budget → Category → Subcategory</span>
+        </div>
+        <BudgetList budgets={budgets} isLoading={budgetsLoading} />
+      </div>
       </div>
     </div>
   );
@@ -2106,7 +2748,7 @@ export default function BudgetsPage() {
           <TabsContent value="budgets" className="m-0 data-[state=inactive]:hidden flex min-h-0 flex-1 flex-col overflow-hidden">
             <ScrollArea className="flex-1">
               {budgetViewMode === "dashboard" ? (
-                <BudgetsDashboardTab />
+                <BudgetsDashboardTab budgets={budgets} budgetsLoading={budgetsLoading} nodes={nodes} />
               ) : (
                 <BudgetList budgets={budgets} isLoading={budgetsLoading} />
               )}

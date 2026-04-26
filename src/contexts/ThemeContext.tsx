@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 
 export type ThemeMode = "light" | "dark";
-export type ColorTheme = "blue" | "green";
+export type ColorTheme = "orange" | "green";
 
 interface ThemeContextType {
   mode: ThemeMode;
@@ -32,9 +32,13 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         ? "dark"
         : "light";
 
-    const storedColor = localStorage.getItem("mf-color-theme") as ColorTheme | null;
-    const resolvedColor =
-      storedColor === "blue" || storedColor === "green" ? storedColor : "blue";
+    const storedColor = localStorage.getItem("mf-color-theme");
+    const resolvedColor: ColorTheme =
+      storedColor === "green"
+        ? "green"
+        : storedColor === "orange" || storedColor === "blue"
+        ? "orange"
+        : "orange";
 
     // Apply synchronously during init to avoid flash
     applyTheme(resolved, resolvedColor);
@@ -43,8 +47,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   });
 
   const [colorTheme, setColorThemeState] = useState<ColorTheme>(() => {
-    const stored = localStorage.getItem("mf-color-theme") as ColorTheme | null;
-    return stored === "blue" || stored === "green" ? stored : "blue";
+    const stored = localStorage.getItem("mf-color-theme");
+    if (stored === "green") return "green";
+    if (stored === "orange" || stored === "blue") return "orange";
+    return "orange";
   });
 
   useEffect(() => {
@@ -75,7 +81,7 @@ export function useTheme() {
     const colorTheme: ColorTheme =
       document.documentElement.getAttribute("data-color") === "green"
         ? "green"
-        : "blue";
+        : "orange";
 
     return {
       mode,

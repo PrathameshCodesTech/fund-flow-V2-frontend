@@ -37,7 +37,6 @@ export function V2Shell({
   const location = useLocation();
   const [commandOpen, setCommandOpen] = useState(false);
   const { user } = useAuth();
-  const userRoles = user?.roles ?? [];
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-background">
@@ -57,13 +56,13 @@ export function V2Shell({
           <aside className="flex w-52 shrink-0 flex-col border-r border-border bg-sidebar">
             <ScrollArea className="flex-1 py-3">
               <nav className="space-y-4 px-2">
-                {visibleGroups(userRoles).map((group) => (
+                {visibleGroups(user).map((group) => (
                   <div key={group.label}>
                     <p className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                       {group.label}
                     </p>
                     <div className="space-y-0.5">
-                      {itemsForGroup(group.label as NavGroup, userRoles).map(
+                      {itemsForGroup(group.label as NavGroup, user).map(
                         ({ label, to, icon: Icon }) => {
                           const isActive =
                             to === "/"
@@ -74,13 +73,13 @@ export function V2Shell({
                               key={to}
                               to={to}
                               className={cn(
-                                "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors",
+                                "flex items-center gap-2.5 rounded-md border px-3 py-2 text-sm transition-colors",
                                 isActive
-                                  ? "bg-primary text-primary-foreground font-medium"
-                                  : "text-sidebar-foreground hover:bg-accent hover:text-foreground",
+                                  ? "border-primary/35 bg-gradient-to-r from-background via-background to-primary/10 text-foreground font-medium shadow-sm"
+                                  : "border-transparent text-sidebar-foreground hover:bg-accent hover:text-foreground",
                               )}
                             >
-                              <Icon className="h-4 w-4 shrink-0" />
+                              <Icon className={cn("h-4 w-4 shrink-0", isActive ? "text-primary" : "")} />
                               {label}
                             </NavLink>
                           );

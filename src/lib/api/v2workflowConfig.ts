@@ -132,7 +132,14 @@ export function deleteVersion(id: string): Promise<void> {
 
 export function updateTemplate(
   id: string,
-  data: { name?: string; module?: string; scope_node?: string },
+  data: {
+    name?: string;
+    module?: string;
+    scope_node?: string;
+    description?: string;
+    is_active?: boolean;
+    is_default?: boolean;
+  },
 ): Promise<WorkflowTemplate> {
   return apiClient.patch<WorkflowTemplate>(`/api/v1/workflow/templates/${id}/`, data);
 }

@@ -7,8 +7,10 @@ import type {
   VendorOnboardingSubmission,
   VendorAttachment,
   Vendor,
+  VendorSubmissionRoute,
   PublicFinanceToken,
   CreateInvitationRequest,
+  CreateVendorSubmissionRouteRequest,
   ReopenSubmissionRequest,
   MarketingApproveRequest,
   MarketingRejectRequest,
@@ -16,6 +18,7 @@ import type {
   AttachmentCreateRequest,
   FinanceApproveRequest,
   FinanceRejectRequest,
+  UpdateVendorSubmissionRouteRequest,
   InvitationListResponse,
   SubmissionListResponse,
   AttachmentListResponse,
@@ -143,8 +146,36 @@ export async function resendVendorActivation(id: string): Promise<ResendActivati
 
 // ── Public: Invitation token ───────────────────────────────────────────────────
 
+export async function listVendorSubmissionRoutes(params?: {
+  org?: string;
+  is_active?: string;
+}): Promise<{ results: VendorSubmissionRoute[] } | VendorSubmissionRoute[]> {
+  return apiClient.get("/api/v1/vendors/send-to-options/", params);
+}
+
+export async function createVendorSubmissionRoute(
+  data: CreateVendorSubmissionRouteRequest,
+): Promise<VendorSubmissionRoute> {
+  return apiClient.post("/api/v1/vendors/send-to-options/", data);
+}
+
+export async function updateVendorSubmissionRoute(
+  id: string,
+  data: UpdateVendorSubmissionRouteRequest,
+): Promise<VendorSubmissionRoute> {
+  return apiClient.patch(`/api/v1/vendors/send-to-options/${id}/`, data);
+}
+
 export async function getPublicInvitation(token: string): Promise<VendorInvitation> {
   return apiClient.get(`/api/v1/vendors/public/invitations/${token}/`);
+}
+
+export async function getPublicSubmission(
+  token: string,
+): Promise<VendorOnboardingSubmission> {
+  return apiClient.get(
+    `/api/v1/vendors/public/invitations/${token}/submission/`,
+  );
 }
 
 export async function submitManual(
@@ -211,4 +242,63 @@ export async function financeReject(
   data: FinanceRejectRequest,
 ): Promise<VendorOnboardingSubmission> {
   return apiClient.post(`/api/v1/vendors/public/finance/${token}/reject/`, data);
+}
+
+// ── Vendor Portal: Profile Revision ──────────────────────────────────────────
+
+import type {
+  VendorProfileRevision,
+  VendorProfileSnapshot,
+} from "../types/v2vendor";
+
+export async function getPortalProfile(): Promise<VendorProfileSnapshot> {
+  return apiClient.get("/api/v1/vendors/portal/profile/");
+}
+
+export async function getPortalProfileRevision(): Promise<VendorProfileRevision> {
+  return apiClient.get("/api/v1/vendors/portal/profile/revision/");
+}
+
+export async function savePortalDraftRevision(
+  proposed_snapshot: Record<string, unknown>,
+): Promise<VendorProfileRevision> {
+  return apiClient.post("/api/v1/vendors/portal/profile/revision/save-draft/", { proposed_snapshot });
+}
+
+export async function submitPortalRevision(): Promise<VendorProfileRevision> {
+  return apiClient.post("/api/v1/vendors/portal/profile/revision/submit/");
+}
+
+export async function getPortalRevisionHistory(): Promise<VendorProfileRevision[]> {
+  return apiClient.get("/api/v1/vendors/portal/profile/revisions/");
+}
+
+// ── Internal: Vendor Profile Revision Review ─────────────────────────────────
+
+export async function listVendorProfileRevisions(vendorId: string): Promise<VendorProfileRevision[]> {
+  return apiClient.get(`/api/v1/vendors/${vendorId}/profile-revisions/`);
+}
+
+export async function getVendorProfileRevision(vendorId: string, revisionId: number): Promise<VendorProfileRevision> {
+  return apiClient.get(`/api/v1/vendors/${vendorId}/profile-revisions/${revisionId}/`);
+}
+
+export async function financeApproveProfileRevision(vendorId: string, revisionId: number): Promise<VendorProfileRevision> {
+  return apiClient.post(`/api/v1/vendors/${vendorId}/profile-revisions/${revisionId}/finance-approve/`);
+}
+
+export async function financeRejectProfileRevision(vendorId: string, revisionId: number, note?: string): Promise<VendorProfileRevision> {
+  return apiClient.post(`/api/v1/vendors/${vendorId}/profile-revisions/${revisionId}/finance-reject/`, { note: note ?? "" });
+}
+
+export async function reopenProfileRevision(vendorId: string, revisionId: number, note?: string): Promise<VendorProfileRevision> {
+  return apiClient.post(`/api/v1/vendors/${vendorId}/profile-revisions/${revisionId}/reopen/`, { note: note ?? "" });
+}
+
+export async function applyProfileRevision(vendorId: string, revisionId: number): Promise<VendorProfileRevision> {
+  return apiClient.post(`/api/v1/vendors/${vendorId}/profile-revisions/${revisionId}/apply/`);
+}
+
+export async function cancelProfileRevision(vendorId: string, revisionId: number): Promise<VendorProfileRevision> {
+  return apiClient.post(`/api/v1/vendors/${vendorId}/profile-revisions/${revisionId}/cancel/`);
 }

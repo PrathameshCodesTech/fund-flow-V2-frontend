@@ -16,6 +16,9 @@ import type {
   SplitOptionsData,
   SubmitSplitRequest,
   SubmitSplitResult,
+  SingleAllocationOptionsData,
+  SubmitSingleAllocationRequest,
+  SubmitSingleAllocationResult,
 } from "../types/v2runtime";
 import type { WorkflowSplitOption } from "../types/v2workflow";
 
@@ -173,6 +176,24 @@ export function assignDraftStep(
   return apiClient.post<WorkflowInstanceStep>(
     `/api/v1/workflow/instance-steps/${instanceStepId}/assign/`,
     { user_id: userId },
+  );
+}
+
+// ── Single Allocation ─────────────────────────────────────────────────────────
+
+export function getSingleAllocationOptions(instanceStepId: string): Promise<SingleAllocationOptionsData> {
+  return apiClient.get<SingleAllocationOptionsData>(
+    `/api/v1/workflow/instance-steps/${instanceStepId}/single-allocation-options/`,
+  );
+}
+
+export function submitSingleAllocation(
+  instanceStepId: string,
+  data: SubmitSingleAllocationRequest,
+): Promise<SubmitSingleAllocationResult> {
+  return apiClient.post<SubmitSingleAllocationResult>(
+    `/api/v1/workflow/instance-steps/${instanceStepId}/submit-single-allocation/`,
+    { allocation: data },
   );
 }
 

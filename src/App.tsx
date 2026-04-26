@@ -9,7 +9,7 @@ import {
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import { AuthProvider, useAuth, type User } from "@/contexts/AuthContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { NotificationProvider } from "@/contexts/NotificationContext";
 import { hasRouteAccess, NAV_ITEMS, KNOWN_PUBLIC_ROUTES } from "@/lib/shell/nav";
@@ -34,9 +34,11 @@ import VendorsPage from "./pages/VendorsPage.tsx";
 import VendorOnboardingPage from "./pages/VendorOnboardingPage.tsx";
 import VendorFinanceActionPage from "./pages/VendorFinanceActionPage.tsx";
 import VendorPortalPage from "./pages/VendorPortalPage.tsx";
+import ManualExpensesPage from "./pages/ManualExpensesPage.tsx";
 import FinanceHandoffsPage from "./pages/FinanceHandoffsPage.tsx";
 import FinanceReviewPage from "./pages/FinanceReviewPage.tsx";
 import PeoplePage from "./pages/PeoplePage.tsx";
+import PendingReviewPage from "./pages/PendingReviewPage.tsx";
 import ForbiddenPage from "./pages/ForbiddenPage.tsx";
 
 const queryClient = new QueryClient();
@@ -51,8 +53,7 @@ function GuardedRoute({
   element: React.ReactElement;
 }) {
   const { user } = useAuth();
-  const userRoles = user?.roles ?? [];
-  if (!hasRouteAccess(userRoles, navPath)) {
+  if (!hasRouteAccess(user, navPath)) {
     return <ForbiddenPage />;
   }
   return element;
@@ -71,9 +72,9 @@ function VendorPortalGuard({
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function defaultRoute(userRoles: string[]): string {
+function defaultRoute(user: User | null): string {
   for (const item of NAV_ITEMS) {
-    if (hasRouteAccess(userRoles, item.to)) return item.to;
+    if (hasRouteAccess(user, item.to)) return item.to;
   }
   return "/";
 }
@@ -87,7 +88,6 @@ function isPublicRoute(pathname: string): boolean {
 function AppRoutes() {
   const { isAuthenticated, isLoading, user } = useAuth();
   const location = useLocation();
-  const userRoles = user?.roles ?? [];
 
   if (isLoading) {
     return (
@@ -139,7 +139,7 @@ function AppRoutes() {
   }
 
   // ── Internal user → internal shell ─────────────────────────────────────────
-  const fallback = defaultRoute(userRoles);
+  const fallback = defaultRoute(user);
 
   return (
     <Routes>
@@ -152,12 +152,17 @@ function AppRoutes() {
         path="/invoices/:id/control-tower"
         element={<GuardedRoute navPath="/invoices" element={<InvoiceControlTowerPage />} />}
       />
+      <Route
+        path="/pending-review"
+        element={<GuardedRoute navPath="/pending-review" element={<PendingReviewPage />} />}
+      />
       <Route path="/tasks" element={<GuardedRoute navPath="/tasks" element={<TasksPage />} />} />
       <Route
         path="/finance-handoffs"
         element={<GuardedRoute navPath="/finance-handoffs" element={<FinanceHandoffsPage />} />}
       />
       <Route path="/vendors" element={<GuardedRoute navPath="/vendors" element={<VendorsPage />} />} />
+      <Route path="/manual-expenses" element={<GuardedRoute navPath="/manual-expenses" element={<ManualExpensesPage />} />} />
       <Route path="/campaigns" element={<GuardedRoute navPath="/campaigns" element={<CampaignsPage />} />} />
 
       {/* Planning */}

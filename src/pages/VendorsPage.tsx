@@ -1,5 +1,6 @@
-import { useState, useEffect } from "react";
+﻿import { useState, useEffect } from "react";
 import { useForm, Controller } from "react-hook-form";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { V2Shell } from "@/components/v2/V2Shell";
 import {
   useInvitations,
@@ -19,16 +20,27 @@ import type {
   VendorInvitation,
   VendorOnboardingSubmission,
   Vendor,
+  VendorProfileRevision,
 } from "@/lib/types/v2vendor";
 import {
   INVITATION_STATUS_LABELS,
   SUBMISSION_STATUS_LABELS,
   MARKETING_STATUS_LABELS,
   OPERATIONAL_STATUS_LABELS,
+  PROFILE_REVISION_STATUS_LABELS,
   type InvitationStatus,
   type SubmissionStatus,
   type MarketingStatus,
 } from "@/lib/types/v2vendor";
+import {
+  listVendorProfileRevisions,
+  getVendorProfileRevision,
+  financeApproveProfileRevision,
+  financeRejectProfileRevision,
+  reopenProfileRevision,
+  applyProfileRevision,
+  cancelProfileRevision,
+} from "@/lib/api/v2vendor";
 import { ApiError } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -66,9 +78,11 @@ import {
   FileText,
   KeyRound,
   Check,
+  ShieldAlert,
+  History,
 } from "lucide-react";
 
-// ── Status badge helpers ──────────────────────────────────────────────────────
+// â”€â”€ Status badge helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const INV_COLORS: Record<InvitationStatus, string> = {
   pending: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300",
@@ -107,7 +121,7 @@ function SubStatusBadge({ status }: { status: SubmissionStatus }) {
   );
 }
 
-// ── Create Invitation Dialog ─────────────────────────────────────────────────
+// â”€â”€ Create Invitation Dialog â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function CreateInvitationDialog({
   orgId,
@@ -275,7 +289,7 @@ function CreateInvitationDialog({
   );
 }
 
-// ── Cancel Invitation Dialog ─────────────────────────────────────────────────
+// â”€â”€ Cancel Invitation Dialog â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function CancelInvitationDialog({ invitation }: { invitation: VendorInvitation }) {
   const [open, setOpen] = useState(false);
@@ -315,7 +329,7 @@ function CancelInvitationDialog({ invitation }: { invitation: VendorInvitation }
   );
 }
 
-// ── Send to Finance Dialog ───────────────────────────────────────────────────
+// â”€â”€ Send to Finance Dialog â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function SendToFinanceDialog({ submission }: { submission: VendorOnboardingSubmission }) {
   const [open, setOpen] = useState(false);
@@ -356,7 +370,7 @@ function SendToFinanceDialog({ submission }: { submission: VendorOnboardingSubmi
   );
 }
 
-// ── Reopen Submission Dialog ─────────────────────────────────────────────────
+// â”€â”€ Reopen Submission Dialog â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function ReopenSubmissionDialog({ submission }: { submission: VendorOnboardingSubmission }) {
   const [open, setOpen] = useState(false);
@@ -418,7 +432,7 @@ function ReopenSubmissionDialog({ submission }: { submission: VendorOnboardingSu
   );
 }
 
-// ── Marketing Approve Dialog ──────────────────────────────────────────────────
+// â”€â”€ Marketing Approve Dialog â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function MarketingApproveDialog({ vendor }: { vendor: Vendor }) {
   const [open, setOpen] = useState(false);
@@ -434,7 +448,7 @@ function MarketingApproveDialog({ vendor }: { vendor: Vendor }) {
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Approve Vendor — Marketing</DialogTitle>
+          <DialogTitle>Approve Vendor â€” Marketing</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
           <p className="text-sm text-muted-foreground">
@@ -481,7 +495,7 @@ function MarketingApproveDialog({ vendor }: { vendor: Vendor }) {
   );
 }
 
-// ── Marketing Reject Dialog ──────────────────────────────────────────────────
+// â”€â”€ Marketing Reject Dialog â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function MarketingRejectDialog({ vendor }: { vendor: Vendor }) {
   const [open, setOpen] = useState(false);
@@ -503,7 +517,7 @@ function MarketingRejectDialog({ vendor }: { vendor: Vendor }) {
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Reject Vendor — Marketing</DialogTitle>
+          <DialogTitle>Reject Vendor â€” Marketing</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
           <p className="text-sm text-muted-foreground">
@@ -545,7 +559,7 @@ function MarketingRejectDialog({ vendor }: { vendor: Vendor }) {
   );
 }
 
-// ── Resend Activation Button ─────────────────────────────────────────────────
+// â”€â”€ Resend Activation Button â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function ResendActivationButton({ vendor }: { vendor: Vendor }) {
   const resend = useResendVendorActivation();
@@ -574,7 +588,7 @@ function ResendActivationButton({ vendor }: { vendor: Vendor }) {
   );
 }
 
-// ── Tab: Invitations ──────────────────────────────────────────────────────────
+// â”€â”€ Tab: Invitations â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function InvitationsTab({
   orgId,
@@ -663,7 +677,7 @@ function InvitationsTab({
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate">{inv.vendor_email}</p>
                     <p className="text-xs text-muted-foreground truncate">
-                      {inv.vendor_name_hint || "—"}
+                      {inv.vendor_name_hint || "â€”"}
                     </p>
                   </div>
                   <InvStatusBadge status={inv.status} />
@@ -682,7 +696,7 @@ function InvitationsTab({
   );
 }
 
-// ── Tab: Submissions ──────────────────────────────────────────────────────────
+// â”€â”€ Tab: Submissions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function SubmissionsTab({
   orgId,
@@ -713,7 +727,7 @@ function SubmissionsTab({
   const canSendToFinance = selected?.status === "reopened";
   // Note: under Option B (auto-send-to-finance), vendor finalize
   // automatically transitions submissions to sent_to_finance. The button
-  // remains for the reopen path (finance_rejected → reopened → re-send).
+  // remains for the reopen path (finance_rejected â†’ reopened â†’ re-send).
   const canReopen = selected?.status === "finance_rejected";
 
   return (
@@ -774,7 +788,7 @@ function SubmissionsTab({
                       {sub.normalized_vendor_name ?? sub.id}
                     </p>
                     <p className="text-xs text-muted-foreground truncate">
-                      {sub.normalized_email ?? "—"}
+                      {sub.normalized_email ?? "â€”"}
                     </p>
                   </div>
                   <SubStatusBadge status={sub.status} />
@@ -791,7 +805,7 @@ function SubmissionsTab({
           <div className="p-4 space-y-4">
             <div className="flex items-start justify-between">
               <div>
-                <h2 className="text-sm font-semibold">{selected.normalized_vendor_name ?? "—"}</h2>
+                <h2 className="text-sm font-semibold">{selected.normalized_vendor_name ?? "â€”"}</h2>
                 <p className="text-xs text-muted-foreground">{selected.id}</p>
               </div>
               <SubStatusBadge status={selected.status} />
@@ -799,17 +813,17 @@ function SubmissionsTab({
 
             <div className="grid grid-cols-2 gap-3">
               {[
-                { label: "Email", value: selected.normalized_email ?? "—" },
-                { label: "Phone", value: selected.normalized_phone ?? "—" },
-                { label: "Type", value: selected.normalized_vendor_type ?? "—" },
-                { label: "GST Registered", value: String(selected.normalized_gst_registered ?? "—") },
-                { label: "GSTIN", value: selected.normalized_gstin ?? "—" },
-                { label: "PAN", value: selected.normalized_pan ?? "—" },
-                { label: "City", value: selected.normalized_city ?? "—" },
-                { label: "State", value: selected.normalized_state ?? "—" },
-                { label: "Bank", value: selected.normalized_bank_name ?? "—" },
-                { label: "IFSC", value: selected.normalized_ifsc ?? "—" },
-                { label: "Account", value: selected.normalized_account_number ? "••••" + selected.normalized_account_number.slice(-4) : "—" },
+                { label: "Email", value: selected.normalized_email ?? "â€”" },
+                { label: "Phone", value: selected.normalized_phone ?? "â€”" },
+                { label: "Type", value: selected.normalized_vendor_type ?? "â€”" },
+                { label: "GST Registered", value: String(selected.normalized_gst_registered ?? "â€”") },
+                { label: "GSTIN", value: selected.normalized_gstin ?? "â€”" },
+                { label: "PAN", value: selected.normalized_pan ?? "â€”" },
+                { label: "City", value: selected.normalized_city ?? "â€”" },
+                { label: "State", value: selected.normalized_state ?? "â€”" },
+                { label: "Bank", value: selected.normalized_bank_name ?? "â€”" },
+                { label: "IFSC", value: selected.normalized_ifsc ?? "â€”" },
+                { label: "Account", value: selected.normalized_account_number ? "â€¢â€¢â€¢â€¢" + selected.normalized_account_number.slice(-4) : "â€”" },
                 { label: "Mode", value: selected.submission_mode },
               ].map(({ label, value }) => (
                 <div key={label} className="rounded-lg border border-border bg-secondary/20 p-2.5">
@@ -868,7 +882,169 @@ function SubmissionsTab({
   );
 }
 
-// ── Tab: Vendors ──────────────────────────────────────────────────────────────
+// â”€â”€ Tab: Vendors â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+// â”€â”€ Vendor Profile Revision Review Panel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+const REV_STATUS_COLORS: Record<string, string> = {
+  draft: "bg-gray-100 text-gray-700",
+  submitted: "bg-blue-100 text-blue-700",
+  finance_approved: "bg-purple-100 text-purple-700",
+  finance_rejected: "bg-red-100 text-red-700",
+  reopened: "bg-orange-100 text-orange-700",
+  applied: "bg-emerald-100 text-emerald-700",
+  cancelled: "bg-gray-100 text-gray-500",
+};
+
+function VendorRevisionReviewPanel({ vendor }: { vendor: Vendor }) {
+  const qc = useQueryClient();
+  const [selectedRevId, setSelectedRevId] = useState<number | null>(null);
+  const [noteInput, setNoteInput] = useState("");
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  const revisionsQ = useQuery({
+    queryKey: ["vendor-revisions", vendor.id],
+    queryFn: () => listVendorProfileRevisions(vendor.id),
+  });
+
+  const detailQ = useQuery({
+    queryKey: ["vendor-revision-detail", vendor.id, selectedRevId],
+    queryFn: () => selectedRevId ? getVendorProfileRevision(vendor.id, selectedRevId) : null,
+    enabled: !!selectedRevId,
+  });
+
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ["vendor-revisions", vendor.id] });
+    qc.invalidateQueries({ queryKey: ["vendor-revision-detail", vendor.id, selectedRevId] });
+    qc.invalidateQueries({ queryKey: ["vendors"] });
+    setActionError(null);
+  };
+
+  function mutate(fn: () => Promise<VendorProfileRevision>) {
+    return fn().then(invalidate).catch(e => setActionError(e instanceof Error ? e.message : "Action failed."));
+  }
+
+  const revisions = revisionsQ.data ?? [];
+  const detail = detailQ.data;
+
+  if (revisionsQ.isLoading) {
+    return <div className="flex items-center gap-2 py-4 text-muted-foreground text-xs"><Loader2 className="w-3 h-3 animate-spin" /> Loading revisionsâ€¦</div>;
+  }
+
+  if (revisions.length === 0) {
+    return <p className="text-xs text-muted-foreground py-2">No profile revisions yet.</p>;
+  }
+
+  return (
+    <div className="space-y-3">
+      {/* List */}
+      <div className="space-y-1.5">
+        {revisions.map(rev => (
+          <button
+            key={rev.id}
+            onClick={() => setSelectedRevId(selectedRevId === rev.id ? null : rev.id)}
+            className={`w-full flex items-center justify-between px-3 py-2 rounded-lg border text-left text-xs transition-colors ${
+              selectedRevId === rev.id ? "border-primary bg-primary/5" : "border-border hover:bg-muted"
+            }`}
+          >
+            <span className="font-medium">Rev #{rev.revision_number}</span>
+            <div className="flex items-center gap-2">
+              <span className="text-muted-foreground">{rev.changed_fields_json.length} fields</span>
+              <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${REV_STATUS_COLORS[rev.status] ?? ""}`}>
+                {PROFILE_REVISION_STATUS_LABELS[rev.status]}
+              </span>
+            </div>
+          </button>
+        ))}
+      </div>
+
+      {/* Detail */}
+      {detail && (
+        <div className="rounded-lg border border-border bg-secondary/20 p-3 space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold">Revision #{detail.revision_number} â€” {PROFILE_REVISION_STATUS_LABELS[detail.status]}</p>
+            <p className="text-[10px] text-muted-foreground">{detail.submitted_at ? new Date(detail.submitted_at).toLocaleDateString() : "Not submitted"}</p>
+          </div>
+
+          {/* Changed fields diff */}
+          {detail.changed_fields_json.length > 0 && (
+            <div className="space-y-1.5">
+              <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">Changes</p>
+              {detail.changed_fields_json.map(field => {
+                const oldVal = String(detail.source_revision_snapshot_json[field] ?? "â€”");
+                const newVal = String(detail.proposed_snapshot_json[field] ?? "â€”");
+                return (
+                  <div key={field} className="text-xs">
+                    <span className="font-medium text-foreground capitalize">{field.replace(/_/g, " ")}: </span>
+                    <span className="line-through text-muted-foreground">{oldVal}</span>
+                    <span className="mx-1 text-muted-foreground">â†’</span>
+                    <span className="text-primary font-medium">{newVal}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {actionError && <p className="text-xs text-destructive">{actionError}</p>}
+
+          {/* Action buttons */}
+          <div className="flex flex-wrap gap-1.5">
+            {/* Finance review â€” only when submitted */}
+            {detail.status === "submitted" && (
+              <>
+                <button
+                  onClick={() => mutate(() => financeApproveProfileRevision(vendor.id, detail.id))}
+                  className="text-[11px] px-2.5 py-1 rounded-md bg-green-500/10 text-green-700 border border-green-500/20 hover:bg-green-500/20 transition-colors"
+                >Finance Approve</button>
+                <button
+                  onClick={() => mutate(() => financeRejectProfileRevision(vendor.id, detail.id, noteInput))}
+                  className="text-[11px] px-2.5 py-1 rounded-md bg-red-500/10 text-red-700 border border-red-500/20 hover:bg-red-500/20 transition-colors"
+                >Finance Reject</button>
+              </>
+            )}
+            {/* Post-finance review â€” finance_approved can only apply */}
+            {detail.status === "finance_approved" && (
+              <button
+                onClick={() => mutate(() => applyProfileRevision(vendor.id, detail.id))}
+                className="text-[11px] px-2.5 py-1 rounded-md bg-emerald-500/10 text-emerald-700 border border-emerald-500/20 hover:bg-emerald-500/20 transition-colors"
+              >Apply</button>
+            )}
+            {detail.status === "finance_rejected" && (
+              <button
+                onClick={() => mutate(() => reopenProfileRevision(vendor.id, detail.id, noteInput))}
+                className="text-[11px] px-2.5 py-1 rounded-md bg-orange-500/10 text-orange-700 border border-orange-500/20 hover:bg-orange-500/20 transition-colors"
+              >Reopen</button>
+            )}
+            {/* Cancel â€” available from any non-terminal state */}
+            {!["applied", "cancelled"].includes(detail.status) && (
+              <button
+                onClick={() => mutate(() => cancelProfileRevision(vendor.id, detail.id))}
+                className="text-[11px] px-2.5 py-1 rounded-md bg-muted text-muted-foreground border border-border hover:bg-destructive/10 hover:text-destructive hover:border-destructive/20 transition-colors"
+              >Cancel</button>
+            )}
+          </div>
+
+          {/* Note input â€” shown when actions that use notes are available */}
+          {["submitted", "finance_rejected"].includes(detail.status) && (
+            <div>
+              <label className="text-[10px] text-muted-foreground block mb-1">
+                {detail.status === "submitted" ? "Note (optional, for rejection)" : "Note (optional, for reopen)"}
+              </label>
+              <input
+                type="text"
+                value={noteInput}
+                onChange={e => setNoteInput(e.target.value)}
+                placeholder="Optional note..."
+                className="w-full text-xs px-2 py-1.5 rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-primary/20"
+              />
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 
 function VendorsTab({
   orgId,
@@ -1014,7 +1190,7 @@ function VendorsTab({
               {[
                 { label: "Email", value: selected.email },
                 { label: "Phone", value: selected.phone },
-                { label: "SAP Vendor ID", value: selected.sap_vendor_id ?? "—" },
+                { label: "SAP Vendor ID", value: selected.sap_vendor_id ?? "â€”" },
                 { label: "PO Mandate", value: selected.po_mandate_enabled ? "Enabled" : "Disabled" },
                 { label: "Scope Node", value: selected.scope_node_name },
                 { label: "Marketing", value: MARKETING_STATUS_LABELS[selected.marketing_status] },
@@ -1039,8 +1215,8 @@ function VendorsTab({
                 <div className="rounded-lg border border-border bg-secondary/20 p-3 space-y-2">
                   <div className="grid grid-cols-2 gap-x-4 gap-y-1">
                     {[
-                      { label: "Portal Email", value: selected.portal_email || "—" },
-                      { label: "User ID", value: selected.portal_user_id || "—" },
+                      { label: "Portal Email", value: selected.portal_email || "â€”" },
+                      { label: "User ID", value: selected.portal_user_id || "â€”" },
                       { label: "Activated", value: selected.portal_activated ? "Yes" : "No" },
                       { label: "Last Sent", value: selected.portal_activation_sent_at
                         ? new Date(selected.portal_activation_sent_at).toLocaleString()
@@ -1071,6 +1247,28 @@ function VendorsTab({
                 )}
               </div>
             </div>
+
+            <Separator />
+
+            {/* Profile Hold indicator */}
+            {selected.profile_change_pending && (
+              <div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-yellow-500/10 border border-yellow-500/20 text-yellow-700 text-xs">
+                <ShieldAlert className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                <div>
+                  <p className="font-medium">Profile hold active</p>
+                  <p className="opacity-80 mt-0.5">{selected.profile_hold_reason}</p>
+                </div>
+              </div>
+            )}
+
+            {/* Profile Revisions */}
+            <div className="space-y-2">
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                <History className="h-3.5 w-3.5" />
+                Profile Revisions
+              </h3>
+              <VendorRevisionReviewPanel vendor={selected} />
+            </div>
           </div>
         ) : (
           <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
@@ -1082,7 +1280,7 @@ function VendorsTab({
   );
 }
 
-// ── Main Page ─────────────────────────────────────────────────────────────────
+// â”€â”€ Main Page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 type TabKey = "invitations" | "submissions" | "vendors";
 
@@ -1111,20 +1309,22 @@ const VendorsPage = () => {
     >
       <div className="flex flex-col flex-1 overflow-hidden">
         {/* Tab bar */}
-        <div className="flex items-center gap-1 border-b border-border px-4 py-2 bg-background">
+        <div className="border-b border-border px-6 pt-3 bg-background">
+          <div className="inline-flex items-center gap-1 rounded-lg border border-orange-200/70 bg-gradient-to-r from-orange-50/80 via-background to-background p-1">
           {tabItems.map(({ key, label }) => (
             <button
               key={key}
               onClick={() => setTab(key)}
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              className={`rounded-md px-3 py-1.5 text-sm transition-colors ${
                 tab === key
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:bg-accent"
+                  ? "border border-orange-200 bg-gradient-to-b from-orange-50 to-white text-orange-600 shadow-sm"
+                  : "text-muted-foreground hover:bg-orange-50/70 hover:text-foreground"
               }`}
             >
               {label}
             </button>
           ))}
+          </div>
         </div>
 
         {/* Tab content */}
@@ -1139,3 +1339,4 @@ const VendorsPage = () => {
 };
 
 export default VendorsPage;
+

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Sheet,
   SheetContent,
@@ -25,6 +25,8 @@ import {
   useReassignBranch,
   useSplitOptions,
   useSubmitSplit,
+  useSingleAllocationOptions,
+  useSubmitSingleAllocation,
 } from "@/lib/hooks/useV2Runtime";
 import { ApiError } from "@/lib/api/client";
 import type {
@@ -34,6 +36,7 @@ import type {
   AllowedSplitEntity,
   AllocationLine,
   AllocationContextLine,
+  AllowedSingleEntity,
 } from "@/lib/types/v2runtime";
 import {
   CheckCircle2,
@@ -51,6 +54,7 @@ import {
   Trash2,
   IndianRupee,
   Split,
+  Tag,
 } from "lucide-react";
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -332,13 +336,32 @@ function DocumentsTab({ subject }: { subject: ReturnType<typeof useTaskReview>["
         >
           <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
           <div className="flex-1 min-w-0">
-            <p className="text-xs font-medium truncate">{doc.file_name || "Untitled"}</p>
+            <div className="flex items-center gap-2 min-w-0">
+              <p className="text-xs font-medium truncate">{doc.file_name || "Untitled"}</p>
+              {doc.is_source_file && (
+                <Badge variant="outline" className="shrink-0 text-[10px] bg-blue-50 text-blue-700 border-blue-200">
+                  Original upload
+                </Badge>
+              )}
+            </div>
             <p className="text-[11px] text-muted-foreground">
               {DOC_TYPE_LABELS[doc.document_type] ?? doc.document_type}
               {" · "}
               <span className="uppercase">{doc.file_type}</span>
             </p>
           </div>
+          {doc.file_url && doc.has_file && (
+            <Button
+              asChild
+              size="sm"
+              variant="outline"
+              className="h-7 shrink-0 text-[11px]"
+            >
+              <a href={doc.file_url} target="_blank" rel="noreferrer">
+                Open
+              </a>
+            </Button>
+          )}
           {!doc.has_file && (
             <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-200 shrink-0">
               Missing
@@ -441,7 +464,9 @@ function WorkflowTab({ workflow }: { workflow: ReturnType<typeof useTaskReview>[
                     <div className="flex items-center gap-2">
                       <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground" />
                       <span className="text-xs flex-1">{step.step_name}</span>
-                      <StatusBadge status={step.status} />
+                      {!(group.status === "APPROVED" && step.status === "APPROVED") && (
+                        <StatusBadge status={step.status} />
+                      )}
                     </div>
                     {step.assigned_user && (
                       <p className="text-[11px] text-muted-foreground pl-5 mt-0.5 flex items-center gap-1">
@@ -481,6 +506,259 @@ function WorkflowTab({ workflow }: { workflow: ReturnType<typeof useTaskReview>[
           ))}
         </div>
       </div>
+    </div>
+  );
+}
+
+function AllocationStatusBadge({ status }: { status: string }) {
+  const color =
+    status === "approved"
+      ? "bg-green-100 text-green-800 border-green-200"
+      : status === "rejected"
+      ? "bg-red-100 text-red-800 border-red-200"
+      : status === "correction_required"
+      ? "bg-orange-100 text-orange-800 border-orange-200"
+      : status === "branch_pending"
+      ? "bg-yellow-100 text-yellow-800 border-yellow-200"
+      : "bg-blue-100 text-blue-800 border-blue-200";
+
+  return (
+    <Badge variant="outline" className={`text-[10px] ${color}`}>
+      {status.replace(/_/g, " ")}
+    </Badge>
+  );
+}
+
+function AllocationTab({
+  allocationAudit,
+}: {
+  allocationAudit: NonNullable<ReturnType<typeof useTaskReview>["data"]>["allocation_audit"];
+}) {
+  if (!allocationAudit) {
+    return <p className="text-sm text-muted-foreground">No allocation data available.</p>;
+  }
+
+  const summary = allocationAudit.summary;
+
+  return (
+    <div className="p-4 space-y-4">
+      <div className="grid grid-cols-2 gap-3">
+        <div className="rounded-lg border border-border bg-muted/20 px-3 py-2.5">
+          <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Invoice Total</p>
+          <p className="mt-1 text-sm font-semibold">{fmtAmount(summary.invoice_amount, summary.currency)}</p>
+        </div>
+        <div className="rounded-lg border border-border bg-muted/20 px-3 py-2.5">
+          <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Allocated</p>
+          <p className="mt-1 text-sm font-semibold">{fmtAmount(summary.total_allocated, summary.currency)}</p>
+          <p className={`text-[11px] mt-1 ${summary.is_balanced ? "text-green-700" : "text-amber-700"}`}>
+            {summary.is_balanced ? "Balanced to invoice" : "Does not fully balance"}
+          </p>
+        </div>
+        <div className="rounded-lg border border-border bg-muted/20 px-3 py-2.5">
+          <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Split Lines</p>
+          <p className="mt-1 text-sm font-semibold">{summary.line_count}</p>
+          <p className="text-[11px] text-muted-foreground mt-1">{summary.entity_count} entities · {summary.budget_count} budgets</p>
+        </div>
+        <div className="rounded-lg border border-border bg-muted/20 px-3 py-2.5">
+          <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Split By</p>
+          <p className="mt-1 text-sm font-semibold">
+            {summary.splitters?.length ? summary.splitters.map((u) => u.email).join(", ") : "—"}
+          </p>
+          <p className="text-[11px] text-muted-foreground mt-1">
+            {summary.latest_selected_at ? `Last updated ${fmtDateTime(summary.latest_selected_at)}` : `Revision ${summary.latest_revision_number}`}
+          </p>
+        </div>
+      </div>
+
+      <div>
+        <SectionLabel>Current Split</SectionLabel>
+        <div className="space-y-3">
+          {allocationAudit.current_allocations.map((alloc) => (
+            <div key={alloc.id} className="rounded-lg border border-border bg-card p-3 space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold">{alloc.entity_name ?? "—"}</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    {alloc.category_name ?? "No category"}
+                    {alloc.subcategory_name ? ` → ${alloc.subcategory_name}` : ""}
+                    {alloc.campaign_name ? ` · ${alloc.campaign_name}` : ""}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm font-semibold">{fmtAmount(alloc.amount, summary.currency)}</p>
+                  <div className="mt-1 flex items-center justify-end gap-2">
+                    <AllocationStatusBadge status={alloc.status} />
+                    {alloc.percentage && <span className="text-[11px] text-muted-foreground">{parseFloat(alloc.percentage).toFixed(1)}%</span>}
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[11px]">
+                <div>
+                  <p className="text-muted-foreground">Budget</p>
+                  <p className="font-medium">
+                    {alloc.budget_name ?? "—"}
+                    {alloc.budget_code ? ` (${alloc.budget_code})` : ""}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Approver</p>
+                  <p className="font-medium">{alloc.selected_approver?.email ?? "Auto / none"}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Split By</p>
+                  <p className="font-medium">
+                    {alloc.selected_by?.email ?? "—"}
+                    {alloc.selected_at ? ` · ${fmtDateTime(alloc.selected_at)}` : ""}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Revision</p>
+                  <p className="font-medium">#{alloc.revision_number}</p>
+                </div>
+              </div>
+
+              {alloc.budget_impact && (
+                <div className="rounded-md border border-blue-100 bg-blue-50/40 px-3 py-2">
+                  <p className="text-[11px] font-semibold text-blue-800 mb-2">Budget Impact</p>
+                  <div className="space-y-3 text-[11px]">
+                    <div>
+                      <p className="text-muted-foreground">Selected Path</p>
+                      <p className="font-medium">
+                        {alloc.budget_name ?? "—"}
+                        {alloc.category_name ? ` → ${alloc.category_name}` : ""}
+                        {alloc.subcategory_name ? ` → ${alloc.subcategory_name}` : ""}
+                      </p>
+                    </div>
+
+                    {alloc.budget_impact.line && (
+                      <div className="grid grid-cols-3 gap-3">
+                        <div className="rounded border border-border/60 bg-white/70 px-2.5 py-2">
+                          <p className="text-muted-foreground mb-1">Before</p>
+                          <p>Reserved: <span className="font-medium">{fmtAmount(alloc.budget_impact.line.before_reserved_amount, summary.currency)}</span></p>
+                          <p>Consumed: <span className="font-medium">{fmtAmount(alloc.budget_impact.line.before_consumed_amount, summary.currency)}</span></p>
+                          <p>Available: <span className="font-medium">{fmtAmount(alloc.budget_impact.line.before_available_amount, summary.currency)}</span></p>
+                        </div>
+                        <div className="rounded border border-blue-200 bg-blue-50 px-2.5 py-2">
+                          <p className="text-blue-800 mb-1 font-medium">This Allocation</p>
+                          <p>Amount: <span className="font-medium">{fmtAmount(alloc.amount, summary.currency)}</span></p>
+                          <p>Reserved Effect: <span className="font-medium">{fmtAmount(alloc.budget_impact.line.effect_reserved_amount, summary.currency)}</span></p>
+                          <p>Consumed Effect: <span className="font-medium">{fmtAmount(alloc.budget_impact.line.effect_consumed_amount, summary.currency)}</span></p>
+                        </div>
+                        <div className="rounded border border-border/60 bg-white/70 px-2.5 py-2">
+                          <p className="text-muted-foreground mb-1">After</p>
+                          <p>Reserved: <span className="font-medium">{fmtAmount(alloc.budget_impact.line.reserved_amount, summary.currency)}</span></p>
+                          <p>Consumed: <span className="font-medium">{fmtAmount(alloc.budget_impact.line.consumed_amount, summary.currency)}</span></p>
+                          <p>Available: <span className="font-medium">{fmtAmount(alloc.budget_impact.line.available_amount, summary.currency)}</span></p>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="rounded border border-border/40 bg-white/50 px-2.5 py-2">
+                        <p className="text-muted-foreground mb-1">Header Before</p>
+                        <p>Reserved: <span className="font-medium">{fmtAmount(alloc.budget_impact.budget.before_reserved_amount ?? "0", alloc.budget_impact.budget.currency ?? summary.currency)}</span></p>
+                        <p>Consumed: <span className="font-medium">{fmtAmount(alloc.budget_impact.budget.before_consumed_amount ?? "0", alloc.budget_impact.budget.currency ?? summary.currency)}</span></p>
+                        <p>Available: <span className="font-medium">{fmtAmount(alloc.budget_impact.budget.before_available_amount ?? "0", alloc.budget_impact.budget.currency ?? summary.currency)}</span></p>
+                      </div>
+                      <div className="rounded border border-blue-200 bg-blue-50 px-2.5 py-2">
+                        <p className="text-blue-800 mb-1 font-medium">Header Effect</p>
+                        <p>Reserved Effect: <span className="font-medium">{fmtAmount(alloc.budget_impact.budget.effect_reserved_amount ?? "0", alloc.budget_impact.budget.currency ?? summary.currency)}</span></p>
+                        <p>Consumed Effect: <span className="font-medium">{fmtAmount(alloc.budget_impact.budget.effect_consumed_amount ?? "0", alloc.budget_impact.budget.currency ?? summary.currency)}</span></p>
+                      </div>
+                      <div className="rounded border border-border/40 bg-white/50 px-2.5 py-2">
+                        <p className="text-muted-foreground mb-1">Header After</p>
+                        <p>Reserved: <span className="font-medium">{fmtAmount(alloc.budget_impact.budget.reserved_amount ?? "0", alloc.budget_impact.budget.currency ?? summary.currency)}</span></p>
+                        <p>Consumed: <span className="font-medium">{fmtAmount(alloc.budget_impact.budget.consumed_amount ?? "0", alloc.budget_impact.budget.currency ?? summary.currency)}</span></p>
+                        <p>Available: <span className="font-medium">{fmtAmount(alloc.budget_impact.budget.available_amount ?? "0", alloc.budget_impact.budget.currency ?? summary.currency)}</span></p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {(alloc.note || alloc.rejection_reason) && (
+                <div className="space-y-1">
+                  {alloc.note && (
+                    <p className="text-[11px] italic text-muted-foreground border-l-2 border-border pl-2">
+                      "{alloc.note}"
+                    </p>
+                  )}
+                  {alloc.rejection_reason && (
+                    <p className="text-[11px] text-red-600 border-l-2 border-red-200 pl-2">
+                      {alloc.rejection_reason}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AllocationHistoryTab({
+  allocationAudit,
+}: {
+  allocationAudit: NonNullable<ReturnType<typeof useTaskReview>["data"]>["allocation_audit"];
+}) {
+  if (!allocationAudit || allocationAudit.history.length === 0) {
+    return <p className="text-sm text-muted-foreground">No allocation revision history yet.</p>;
+  }
+
+  return (
+    <div className="p-4 space-y-3">
+      {allocationAudit.history.map((entry) => (
+        <div key={entry.id} className="rounded-lg border border-border bg-card p-3 space-y-2">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold">Allocation #{entry.allocation_id} · Revision {entry.revision_number}</p>
+              <p className="text-[11px] text-muted-foreground">
+                {entry.changed_by?.email ?? "System"} · {fmtDateTime(entry.changed_at)}
+              </p>
+            </div>
+            <AllocationStatusBadge status={entry.snapshot.status ?? "submitted"} />
+          </div>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[11px]">
+            <div>
+              <p className="text-muted-foreground">Entity</p>
+              <p className="font-medium">{entry.snapshot.entity_name ?? "—"}</p>
+            </div>
+            <div>
+              <p className="text-muted-foreground">Amount</p>
+              <p className="font-medium">
+                {entry.snapshot.amount ? fmtAmount(entry.snapshot.amount, allocationAudit.summary.currency) : "—"}
+              </p>
+            </div>
+            <div>
+              <p className="text-muted-foreground">Category</p>
+              <p className="font-medium">
+                {entry.snapshot.category_name ?? "—"}
+                {entry.snapshot.subcategory_name ? ` → ${entry.snapshot.subcategory_name}` : ""}
+              </p>
+            </div>
+            <div>
+              <p className="text-muted-foreground">Budget</p>
+              <p className="font-medium">
+                {entry.snapshot.budget_name ?? "—"}
+                {entry.snapshot.budget_code ? ` (${entry.snapshot.budget_code})` : ""}
+              </p>
+            </div>
+          </div>
+          {entry.change_reason && (
+            <p className="text-[11px] text-muted-foreground border-l-2 border-border pl-2">
+              Reason: {entry.change_reason}
+            </p>
+          )}
+          {entry.snapshot.note && (
+            <p className="text-[11px] italic text-muted-foreground border-l-2 border-border pl-2">
+              "{entry.snapshot.note}"
+            </p>
+          )}
+        </div>
+      ))}
     </div>
   );
 }
@@ -568,6 +846,7 @@ interface SplitRow {
   amount: string;
   approver_id: number | null;
   note: string;
+  auto_approved: boolean;
 }
 
 function SplitAllocationPanel({
@@ -584,7 +863,7 @@ function SplitAllocationPanel({
   const { data: splitOpts, isLoading: optsLoading, isError: optsError } = useSplitOptions(instanceStepId);
   const submitSplitMutation = useSubmitSplit();
 
-  const [rows, setRows] = useState<SplitRow[]>([{ entity_id: null, category_id: null, subcategory_id: null, campaign_id: null, budget_id: null, amount: "", approver_id: null, note: "" }]);
+  const [rows, setRows] = useState<SplitRow[]>([{ entity_id: null, category_id: null, subcategory_id: null, campaign_id: null, budget_id: null, amount: "", approver_id: null, note: "", auto_approved: false }]);
   const [splitNote, setSplitNote] = useState("");
   const [validationError, setValidationError] = useState<string | null>(null);
 
@@ -596,8 +875,46 @@ function SplitAllocationPanel({
   const allowedEntities: AllowedSplitEntity[] = splitOpts?.allowed_entities ?? [];
   const config = splitOpts?.step_config;
   const mustBalanceTotal = !config || config.allocation_total_policy === "MUST_EQUAL_INVOICE_TOTAL";
+  const isSkipAll = config?.branch_approval_policy === "SKIP_ALL";
+  // Single allowed entity → freeform mode: entity picker hidden, auto-selected on load.
+  const singleEntity = allowedEntities.length === 1 ? allowedEntities[0] : null;
 
-  const addRow = () => setRows((prev) => [...prev, { entity_id: null, category_id: null, subcategory_id: null, campaign_id: null, budget_id: null, amount: "", approver_id: null, note: "" }]);
+  // Auto-select entity and compute auto_approved when exactly one entity is available.
+  useEffect(() => {
+    if (!singleEntity || !config) return;
+    const autoApproved =
+      config.branch_approval_policy === "SKIP_ALL" ||
+      (config.branch_approval_policy === "OPTIONAL_WHEN_CONFIGURED" && !singleEntity.approval_required);
+    setRows([{
+      entity_id: singleEntity.entity_id,
+      category_id: singleEntity.default_category_id ?? null,
+      subcategory_id: singleEntity.default_subcategory_id ?? null,
+      campaign_id: singleEntity.default_campaign_id ?? null,
+      budget_id: singleEntity.default_budget_id ?? null,
+      amount: "",
+      approver_id: null,
+      note: "",
+      auto_approved: autoApproved,
+    }]);
+  }, [singleEntity?.entity_id, config?.branch_approval_policy]);
+
+  const addRow = () => {
+    const autoApproved = !!singleEntity && isSkipAll;
+    setRows((prev) => [
+      ...prev,
+      {
+        entity_id: singleEntity?.entity_id ?? null,
+        category_id: singleEntity?.default_category_id ?? null,
+        subcategory_id: singleEntity?.default_subcategory_id ?? null,
+        campaign_id: singleEntity?.default_campaign_id ?? null,
+        budget_id: singleEntity?.default_budget_id ?? null,
+        amount: "",
+        approver_id: null,
+        note: "",
+        auto_approved: autoApproved,
+      },
+    ]);
+  };
   const removeRow = (i: number) => setRows((prev) => prev.filter((_, idx) => idx !== i));
   const updateRow = (i: number, patch: Partial<SplitRow>) =>
     setRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
@@ -623,21 +940,48 @@ function SplitAllocationPanel({
 
   const updateBusinessUnit = (rowIdx: number, entityId: number | null) => {
     const opt = allowedEntities.find((e) => e.entity_id === entityId);
+    const autoApproved =
+      !!entityId &&
+      (config?.branch_approval_policy === "SKIP_ALL" ||
+        (config?.branch_approval_policy === "OPTIONAL_WHEN_CONFIGURED" && !opt?.approval_required));
     updateRow(rowIdx, {
       entity_id: entityId,
       category_id: opt?.default_category_id ?? null,
       subcategory_id: opt?.default_subcategory_id ?? null,
       campaign_id: opt?.default_campaign_id ?? null,
       budget_id: opt?.default_budget_id ?? null,
-      approver_id: opt?.eligible_approvers.length === 1 ? opt.eligible_approvers[0].id : null,
+      approver_id: autoApproved ? null : (opt?.eligible_approvers.length === 1 ? opt.eligible_approvers[0].id : null),
+      auto_approved: autoApproved,
     });
+  };
+
+  const getApprovalRequired = (row: SplitRow): boolean => {
+    if (!row.entity_id) return false;
+    if (config?.branch_approval_policy === "SKIP_ALL") return false;
+    const entity = allowedEntities.find((e) => e.entity_id === row.entity_id);
+    if (!entity) return false;
+    if (config?.branch_approval_policy === "OPTIONAL_WHEN_CONFIGURED") {
+      return entity.approval_required;
+    }
+    return true; // REQUIRED_FOR_ALL
   };
 
   const handleSubmit = async () => {
     setValidationError(null);
-    if (rows.some((r) => !r.entity_id || !r.amount || !r.approver_id)) {
-      setValidationError("All rows must have an entity, amount, and approver.");
-      return;
+    // Policy-aware validation: approver required only when approval_required is true
+    for (const r of rows) {
+      if (!r.entity_id || !r.amount) {
+        setValidationError("All rows must have a business unit and amount.");
+        return;
+      }
+      if (getApprovalRequired(r) && !r.approver_id) {
+        setValidationError("All rows with approval requirements must have an approver selected.");
+        return;
+      }
+      if (getApprovalRequired(r) && getApproversForRow(r).length === 0) {
+        setValidationError(`No eligible approvers available for ${getBusinessUnitForRow(r)?.entity_name ?? "selected entity"}.`);
+        return;
+      }
     }
     if (config?.require_category && rows.some((r) => !r.category_id)) {
       setValidationError("Category is required for all rows.");
@@ -666,7 +1010,7 @@ function SplitAllocationPanel({
       campaign: r.campaign_id ?? undefined,
       budget: r.budget_id ?? undefined,
       amount: r.amount,
-      selected_approver: r.approver_id!,
+      selected_approver: r.auto_approved ? null : (r.approver_id ?? null),
       note: r.note || undefined,
     }));
     try {
@@ -706,6 +1050,14 @@ function SplitAllocationPanel({
 
   return (
     <div className="p-4 space-y-4">
+      {/* SKIP_ALL banner */}
+      {isSkipAll && (
+        <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-700 flex items-center gap-2">
+          <GitBranch className="h-3.5 w-3.5 shrink-0" />
+          Branch approvals are disabled for this step. All allocations will be auto-approved.
+        </div>
+      )}
+
       {/* Existing allocations (correction context) */}
       {splitOpts.existing_allocations.length > 0 && (
         <div>
@@ -771,10 +1123,24 @@ function SplitAllocationPanel({
               (!row.category_id || c.category_id === row.category_id) &&
               (!row.subcategory_id || c.subcategory_id === row.subcategory_id),
           );
+          const selectedCampaign = (businessUnit?.campaigns ?? []).find(
+            (c) => c.id === row.campaign_id,
+          );
+          // Derive valid budget_ids from budget_lines (which carry category/subcategory),
+          // then filter budget headers — budget objects don't have category/subcategory fields.
+          const validBudgetIds = new Set(
+            (businessUnit?.budget_lines ?? [])
+              .filter(
+                (bl) =>
+                  (!row.category_id || bl.category_id === row.category_id) &&
+                  (!row.subcategory_id || bl.subcategory_id === row.subcategory_id),
+              )
+              .map((bl) => bl.budget_id),
+          );
           const budgets = (businessUnit?.budgets ?? []).filter(
             (b) =>
-              (!row.category_id || b.category_id === row.category_id) &&
-              (!row.subcategory_id || b.subcategory_id === row.subcategory_id),
+              (!selectedCampaign?.budget_id || b.id === selectedCampaign.budget_id) &&
+              (validBudgetIds.size === 0 || validBudgetIds.has(b.id)),
           );
 
           return (
@@ -788,25 +1154,27 @@ function SplitAllocationPanel({
                 )}
               </div>
 
-              {/* Business Unit select */}
-              <div className="space-y-1">
-                <Label className="text-[11px]">Business Unit *</Label>
-                <select
-                  className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
-                  value={row.entity_id ?? ""}
-                  onChange={(e) => {
-                    const eid = e.target.value ? Number(e.target.value) : null;
-                    updateBusinessUnit(idx, eid);
-                  }}
-                >
-                  <option value="">Select business unit...</option>
-                  {entityOptions.map((e) => (
-                    <option key={e.entity_id} value={e.entity_id}>
-                      {e.business_unit_name ?? e.entity_name}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {/* Business Unit select — hidden when only one entity (auto-selected in freeform mode) */}
+              {!singleEntity && (
+                <div className="space-y-1">
+                  <Label className="text-[11px]">Business Unit *</Label>
+                  <select
+                    className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+                    value={row.entity_id ?? ""}
+                    onChange={(e) => {
+                      const eid = e.target.value ? Number(e.target.value) : null;
+                      updateBusinessUnit(idx, eid);
+                    }}
+                  >
+                    <option value="">Select business unit...</option>
+                    {entityOptions.map((e) => (
+                      <option key={e.entity_id} value={e.entity_id}>
+                        {e.business_unit_name ?? e.entity_name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               {row.entity_id && (
                 <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
@@ -926,24 +1294,41 @@ function SplitAllocationPanel({
               </div>
 
               {/* Approver */}
-              <div className="space-y-1">
-                <Label className="text-[11px]">Approver *</Label>
-                <select
-                  className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
-                  value={row.approver_id ?? ""}
-                  onChange={(e) => updateRow(idx, { approver_id: e.target.value ? Number(e.target.value) : null })}
-                  disabled={!row.entity_id}
-                >
-                  <option value="">
-                    {!row.entity_id ? "Select business unit first" : approverOptions.length === 0 ? "No eligible approvers" : "Select approver..."}
-                  </option>
-                  {approverOptions.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.first_name} {u.last_name} ({u.email})
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {row.auto_approved ? (
+                <div className="flex items-center gap-2 rounded-md border border-green-200 bg-green-50 px-2.5 py-1.5">
+                  <CheckCircle2 className="h-3.5 w-3.5 text-green-600 shrink-0" />
+                  <span className="text-xs text-green-700 font-medium">Auto-approved</span>
+                  <span className="text-[11px] text-green-600/70 ml-1">No branch approval required</span>
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  <Label className="text-[11px]">
+                    Approver {getApprovalRequired(row) ? "*" : ""}
+                  </Label>
+                  {getApprovalRequired(row) && approverOptions.length === 0 ? (
+                    <div className="rounded-md border border-destructive/30 bg-destructive/10 px-2.5 py-2 text-xs text-destructive flex items-start gap-2">
+                      <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                      <span>No eligible approvers available for this entity. Cannot submit.</span>
+                    </div>
+                  ) : (
+                    <select
+                      className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+                      value={row.approver_id ?? ""}
+                      onChange={(e) => updateRow(idx, { approver_id: e.target.value ? Number(e.target.value) : null })}
+                      disabled={!row.entity_id}
+                    >
+                      <option value="">
+                        {!row.entity_id ? "Select business unit first" : approverOptions.length === 0 ? "No eligible approvers" : "Select approver..."}
+                      </option>
+                      {approverOptions.map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.first_name} {u.last_name} ({u.email})
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              )}
 
               {/* Note */}
               <div className="space-y-1">
@@ -1002,12 +1387,361 @@ function SplitAllocationPanel({
         size="sm"
         className="w-full gap-1.5 bg-blue-600 hover:bg-blue-700 text-white"
         onClick={handleSubmit}
-        disabled={submitSplitMutation.isPending || (mustBalanceTotal && !isBalanced) || rows.some((r) => !r.entity_id || !r.amount || !r.approver_id)}
+        disabled={submitSplitMutation.isPending || (mustBalanceTotal && !isBalanced) || rows.some((r) => !r.entity_id || !r.amount || (getApprovalRequired(r) && !r.approver_id))}
       >
         {submitSplitMutation.isPending ? (
           <><Loader2 className="h-3.5 w-3.5 animate-spin" />Submitting...</>
         ) : (
-          <><Split className="h-3.5 w-3.5" />Submit Split for Entity Approval</>
+          <><Split className="h-3.5 w-3.5" />Submit Allocation</>
+
+        )}
+      </Button>
+    </div>
+  );
+}
+
+// ── Single allocation panel ────────────────────────────────────────────────────
+
+interface SingleAllocState {
+  entity_id: number | null;
+  category_id: number | null;
+  subcategory_id: number | null;
+  campaign_id: number | null;
+  budget_id: number | null;
+  note: string;
+}
+
+function SingleAllocationPanel({
+  instanceStepId,
+  invoiceAmount,
+  invoiceCurrency,
+  onSuccess,
+}: {
+  instanceStepId: string;
+  invoiceAmount: string;
+  invoiceCurrency: string;
+  onSuccess: () => void;
+}) {
+  const { data: opts, isLoading, isError } = useSingleAllocationOptions(instanceStepId);
+  const submitMutation = useSubmitSingleAllocation();
+
+  const config = opts?.step_config;
+
+  const [form, setForm] = useState<SingleAllocState>({
+    entity_id: null, category_id: null, subcategory_id: null,
+    campaign_id: null, budget_id: null, note: "",
+  });
+  const [hydrated, setHydrated] = useState(false);
+
+  // Hydrate form from existing allocation once opts arrives. Guard keeps user edits
+  // on subsequent opts changes (e.g. query refresh) from being clobbered.
+  useEffect(() => {
+    if (!opts || hydrated) return;
+    if (opts.existing_allocation) {
+      setForm({
+        entity_id: opts.existing_allocation.entity_id,
+        category_id: opts.existing_allocation.category_id ?? null,
+        subcategory_id: opts.existing_allocation.subcategory_id ?? null,
+        campaign_id: opts.existing_allocation.campaign_id ?? null,
+        budget_id: opts.existing_allocation.budget_id ?? null,
+        note: opts.existing_allocation.note ?? "",
+      });
+    }
+    setHydrated(true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [opts]);
+
+  const entities: AllowedSingleEntity[] = opts?.allowed_entities ?? [];
+  const selectedEntity = entities.find((e) => e.entity_id === form.entity_id) ?? null;
+
+  const categories = selectedEntity?.categories ?? [];
+  const subcategories = (selectedEntity?.subcategories ?? []).filter(
+    (s) => !form.category_id || s.category_id === form.category_id,
+  );
+  const campaigns = (selectedEntity?.campaigns ?? []).filter((c) => {
+    if (form.category_id && c.category_id && c.category_id !== form.category_id) return false;
+    if (form.subcategory_id && c.subcategory_id && c.subcategory_id !== form.subcategory_id) return false;
+    return true;
+  });
+  const budgets = (selectedEntity?.budgets ?? []).filter((b) => {
+    if (form.category_id && b.category_id && b.category_id !== form.category_id) return false;
+    if (form.subcategory_id && b.subcategory_id && b.subcategory_id !== form.subcategory_id) return false;
+    return true;
+  });
+
+  const setField = (patch: Partial<SingleAllocState>) =>
+    setForm((prev) => {
+      const next = { ...prev, ...patch };
+
+      // Cascade resets: changing entity resets all dependent fields
+      if ("entity_id" in patch && patch.entity_id !== prev.entity_id) {
+        next.category_id = null;
+        next.subcategory_id = null;
+        next.campaign_id = null;
+        next.budget_id = null;
+        return next;
+      }
+
+      // Changing category resets sub, campaign, budget
+      if ("category_id" in patch) {
+        next.subcategory_id = null;
+        next.campaign_id = null;
+        next.budget_id = null;
+        return next;
+      }
+
+      // Changing subcategory resets campaign, budget
+      if ("subcategory_id" in patch) {
+        next.campaign_id = null;
+        next.budget_id = null;
+        return next;
+      }
+
+      // Changing campaign: auto-fill category/subcategory/budget from selected campaign
+      if ("campaign_id" in patch) {
+        next.campaign_id = patch.campaign_id;
+        next.budget_id = null;
+        if (patch.campaign_id) {
+          const camp = entities.find((e) => e.entity_id === prev.entity_id)?.campaigns.find(
+            (c) => c.id === patch.campaign_id,
+          );
+          if (camp) {
+            if (camp.category_id) next.category_id = camp.category_id;
+            if (camp.subcategory_id) next.subcategory_id = camp.subcategory_id;
+            if (camp.budget_id) next.budget_id = camp.budget_id;
+          }
+        }
+        return next;
+      }
+
+      return next;
+    });
+
+  const validationError = (() => {
+    if (!form.entity_id) return "Business unit is required.";
+    if (config?.require_category && !form.category_id) return "Category is required by this workflow.";
+    if (config?.require_subcategory && !form.subcategory_id) return "Subcategory is required by this workflow.";
+    if (config?.require_campaign && !form.campaign_id) return "Campaign is required by this workflow.";
+    if (config?.require_budget && !form.budget_id) return "Budget is required by this workflow.";
+    return null;
+  })();
+
+  const submitError =
+    submitMutation.isError && submitMutation.error instanceof ApiError
+      ? submitMutation.error.message
+      : submitMutation.isError
+      ? "Failed to submit allocation."
+      : null;
+
+  const handleSubmit = async () => {
+    if (validationError) return;
+    try {
+      await submitMutation.mutateAsync({
+        instanceStepId,
+        data: {
+          entity: form.entity_id!,
+          category: form.category_id ?? undefined,
+          subcategory: form.subcategory_id ?? undefined,
+          campaign: form.campaign_id ?? undefined,
+          budget: form.budget_id ?? undefined,
+          note: form.note || undefined,
+        },
+      });
+      onSuccess();
+    } catch {
+      // error shown via submitError
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="p-4 space-y-2">
+        <Skeleton className="h-4 w-1/2" />
+        <Skeleton className="h-10 w-full" />
+        <Skeleton className="h-10 w-full" />
+      </div>
+    );
+  }
+
+  if (isError || !opts) {
+    return (
+      <div className="p-4">
+        <div className="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          Failed to load allocation options. Refresh and try again.
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-4 space-y-4">
+      {/* Existing allocation banner (correction mode) */}
+      {opts.existing_allocation && (
+        <div>
+          <SectionLabel>Current Allocation (Correction Mode)</SectionLabel>
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs space-y-1">
+            <div className="flex items-center justify-between">
+              <span className="font-medium text-amber-900">
+                {opts.existing_allocation.entity_name ?? "—"}
+              </span>
+              <span className="font-semibold text-amber-900">
+                {fmtAmount(opts.existing_allocation.amount, invoiceCurrency)}
+              </span>
+            </div>
+            {opts.existing_allocation.note && (
+              <p className="text-amber-700">{opts.existing_allocation.note}</p>
+            )}
+          </div>
+          <div className="mt-1.5 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 flex items-center gap-2">
+            <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+            Submitting will replace the above allocation.
+          </div>
+        </div>
+      )}
+
+      {/* Amount locked banner */}
+      <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2">
+        <div className="flex items-center justify-between text-xs">
+          <span className="text-blue-700 font-medium">Invoice Total</span>
+          <span className="font-bold text-blue-900">{fmtAmount(invoiceAmount, invoiceCurrency)}</span>
+        </div>
+        <div className="flex items-center gap-1 mt-0.5 text-[11px] text-blue-600">
+          <CheckCircle2 className="h-3 w-3" />
+          Amount is fixed — this allocation will cover the full invoice.
+        </div>
+      </div>
+
+      {/* Business Unit */}
+      <div className="space-y-1">
+        <Label className="text-xs">Business Unit *</Label>
+        <select
+          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          value={form.entity_id ?? ""}
+          onChange={(e) => setField({ entity_id: e.target.value ? Number(e.target.value) : null })}
+        >
+          <option value="">Select business unit...</option>
+          {entities.map((e) => (
+            <option key={e.entity_id} value={e.entity_id}>{e.entity_name}</option>
+          ))}
+        </select>
+      </div>
+
+      {form.entity_id && (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {/* Category */}
+          <div className="space-y-1">
+            <Label className="text-xs">
+              Category {config?.require_category ? " *" : ""}
+            </Label>
+            <select
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              value={form.category_id ?? ""}
+              onChange={(e) => setField({ category_id: e.target.value ? Number(e.target.value) : null })}
+            >
+              <option value="">Select category...</option>
+              {categories.map((c) => (
+                <option key={c.id} value={c.id}>{c.name}{c.code ? ` (${c.code})` : ""}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Subcategory */}
+          <div className="space-y-1">
+            <Label className="text-xs">
+              Subcategory {config?.require_subcategory ? " *" : ""}
+            </Label>
+            <select
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              value={form.subcategory_id ?? ""}
+              onChange={(e) => setField({ subcategory_id: e.target.value ? Number(e.target.value) : null })}
+              disabled={!form.category_id || subcategories.length === 0}
+            >
+              <option value="">
+                {!form.category_id ? "Select category first" : subcategories.length === 0 ? "No subcategories" : "Select subcategory..."}
+              </option>
+              {subcategories.map((s) => (
+                <option key={s.id} value={s.id}>{s.name}{s.code ? ` (${s.code})` : ""}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Campaign */}
+          <div className="space-y-1">
+            <Label className="text-xs">
+              Campaign {config?.require_campaign ? " *" : ""}
+            </Label>
+            <select
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              value={form.campaign_id ?? ""}
+              onChange={(e) => setField({ campaign_id: e.target.value ? Number(e.target.value) : null })}
+              disabled={campaigns.length === 0}
+            >
+              <option value="">
+                {campaigns.length === 0 ? "No campaigns available" : "Select campaign..."}
+              </option>
+              {campaigns.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}{c.approved_amount ? ` — ${fmtAmount(c.approved_amount, invoiceCurrency)}` : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Budget */}
+          <div className="space-y-1">
+            <Label className="text-xs">
+              Budget {config?.require_budget ? " *" : ""}
+            </Label>
+            <select
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              value={form.budget_id ?? ""}
+              onChange={(e) => setField({ budget_id: e.target.value ? Number(e.target.value) : null })}
+              disabled={budgets.length === 0}
+            >
+              <option value="">
+                {budgets.length === 0 ? "No budgets available" : "Select budget..."}
+              </option>
+              {budgets.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.scope_node_name ? `${b.scope_node_name} — ` : ""}{b.name}
+                  {b.available_amount ? ` | Avail: ${fmtAmount(b.available_amount, b.currency ?? invoiceCurrency)}` : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      )}
+
+      {/* Note */}
+      <div className="space-y-1">
+        <Label className="text-xs">Note (optional)</Label>
+        <Textarea
+          rows={2}
+          className="text-sm resize-none"
+          placeholder="Describe the rationale for this allocation..."
+          value={form.note}
+          onChange={(e) => setForm((p) => ({ ...p, note: e.target.value }))}
+        />
+      </div>
+
+      {(validationError || submitError) && (
+        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive flex items-start gap-2">
+          <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+          {validationError || submitError}
+        </div>
+      )}
+
+      <Button
+        size="sm"
+        className="w-full gap-1.5 bg-blue-600 hover:bg-blue-700 text-white"
+        onClick={handleSubmit}
+        disabled={!!validationError || submitMutation.isPending}
+      >
+        {submitMutation.isPending ? (
+          <><Loader2 className="h-3.5 w-3.5 animate-spin" />Saving Allocation...</>
+        ) : (
+          <><CheckCircle2 className="h-3.5 w-3.5" />Save Allocation</>
         )}
       </Button>
     </div>
@@ -1016,7 +1750,7 @@ function SplitAllocationPanel({
 
 // ── Decision panel ────────────────────────────────────────────────────────────
 
-type ActionMode = "approve" | "reject" | "reassign" | null;
+type ActionMode = "reassign" | null;
 
 function DecisionPanel({
   taskKind,
@@ -1053,48 +1787,62 @@ function DecisionPanel({
       ? "Action failed. Please try again."
       : null;
 
-  const handleSubmit = async () => {
-    if (!mode) return;
-    if (mode === "reject" && !note.trim()) return;
-    if (mode === "reassign" && !selectedUserId) return;
-
+  const handleApprove = async () => {
     try {
-      if (mode === "approve") {
-        if (taskKind === "step") {
-          await (approveStep as ReturnType<typeof useApproveStep>).mutateAsync({
-            id: taskId,
-            data: note ? { note } : undefined,
-          });
-        } else {
-          await (approveBranch as ReturnType<typeof useApproveBranch>).mutateAsync({
-            id: taskId,
-            data: note ? { note } : undefined,
-          });
-        }
-      } else if (mode === "reject") {
-        if (taskKind === "step") {
-          await (rejectStep as ReturnType<typeof useRejectStep>).mutateAsync({
-            id: taskId,
-            data: { note },
-          });
-        } else {
-          await (rejectBranch as ReturnType<typeof useRejectBranch>).mutateAsync({
-            id: taskId,
-            data: { note },
-          });
-        }
-      } else if (mode === "reassign") {
-        if (taskKind === "step") {
-          await (reassignStep as ReturnType<typeof useReassignStep>).mutateAsync({
-            id: taskId,
-            data: { user_id: selectedUserId, note: note || undefined },
-          });
-        } else {
-          await (reassignBranch as ReturnType<typeof useReassignBranch>).mutateAsync({
-            id: taskId,
-            data: { user_id: selectedUserId, note: note || undefined },
-          });
-        }
+      if (taskKind === "step") {
+        await (approveStep as ReturnType<typeof useApproveStep>).mutateAsync({
+          id: taskId,
+          data: note ? { note } : undefined,
+        });
+      } else {
+        await (approveBranch as ReturnType<typeof useApproveBranch>).mutateAsync({
+          id: taskId,
+          data: note ? { note } : undefined,
+        });
+      }
+      setNote("");
+      setSelectedUserId("");
+      onSuccess();
+    } catch {
+      // error shown via errorMsg
+    }
+  };
+
+  const handleReject = async () => {
+    if (!note.trim()) return;
+    try {
+      if (taskKind === "step") {
+        await (rejectStep as ReturnType<typeof useRejectStep>).mutateAsync({
+          id: taskId,
+          data: { note },
+        });
+      } else {
+        await (rejectBranch as ReturnType<typeof useRejectBranch>).mutateAsync({
+          id: taskId,
+          data: { note },
+        });
+      }
+      setNote("");
+      setSelectedUserId("");
+      onSuccess();
+    } catch {
+      // error shown via errorMsg
+    }
+  };
+
+  const handleReassign = async () => {
+    if (!selectedUserId) return;
+    try {
+      if (taskKind === "step") {
+        await (reassignStep as ReturnType<typeof useReassignStep>).mutateAsync({
+          id: taskId,
+          data: { user_id: selectedUserId, note: note || undefined },
+        });
+      } else {
+        await (reassignBranch as ReturnType<typeof useReassignBranch>).mutateAsync({
+          id: taskId,
+          data: { user_id: selectedUserId, note: note || undefined },
+        });
       }
       setMode(null);
       setNote("");
@@ -1115,33 +1863,55 @@ function DecisionPanel({
   return (
     <div className="border-t border-border bg-background px-4 pt-3 pb-4 space-y-3">
       {mode === null ? (
-        <div className="flex items-center gap-2">
-          <Button
-            size="sm"
-            className="flex-1 bg-green-600 hover:bg-green-700 text-white gap-1.5"
-            onClick={() => setMode("approve")}
-          >
-            <CheckCircle2 className="h-3.5 w-3.5" />
-            Approve
-          </Button>
-          <Button
-            size="sm"
-            variant="destructive"
-            className="flex-1 gap-1.5"
-            onClick={() => setMode("reject")}
-          >
-            <XCircle className="h-3.5 w-3.5" />
-            Reject
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            className="flex-1 gap-1.5"
-            onClick={() => setMode("reassign")}
-          >
-            <RefreshCw className="h-3.5 w-3.5" />
-            Reassign
-          </Button>
+        <div className="space-y-3">
+          <div className="space-y-1">
+            <Label className="text-xs">Note (optional)</Label>
+            <Textarea
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="Add a note..."
+              rows={3}
+              className="text-sm resize-none"
+            />
+          </div>
+
+          {errorMsg && (
+            <p className="rounded-md border border-destructive/30 bg-destructive/10 px-2.5 py-2 text-xs text-destructive">
+              {errorMsg}
+            </p>
+          )}
+
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              className="flex-1 bg-green-600 hover:bg-green-700 text-white gap-1.5"
+              onClick={handleApprove}
+              disabled={isPending}
+            >
+              {isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+              Approve
+            </Button>
+            <Button
+              size="sm"
+              variant="destructive"
+              className="flex-1 gap-1.5"
+              onClick={handleReject}
+              disabled={isPending || !note.trim()}
+            >
+              {isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <XCircle className="h-3.5 w-3.5" />}
+              Reject
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="flex-1 gap-1.5"
+              onClick={() => setMode("reassign")}
+              disabled={isPending}
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              Reassign
+            </Button>
+          </div>
         </div>
       ) : (
         <div className="space-y-3">
@@ -1163,24 +1933,19 @@ function DecisionPanel({
 
           <div className="space-y-1">
             <Label className="text-xs">
-              {mode === "reject" ? "Reason *" : mode === "approve" ? "Note (optional)" : "Note (optional)"}
+              Note (optional)
             </Label>
             <Textarea
               value={note}
               onChange={(e) => setNote(e.target.value)}
               placeholder={
-                mode === "reject"
-                  ? "Explain why this is being rejected..."
-                  : mode === "reassign"
+                mode === "reassign"
                   ? "Reason for reassignment..."
                   : "Add a note..."
               }
               rows={3}
               className="text-sm resize-none"
             />
-            {mode === "reject" && !note.trim() && (
-              <p className="text-xs text-red-500">Rejection reason is required.</p>
-            )}
           </div>
 
           {errorMsg && (
@@ -1199,10 +1964,9 @@ function DecisionPanel({
                 : ""
             }`}
             variant={mode === "reassign" ? "default" : undefined}
-            onClick={handleSubmit}
+            onClick={handleReassign}
             disabled={
               isPending ||
-              (mode === "reject" && !note.trim()) ||
               (mode === "reassign" && !selectedUserId)
             }
           >
@@ -1213,10 +1977,8 @@ function DecisionPanel({
               </>
             ) : (
               <>
-                {mode === "approve" && <CheckCircle2 className="h-3.5 w-3.5" />}
-                {mode === "reject" && <XCircle className="h-3.5 w-3.5" />}
                 {mode === "reassign" && <RefreshCw className="h-3.5 w-3.5" />}
-                Confirm {mode}
+                Confirm reassign
               </>
             )}
           </Button>
@@ -1248,6 +2010,12 @@ export function ApprovalReviewDrawer({
 
   const invoice = data?.subject?.invoice;
   const vendor = data?.subject?.vendor;
+  const isRuntimeSplit = data?.task.step_kind === "RUNTIME_SPLIT_ALLOCATION";
+  const isSingleAllocation = data?.task.step_kind === "SINGLE_ALLOCATION";
+  const isAllocationStep = isRuntimeSplit || isSingleAllocation;
+  const allocationAudit = data?.allocation_audit;
+  const hasAllocationTab = !!allocationAudit?.current_allocations?.length;
+  const hasAllocationHistoryTab = !!allocationAudit?.history?.length;
 
   const handleActionSuccess = () => {
     onActionSuccess();
@@ -1358,13 +2126,25 @@ export function ApprovalReviewDrawer({
             {isLoading ? (
               <ReviewSkeleton />
             ) : data ? (() => {
-              const isRuntimeSplit = data.task.step_kind === "RUNTIME_SPLIT_ALLOCATION";
-              const tabs = isRuntimeSplit
-                ? ["split", "overview", "documents", "timeline", "workflow"]
-                : ["overview", "documents", "timeline", "workflow"];
+              const tabs = [
+                ...(isAllocationStep ? (isRuntimeSplit ? ["split"] : ["allocation-entry"]) : []),
+                ...(hasAllocationTab ? ["allocation"] : []),
+                ...(hasAllocationHistoryTab ? ["allocation-history"] : []),
+                "overview",
+                "documents",
+                "timeline",
+                "workflow",
+              ];
+              const defaultTab = isRuntimeSplit
+                ? "split"
+                : isSingleAllocation
+                ? "allocation-entry"
+                : hasAllocationTab
+                ? "allocation"
+                : "overview";
 
               return (
-                <Tabs defaultValue={isRuntimeSplit ? "split" : "overview"} className="flex flex-col h-full">
+                <Tabs defaultValue={defaultTab} className="flex flex-col h-full">
                   <div className="shrink-0 border-b border-border">
                     <TabsList className="h-auto w-full rounded-none bg-transparent px-4 gap-0 justify-start">
                       {tabs.map((tab) => (
@@ -1375,6 +2155,12 @@ export function ApprovalReviewDrawer({
                         >
                           {tab === "split"
                             ? <span className="flex items-center gap-1"><Split className="h-3 w-3" />Split</span>
+                            : tab === "allocation-entry"
+                            ? <span className="flex items-center gap-1"><Tag className="h-3 w-3" />Allocation</span>
+                            : tab === "allocation"
+                            ? <span className="flex items-center gap-1"><IndianRupee className="h-3 w-3" />Allocation</span>
+                            : tab === "allocation-history"
+                            ? <span className="flex items-center gap-1"><Clock className="h-3 w-3" />Allocation History</span>
                             : tab === "documents"
                             ? `Docs${data.subject?.documents?.length ? ` (${data.subject.documents.length})` : ""}`
                             : tab === "timeline"
@@ -1393,6 +2179,26 @@ export function ApprovalReviewDrawer({
                           invoiceCurrency={invoice.currency}
                           onSuccess={handleActionSuccess}
                         />
+                      </TabsContent>
+                    )}
+                    {isSingleAllocation && data.task.instance_step_id && invoice && (
+                      <TabsContent value="allocation-entry" className="m-0">
+                        <SingleAllocationPanel
+                          instanceStepId={data.task.instance_step_id}
+                          invoiceAmount={invoice.amount}
+                          invoiceCurrency={invoice.currency}
+                          onSuccess={handleActionSuccess}
+                        />
+                      </TabsContent>
+                    )}
+                    {hasAllocationTab && (
+                      <TabsContent value="allocation" className="m-0">
+                        <AllocationTab allocationAudit={allocationAudit} />
+                      </TabsContent>
+                    )}
+                    {hasAllocationHistoryTab && (
+                      <TabsContent value="allocation-history" className="m-0">
+                        <AllocationHistoryTab allocationAudit={allocationAudit} />
                       </TabsContent>
                     )}
                     <TabsContent value="overview" className="p-4 m-0">
@@ -1416,8 +2222,8 @@ export function ApprovalReviewDrawer({
 
         <Separator />
 
-        {/* Decision panel — shown for normal steps/branches; hidden for runtime split (split panel handles it) */}
-        {data && taskKind && taskId && data.task.step_kind !== "RUNTIME_SPLIT_ALLOCATION" && (
+        {/* Decision panel — shown for normal steps/branches; hidden for allocation steps (allocation panel handles it) */}
+        {data && taskKind && taskId && !isAllocationStep && (
           <DecisionPanel
             taskKind={taskKind}
             taskId={taskId}

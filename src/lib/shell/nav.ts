@@ -11,21 +11,17 @@ import {
   ShieldCheck,
   GitBranch,
   ToggleLeft,
+  ListChecks,
+  IndianRupee,
 } from "lucide-react";
 import type { Icon } from "lucide-react";
+import type { User } from "@/contexts/AuthContext";
 
 export type NavGroup = "Operations" | "Planning" | "Setup";
 
-// ── Full-access roles (bypass all allowlists) ──────────────────────────────────
+// ── Full-access roles (bypass allowlist-only items) ─────────────────────────────
 
 export const FULL_ACCESS_ROLES = ["tenant_admin", "org_admin"];
-
-/** All roles that are internal (non-vendor). */
-const ALL_INTERNAL_ROLES = [
-  "tenant_admin", "org_admin",
-  "marketing_head", "entity_manager",
-  "ho_executive", "ho_head", "finance_team",
-];
 
 // ── Nav item definition ────────────────────────────────────────────────────────
 
@@ -35,9 +31,12 @@ export interface NavItem {
   icon: Icon;
   group: NavGroup;
   /**
-   * Roles that may see this item in the sidebar.
-   * If absent, the item is full-access only (tenant_admin / org_admin).
+   * Required capability string for sidebar visibility.
+   * If absent, falls back to allowedRoles for backward compat.
+   * No requiredCapability AND no allowedRoles → full-access only.
    */
+  requiredCapability?: string;
+  /** @deprecated Use requiredCapability instead. */
   allowedRoles?: string[];
 }
 
@@ -45,84 +44,87 @@ export const NAV_ITEMS: NavItem[] = [
   // ── Operations ──────────────────────────────────────────────────────────────
   {
     label: "Home", to: "/", icon: LayoutDashboard, group: "Operations",
-    allowedRoles: ALL_INTERNAL_ROLES,
+    requiredCapability: "budget.view",
   },
   {
     label: "Invoices", to: "/invoices", icon: FileText, group: "Operations",
-    allowedRoles: ["tenant_admin", "org_admin", "marketing_head", "ho_executive", "ho_head", "finance_team"],
+    requiredCapability: "invoice.view",
+  },
+  {
+    label: "Pending Review", to: "/pending-review", icon: ListChecks, group: "Operations",
+    requiredCapability: "workflow.task.view",
   },
   {
     label: "Approval Tasks", to: "/tasks", icon: Inbox, group: "Operations",
-    allowedRoles: ["tenant_admin", "org_admin", "marketing_head", "entity_manager", "ho_executive", "ho_head"],
+    requiredCapability: "workflow.task.view",
   },
   {
     label: "Finance Handoffs", to: "/finance-handoffs", icon: Landmark, group: "Operations",
-    allowedRoles: ["tenant_admin", "org_admin", "finance_team", "ho_head"],
+    requiredCapability: "reporting.view_finance",
   },
   {
     label: "Vendors", to: "/vendors", icon: Users, group: "Operations",
-    allowedRoles: ["tenant_admin", "org_admin", "marketing_head"],
+    requiredCapability: "vendor.view",
   },
   {
     label: "Campaigns", to: "/campaigns", icon: Megaphone, group: "Operations",
-    allowedRoles: ALL_INTERNAL_ROLES,
+    requiredCapability: "campaign.view",
+  },
+  {
+    label: "Manual Expenses", to: "/manual-expenses", icon: IndianRupee, group: "Operations",
+    requiredCapability: "budget.view",
   },
   // ── Planning ────────────────────────────────────────────────────────────────
   {
     label: "Budgets", to: "/budgets", icon: Wallet, group: "Planning",
-    allowedRoles: ALL_INTERNAL_ROLES,
+    requiredCapability: "budget.view",
   },
   {
     label: "Insights", to: "/insights", icon: BarChart3, group: "Planning",
-    allowedRoles: ALL_INTERNAL_ROLES,
+    requiredCapability: "reporting.view_basic",
   },
-  // ── Setup — full-access only (no allowedRoles) ────────────────────────────
-  { label: "Users",                  to: "/people",             icon: Users,       group: "Setup" },
+  // ── Setup — full-access only (no allowedRoles / no requiredCapability) ───────
+  { label: "Users",                  to: "/people",            icon: Users,       group: "Setup" },
   { label: "Organization Structure", to: "/scope-nodes",       icon: Building2,   group: "Setup" },
   { label: "Access Control",         to: "/access-control",    icon: ShieldCheck, group: "Setup" },
-  { label: "Workflow Config",        to: "/workflow-config",   icon: GitBranch,   group: "Setup" },
-  { label: "Module Activation",      to: "/module-activation",icon: ToggleLeft,  group: "Setup" },
+  { label: "Workflow Config",       to: "/workflow-config",   icon: GitBranch,   group: "Setup" },
+  { label: "Module Activation",     to: "/module-activation", icon: ToggleLeft,  group: "Setup" },
 ];
 
 // ── Route access matrix ───────────────────────────────────────────────────────
-// Controls which authenticated roles may *access* each route (guards in App.tsx).
-// Some routes are not in NAV_ITEMS (not in sidebar) but still need guarding.
-// Safe default: unknown routes are DENIED unless they are in KNOWN_PUBLIC_ROUTES.
+// Maps route path → required capability string.
+// "full-access" → tenant_admin/org_admin (or superuser) only.
+// Functions (user => boolean) → for complex rules.
+// Unknown routes not in KNOWN_PUBLIC_ROUTES are DENIED.
 
-/**
- * Routes accessible to all authenticated internal roles.
- * Not in NAV_ITEMS (hidden in sidebar) but must still be reachable.
- */
-const INTERNAL_ALL_ROLES = ALL_INTERNAL_ROLES;
+type RouteAccess = string | "full-access" | ((user: User | null) => boolean);
 
-/** Routes accessible only to tenant_admin / org_admin. */
-const ADMIN_ONLY: string[] = [];
-
-type RouteRoles = string[] | "full-access" | "none";
-
-const ROUTE_ACCESS: Record<string, RouteRoles> = {
+const ROUTE_ACCESS: Record<string, RouteAccess> = {
   // ── Sidebar nav routes ────────────────────────────────────────────────────
-  "/":                            INTERNAL_ALL_ROLES,
-  "/invoices":                    ["tenant_admin","org_admin","marketing_head","ho_executive","ho_head","finance_team"],
-  "/tasks":                       ["tenant_admin","org_admin","marketing_head","entity_manager","ho_executive","ho_head"],
-  "/finance-handoffs":            ["tenant_admin","org_admin","finance_team","ho_head"],
-  "/vendors":                     ["tenant_admin","org_admin","marketing_head"],
-  "/campaigns":                   INTERNAL_ALL_ROLES,
-  "/budgets":                     INTERNAL_ALL_ROLES,
-  "/insights":                    INTERNAL_ALL_ROLES,
+  "/":                            "budget.view",
+  "/invoices":                    "invoice.view",
+  "/pending-review":              "workflow.task.view",
+  "/tasks":                       "workflow.task.view",
+  "/finance-handoffs":            "reporting.view_finance",
+  "/vendors":                     "vendor.view",
+  "/campaigns":                   "campaign.view",
+  "/manual-expenses":             "budget.view",
+  "/budgets":                     "budget.view",
+  "/insights":                    "reporting.view_basic",
+  // ── Setup (full-access only) ─────────────────────────────────────────────
   "/people":                      "full-access",
   "/scope-nodes":                 "full-access",
-  "/access-control":              "full-access",
-  "/workflow-config":             "full-access",
-  "/module-activation":           "full-access",
+  "/access-control":             "full-access",
+  "/workflow-config":            "full-access",
+  "/module-activation":          "full-access",
   // ── Non-nav internal routes ───────────────────────────────────────────────
-  "/notifications":               INTERNAL_ALL_ROLES,
-  "/workflow-drafts/:instanceId/assign": ["tenant_admin","org_admin","marketing_head"],
+  "/notifications":               "workflow.task.view",
+  "/workflow-drafts/:instanceId/assign": "workflow.task.view",
   // ── Portal routes ──────────────────────────────────────────────────────────
-  "/vendor-portal":               "none", // handled by isVendorPortalUser in App.tsx
+  "/vendor-portal":              "portal.vendor",
 };
 
-/** Routes that bypass all role guards (public token pages). */
+/** Routes that bypass all guards (public token pages). */
 export const KNOWN_PUBLIC_ROUTES = [
   "/vendor/register",
   "/vendor/activate",
@@ -134,59 +136,63 @@ export const KNOWN_PUBLIC_ROUTES = [
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-/** True when the user (by their role codes) is allowed to see this nav item in the sidebar. */
-export function canSeeNavItem(userRoles: string[], item: NavItem): boolean {
-  if (userRoles.some((r) => FULL_ACCESS_ROLES.includes(r))) return true;
-  if (!item.allowedRoles) return false;
-  return userRoles.some((r) => item.allowedRoles!.includes(r));
-}
+const _userRoles = (user: User | null): string[] =>
+  Array.isArray(user?.roles) ? user.roles : [];
 
-/**
- * True when the user may access a route identified by its nav-item path.
- * Safe: denies unknown authenticated routes that are not in KNOWN_PUBLIC_ROUTES.
- */
-export function hasRouteAccess(
-  userRoles: string[],
-  routePath: string,
-): boolean {
-  // Public token routes — always allowed
-  if (KNOWN_PUBLIC_ROUTES.some((p) => routePath.startsWith(p))) return true;
+const _userCapabilities = (user: User | null): string[] =>
+  Array.isArray(user?.capabilities) ? user.capabilities : [];
 
-  // Look up the route in the matrix
-  const access = ROUTE_ACCESS[routePath];
+const _hasFullAccess = (user: User | null): boolean =>
+  !!user && (_userRoles(user).some((r) => FULL_ACCESS_ROLES.includes(r)) || !!user.is_superuser);
 
-  // Unknown route (not in matrix, not public) → DENY
-  if (access === undefined) return false;
+/** True when the user is allowed to see this nav item in the sidebar. */
+export function canSeeNavItem(user: User | null, item: NavItem): boolean {
+  if (_hasFullAccess(user)) return true;
 
-  // Admin-only routes
-  if (access === "full-access") {
-    return userRoles.some((r) => FULL_ACCESS_ROLES.includes(r));
+  if (item.requiredCapability) {
+    return !!user && _userCapabilities(user).includes(item.requiredCapability);
   }
 
-  // Role-specific routes
-  if (Array.isArray(access)) {
-    if (userRoles.some((r) => FULL_ACCESS_ROLES.includes(r))) return true;
-    return userRoles.some((r) => (access as string[]).includes(r));
+  if (item.allowedRoles) {
+    return !!user && _userRoles(user).some((r) => item.allowedRoles!.includes(r));
   }
 
-  // "none" → vendor portal; handled separately in App.tsx via isVendorPortalUser
   return false;
 }
 
-/** Nav items for a group, filtered by the user's roles. */
+/**
+ * True when the user may access a route.
+ * Unknown routes not in KNOWN_PUBLIC_ROUTES are DENIED.
+ */
+export function hasRouteAccess(
+  user: User | null,
+  routePath: string,
+): boolean {
+  if (KNOWN_PUBLIC_ROUTES.some((p) => routePath.startsWith(p))) return true;
+
+  const access = ROUTE_ACCESS[routePath];
+  if (access === undefined) return false;
+
+  if (access === "full-access") return _hasFullAccess(user);
+  if (typeof access === "function") return access(user);
+
+  return !!user && _userCapabilities(user).includes(access as string);
+}
+
+/** Nav items for a group, filtered by the user's capabilities. */
 export function itemsForGroup(
   group: NavGroup,
-  userRoles: string[] = [],
+  user: User | null,
 ): NavItem[] {
-  return NAV_ITEMS.filter((n) => n.group === group && canSeeNavItem(userRoles, n));
+  return NAV_ITEMS.filter((n) => n.group === group && canSeeNavItem(user, n));
 }
 
 /** Groups that have at least one visible item for the user. */
 export function visibleGroups(
-  userRoles: string[],
+  user: User | null,
 ): { label: NavGroup; order: number }[] {
   return NAV_GROUPS.filter(
-    (g) => itemsForGroup(g.label, userRoles).length > 0,
+    (g) => itemsForGroup(g.label, user).length > 0,
   );
 }
 

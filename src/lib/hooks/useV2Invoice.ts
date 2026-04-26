@@ -11,16 +11,22 @@ import {
   extractSubmission,
   updateSubmissionFields,
   submitSubmission,
+  listVendorSendToOptions,
   cancelSubmission,
   addSubmissionDocument,
   listEligibleWorkflows,
   attachWorkflow,
+  getPendingReviewInvoices,
+  beginInvoiceReview,
+  getInvoicePayment,
+  recordInvoicePayment,
 } from "../api/v2invoice";
 import type {
   CreateInvoiceRequest,
   SubmissionCreateRequest,
   SubmissionUpdateRequest,
   InvoiceDocumentCreateRequest,
+  SubmissionSubmitRequest,
 } from "../types/v2invoice";
 
 // ── Invoice List ─────────────────────────────────────────────────────────────
@@ -140,11 +146,18 @@ export function useUpdateSubmissionFields() {
 export function useSubmitSubmission() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => submitSubmission(id),
-    onSuccess: (_data, id) => {
+    mutationFn: ({ id, data }: { id: string; data: SubmissionSubmitRequest }) => submitSubmission(id, data),
+    onSuccess: (_data, { id }) => {
       queryClient.invalidateQueries({ queryKey: ["v2", "submissions"] });
       queryClient.invalidateQueries({ queryKey: ["v2", "submission", id] });
     },
+  });
+}
+
+export function useVendorSendToOptions() {
+  return useQuery({
+    queryKey: ["v2", "vendor-send-to-options"],
+    queryFn: () => listVendorSendToOptions(),
   });
 }
 
@@ -188,6 +201,59 @@ export function useAttachWorkflow() {
     onSuccess: (_data, { invoiceId }) => {
       queryClient.invalidateQueries({ queryKey: ["v2", "invoices"] });
       queryClient.invalidateQueries({ queryKey: ["v2", "invoice", invoiceId] });
+    },
+  });
+}
+
+// ── Pending Review Queue ─────────────────────────────────────────────────────────
+
+export function usePendingReviewInvoices() {
+  return useQuery({
+    queryKey: ["v2", "pending-review"],
+    queryFn: () => getPendingReviewInvoices(),
+  });
+}
+
+export function useBeginInvoiceReview() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      invoiceId,
+      templateVersionId,
+    }: {
+      invoiceId: number;
+      templateVersionId: number;
+    }) => beginInvoiceReview(invoiceId, templateVersionId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["v2", "pending-review"] });
+    },
+  });
+}
+
+// ── Invoice Payment ─────────────────────────────────────────────────────────────
+
+export function useInvoicePayment(invoiceId: string | null) {
+  return useQuery({
+    queryKey: ["v2", "invoice", invoiceId, "payment"],
+    queryFn: () => getInvoicePayment(invoiceId!),
+    enabled: !!invoiceId,
+  });
+}
+
+export function useRecordInvoicePayment() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      invoiceId,
+      data,
+    }: {
+      invoiceId: string;
+      data: Record<string, unknown>;
+    }) => recordInvoicePayment(invoiceId, data),
+    onSuccess: (_data, { invoiceId }) => {
+      queryClient.invalidateQueries({ queryKey: ["v2", "invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["v2", "invoice", invoiceId] });
+      queryClient.invalidateQueries({ queryKey: ["v2", "invoice", invoiceId, "payment"] });
     },
   });
 }

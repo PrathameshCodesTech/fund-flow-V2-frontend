@@ -19,13 +19,18 @@ import {
   marketingApprove,
   marketingReject,
   resendVendorActivation,
+  listVendorSubmissionRoutes,
+  createVendorSubmissionRoute,
+  updateVendorSubmissionRoute,
 } from "../api/v2vendor";
 import type {
   CreateInvitationRequest,
+  CreateVendorSubmissionRouteRequest,
   ReopenSubmissionRequest,
   MarketingApproveRequest,
   MarketingRejectRequest,
   Vendor,
+  UpdateVendorSubmissionRouteRequest,
 } from "../types/v2vendor";
 
 // ── Invitations ─────────────────────────────────────────────────────────────
@@ -224,6 +229,44 @@ export function useResendVendorActivation() {
     onSuccess: (_data, id) => {
       queryClient.invalidateQueries({ queryKey: ["v2", "vendor", "vendors"] });
       queryClient.invalidateQueries({ queryKey: ["v2", "vendor", "vendor", id] });
+    },
+  });
+}
+
+export function useVendorSubmissionRoutes(params?: {
+  org?: string;
+  is_active?: string;
+}) {
+  return useQuery({
+    queryKey: ["v2", "vendor", "send-to-routes", params],
+    queryFn: async () => {
+      const res = await listVendorSubmissionRoutes(params);
+      return Array.isArray(res) ? res : (res?.results ?? []);
+    },
+    enabled: !!params?.org,
+  });
+}
+
+export function useCreateVendorSubmissionRoute() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: CreateVendorSubmissionRouteRequest) =>
+      createVendorSubmissionRoute(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["v2", "vendor", "send-to-routes"] });
+      queryClient.invalidateQueries({ queryKey: ["v2", "vendor-send-to-options"] });
+    },
+  });
+}
+
+export function useUpdateVendorSubmissionRoute() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: UpdateVendorSubmissionRouteRequest }) =>
+      updateVendorSubmissionRoute(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["v2", "vendor", "send-to-routes"] });
+      queryClient.invalidateQueries({ queryKey: ["v2", "vendor-send-to-options"] });
     },
   });
 }

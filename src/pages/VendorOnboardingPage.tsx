@@ -20,17 +20,18 @@
  *   structure and submitted in raw_form_data, matching the Excel upload path.
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams } from "react-router-dom";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import {
   getPublicInvitation,
+  getPublicSubmission,
   submitManual,
   submitExcel,
   addAttachment,
   finalizeInvitation,
 } from "@/lib/api/v2vendor";
-import type { VendorInvitation } from "@/lib/types/v2vendor";
+import type { VendorInvitation, VendorOnboardingSubmission } from "@/lib/types/v2vendor";
 import { ApiError } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -54,7 +55,6 @@ import {
   Link2,
   Upload,
   FileText,
-  Info,
 } from "lucide-react";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -71,340 +71,228 @@ function generalApiError(err: unknown): string | null {
   return null;
 }
 
-// ── Section components ─────────────────────────────────────────────────────────
+// ── Form state interfaces ─────────────────────────────────────────────────────
+// Mirrors the flat backend normalized field contract + JSON blocks.
 
-/** Read-only informational field block (for internal/requestor/sap sections) */
-function InfoBlock({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="space-y-1">
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="text-sm font-medium text-muted-foreground/80 italic">
-        {value || "—"}
-      </p>
-    </div>
-  );
-}
-
-/** Internal/read-only notice banner for sections vendor should not edit */
-function InternalNotice({ text }: { text: string }) {
-  return (
-    <div className="flex items-start gap-2 rounded-md bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
-      <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-      <span>{text}</span>
-    </div>
-  );
-}
-
-// ── Form state interfaces (mirrors VRF workbook sections) ─────────────────────
-
-interface VrfData {
-  // Section 2: Registration / Tax Details
-  tds_section: string;
-  tds_exemption_applicable: string;
-  tds_exemption_threshold: string;
-  msme_registered: string;
-  msme_type: string;
-  // Section 3: Billing / Supply Address
-  billing_address_line1: string;
-  billing_address_line2: string;
-  billing_city: string;
-  billing_state: string;
-  billing_pincode: string;
-  billing_country: string;
-  billing_phone: string;
-  billing_fax: string;
-  // Section 4: Head Office / Registered Office Address
-  registered_address_line1: string;
-  registered_address_line2: string;
-  registered_city: string;
-  registered_state: string;
-  registered_pincode: string;
-  registered_country: string;
-  registered_phone: string;
-  registered_fax: string;
-  // Section 5: Contact Person Details
-  contact_person_name: string;
-  contact_person_designation: string;
-  contact_person_email: string;
-  contact_person_phone: string;
-  contact_person_mobile: string;
-  contact_person_fax: string;
-  // Section 6: Bank / Payment Details
-  bank_branch_name: string;
-  bank_branch_address: string;
-  bank_account_type: string;
-  rtgs_neft_enabled: string;
-  micr_code: string;
-  payment_terms: string;
-  currency: string;
-  bank_guarantee_required: string;
-  bank_guarantee_amount: string;
-  importer_exporter_code: string;
-  // Section 7: Internal / Requestor (filled by internal team)
-  requestor_name: string;
-  requestor_department: string;
-  requestor_email: string;
-  requestor_phone: string;
-  requestor_date: string;
-  // Section 8: Company / Purchasing / SAP (filled by internal team)
-  sap_vendor_code: string;
-  company_code: string;
-  purchase_group: string;
-  purchasing_org: string;
-  purchase_make: string;
-  // Section 9: Approver Block (filled by internal team)
-  approver_name: string;
-  approver_designation: string;
-  approver_department: string;
-  approver_email: string;
-  // Section 10: Declaration
-  authorized_signatory_name: string;
-  authorized_signatory_designation: string;
-  authorized_signatory_date: string;
-  place: string;
-}
-
-interface ManualFormState {
-  // Section 1: Vendor Basic Details
-  vendor_name: string;
-  vendor_type: string;
-  stockiest: string;
+interface ContactPersonEntry {
+  type: "general_queries" | "secondary";
+  name: string;
+  designation: string;
   email: string;
-  phone: string;
-  website: string;
-  // Tax
-  gst_registered: string;
-  gstin: string;
-  pan: string;
-  // Section 3 (primary address) — address_line1/2/city/state/pincode/country stored as normalized
+  telephone: string;
+}
+
+interface HeadOfficeAddressBlock {
   address_line1: string;
   address_line2: string;
   city: string;
   state: string;
-  pincode: string;
   country: string;
-  address_phone: string;
-  address_fax: string;
-  // Section 6: Bank
-  bank_name: string;
-  account_number: string;
-  ifsc: string;
-  // vrf_sections: all other VRF fields grouped as in the workbook
-  vrf_sections: VrfData;
+  pincode: string;
+  phone: string;
+  fax: string;
 }
 
-const emptyVrf = (): VrfData => ({
-  tds_section: "",
-  tds_exemption_applicable: "",
-  tds_exemption_threshold: "",
-  msme_registered: "",
-  msme_type: "",
-  billing_address_line1: "",
-  billing_address_line2: "",
-  billing_city: "",
-  billing_state: "",
-  billing_pincode: "",
-  billing_country: "India",
-  billing_phone: "",
-  billing_fax: "",
-  registered_address_line1: "",
-  registered_address_line2: "",
-  registered_city: "",
-  registered_state: "",
-  registered_pincode: "",
-  registered_country: "India",
-  registered_phone: "",
-  registered_fax: "",
-  contact_person_name: "",
-  contact_person_designation: "",
-  contact_person_email: "",
-  contact_person_phone: "",
-  contact_person_mobile: "",
-  contact_person_fax: "",
-  bank_branch_name: "",
-  bank_branch_address: "",
-  bank_account_type: "",
-  rtgs_neft_enabled: "",
-  micr_code: "",
-  payment_terms: "",
-  currency: "INR",
-  bank_guarantee_required: "",
-  bank_guarantee_amount: "",
-  importer_exporter_code: "",
-  requestor_name: "",
-  requestor_department: "",
-  requestor_email: "",
-  requestor_phone: "",
-  requestor_date: "",
-  sap_vendor_code: "",
-  company_code: "",
-  purchase_group: "",
-  purchasing_org: "",
-  purchase_make: "",
-  approver_name: "",
-  approver_designation: "",
-  approver_department: "",
-  approver_email: "",
-  authorized_signatory_name: "",
-  authorized_signatory_designation: "",
-  authorized_signatory_date: "",
-  place: "",
+interface TaxRegistrationBlock {
+  tax_registration_nos: string;
+  tin_no: string;
+  cst_no: string;
+  lst_no: string;
+  esic_reg_no: string;
+  pan_ref_no: string;
+  ppf_no: string;
+}
+
+interface ManualFormState {
+  // Section 1: Business Details
+  title: string;
+  vendor_name: string;
+  vendor_type: string;
+  email: string;
+  phone: string;
+  gst_registered: boolean;
+  gstin: string;
+  pan: string;
+
+  // Section 2: Billing Address
+  address_line1: string;
+  address_line2: string;
+  address_line3: string;
+  city: string;
+  state: string;
+  country: string;
+  pincode: string;
+  region: string;
+  head_office_no: string;
+  fax: string;
+
+  // Section 3: Payment Details
+  preferred_payment_mode: string;
+  beneficiary_name: string;
+  bank_name: string;
+  account_number: string;
+  bank_account_type: string;
+  ifsc: string;
+  micr_code: string;
+  neft_code: string;
+  bank_branch_address_line1: string;
+  bank_branch_address_line2: string;
+  bank_branch_city: string;
+  bank_branch_state: string;
+  bank_branch_country: string;
+  bank_branch_pincode: string;
+  bank_phone: string;
+  bank_fax: string;
+
+  // Section 4: Contact Persons (JSON block — up to 2 rows)
+  contact_persons: [ContactPersonEntry, ContactPersonEntry];
+
+  // Section 5: Head Office Address (JSON block)
+  head_office_address: HeadOfficeAddressBlock;
+
+  // Section 6: Tax Registration Details (JSON block)
+  tax_registration_details: TaxRegistrationBlock;
+
+  // Section 7: MSME Declaration
+  msme_registered: boolean;
+  msme_registration_number: string;
+  msme_enterprise_type: "" | "micro" | "small" | "medium";
+  authorized_signatory_name: string;
+  declaration_accepted: boolean;
+}
+
+const emptyContactPerson = (): ContactPersonEntry => ({
+  type: "general_queries",
+  name: "",
+  designation: "",
+  email: "",
+  telephone: "",
 });
 
-const emptyForm = (): ManualFormState => ({
-  vendor_name: "",
-  vendor_type: "",
-  stockiest: "",
-  email: "",
-  phone: "",
-  website: "",
-  gst_registered: "",
-  gstin: "",
-  pan: "",
+const emptyHeadOfficeAddress = (): HeadOfficeAddressBlock => ({
   address_line1: "",
   address_line2: "",
   city: "",
   state: "",
-  pincode: "",
   country: "India",
-  address_phone: "",
-  address_fax: "",
-  bank_name: "",
-  account_number: "",
-  ifsc: "",
-  vrf_sections: emptyVrf(),
+  pincode: "",
+  phone: "",
+  fax: "",
 });
 
-type SectionKey = keyof ManualFormState | `vrf_sections.${keyof VrfData}`;
+const emptyTaxRegistration = (): TaxRegistrationBlock => ({
+  tax_registration_nos: "",
+  tin_no: "",
+  cst_no: "",
+  lst_no: "",
+  esic_reg_no: "",
+  pan_ref_no: "",
+  ppf_no: "",
+});
+
+const emptyForm = (): ManualFormState => ({
+  title: "",
+  vendor_name: "",
+  vendor_type: "",
+  email: "",
+  phone: "",
+  gst_registered: false,
+  gstin: "",
+  pan: "",
+  address_line1: "",
+  address_line2: "",
+  address_line3: "",
+  city: "",
+  state: "",
+  country: "India",
+  pincode: "",
+  region: "",
+  head_office_no: "",
+  fax: "",
+  preferred_payment_mode: "",
+  beneficiary_name: "",
+  bank_name: "",
+  account_number: "",
+  bank_account_type: "",
+  ifsc: "",
+  micr_code: "",
+  neft_code: "",
+  bank_branch_address_line1: "",
+  bank_branch_address_line2: "",
+  bank_branch_city: "",
+  bank_branch_state: "",
+  bank_branch_country: "India",
+  bank_branch_pincode: "",
+  bank_phone: "",
+  bank_fax: "",
+  contact_persons: [emptyContactPerson(), emptyContactPerson()],
+  head_office_address: emptyHeadOfficeAddress(),
+  tax_registration_details: emptyTaxRegistration(),
+  msme_registered: false,
+  msme_registration_number: "",
+  msme_enterprise_type: "",
+  authorized_signatory_name: "",
+  declaration_accepted: false,
+});
+
+type SectionKey = keyof ManualFormState;
 
 // ── Build payload for submitManual ─────────────────────────────────────────────
+// Produces the flat normalized + JSON block payload matching the backend contract.
 
 function buildPayload(form: ManualFormState): {
   data: Record<string, unknown>;
   finalize: boolean;
 } {
-  // Top-level: normalized fields the backend extracts into dedicated columns
   const normalized: Record<string, unknown> = {
+    title: form.title,
     vendor_name: form.vendor_name,
     vendor_type: form.vendor_type,
     email: form.email,
     phone: form.phone,
-    gst_registered: form.gst_registered === "true" || form.gst_registered === "yes",
+    fax: form.fax,
+    gst_registered: form.gst_registered,
     gstin: form.gstin,
     pan: form.pan,
+    region: form.region,
+    head_office_no: form.head_office_no,
     address_line1: form.address_line1,
     address_line2: form.address_line2,
+    address_line3: form.address_line3,
     city: form.city,
     state: form.state,
     country: form.country,
     pincode: form.pincode,
+    preferred_payment_mode: form.preferred_payment_mode,
+    beneficiary_name: form.beneficiary_name,
     bank_name: form.bank_name,
     account_number: form.account_number,
+    bank_account_type: form.bank_account_type,
     ifsc: form.ifsc,
+    micr_code: form.micr_code,
+    neft_code: form.neft_code,
+    bank_branch_address_line1: form.bank_branch_address_line1,
+    bank_branch_address_line2: form.bank_branch_address_line2,
+    bank_branch_city: form.bank_branch_city,
+    bank_branch_state: form.bank_branch_state,
+    bank_branch_country: form.bank_branch_country,
+    bank_branch_pincode: form.bank_branch_pincode,
+    bank_phone: form.bank_phone,
+    bank_fax: form.bank_fax,
+    authorized_signatory_name: form.authorized_signatory_name,
+    msme_registered: form.msme_registered,
+    msme_registration_number: form.msme_registration_number,
+    msme_enterprise_type: form.msme_enterprise_type,
+    declaration_accepted: form.declaration_accepted,
+    // JSON blocks
+    contact_persons: form.contact_persons.filter(
+      (cp) => cp.name.trim() || cp.email.trim()
+    ),
+    head_office_address: form.head_office_address,
+    tax_registration_details: form.tax_registration_details,
   };
 
-  // VRF section structure — mirrors the VRF workbook
-  const vrf_data = {
-    // Section 1 extended
-    stockiest: form.stockiest,
-    website: form.website,
-    // Section 2
-    tax_registration: {
-      tds_section: form.vrf_sections.tds_section,
-      tds_exemption_applicable: form.vrf_sections.tds_exemption_applicable,
-      tds_exemption_threshold: form.vrf_sections.tds_exemption_threshold,
-      msme_registered: form.vrf_sections.msme_registered,
-      msme_type: form.vrf_sections.msme_type,
-    },
-    // Section 3: Billing address
-    billing_address: {
-      address_line1: form.vrf_sections.billing_address_line1,
-      address_line2: form.vrf_sections.billing_address_line2,
-      city: form.vrf_sections.billing_city,
-      state: form.vrf_sections.billing_state,
-      pincode: form.vrf_sections.billing_pincode,
-      country: form.vrf_sections.billing_country,
-      phone: form.vrf_sections.billing_phone,
-      fax: form.vrf_sections.billing_fax,
-    },
-    // Section 4: Registered/head office address
-    registered_office_address: {
-      address_line1: form.vrf_sections.registered_address_line1,
-      address_line2: form.vrf_sections.registered_address_line2,
-      city: form.vrf_sections.registered_city,
-      state: form.vrf_sections.registered_state,
-      pincode: form.vrf_sections.registered_pincode,
-      country: form.vrf_sections.registered_country,
-      phone: form.vrf_sections.registered_phone,
-      fax: form.vrf_sections.registered_fax,
-    },
-    // Section 3 primary address extra
-    primary_address_phone: form.address_phone,
-    primary_address_fax: form.address_fax,
-    // Section 5: Contact person
-    contact_person: {
-      name: form.vrf_sections.contact_person_name,
-      designation: form.vrf_sections.contact_person_designation,
-      email: form.vrf_sections.contact_person_email,
-      phone: form.vrf_sections.contact_person_phone,
-      mobile: form.vrf_sections.contact_person_mobile,
-      fax: form.vrf_sections.contact_person_fax,
-    },
-    // Section 6 extended bank
-    bank_details_extended: {
-      bank_branch_name: form.vrf_sections.bank_branch_name,
-      bank_branch_address: form.vrf_sections.bank_branch_address,
-      bank_account_type: form.vrf_sections.bank_account_type,
-      rtgs_neft_enabled: form.vrf_sections.rtgs_neft_enabled,
-      micr_code: form.vrf_sections.micr_code,
-      payment_terms: form.vrf_sections.payment_terms,
-      currency: form.vrf_sections.currency,
-      bank_guarantee_required: form.vrf_sections.bank_guarantee_required,
-      bank_guarantee_amount: form.vrf_sections.bank_guarantee_amount,
-      importer_exporter_code: form.vrf_sections.importer_exporter_code,
-    },
-    // Section 7: Internal requestor
-    requestor: {
-      name: form.vrf_sections.requestor_name,
-      department: form.vrf_sections.requestor_department,
-      email: form.vrf_sections.requestor_email,
-      phone: form.vrf_sections.requestor_phone,
-      date: form.vrf_sections.requestor_date,
-    },
-    // Section 8: Company / purchasing / SAP
-    company_purchasing: {
-      sap_vendor_code: form.vrf_sections.sap_vendor_code,
-      company_code: form.vrf_sections.company_code,
-      purchase_group: form.vrf_sections.purchase_group,
-      purchasing_org: form.vrf_sections.purchasing_org,
-      purchase_make: form.vrf_sections.purchase_make,
-    },
-    // Section 9: Approver
-    approver: {
-      name: form.vrf_sections.approver_name,
-      designation: form.vrf_sections.approver_designation,
-      department: form.vrf_sections.approver_department,
-      email: form.vrf_sections.approver_email,
-    },
-    // Section 10: Declaration
-    declaration: {
-      authorized_signatory_name: form.vrf_sections.authorized_signatory_name,
-      authorized_signatory_designation: form.vrf_sections.authorized_signatory_designation,
-      authorized_signatory_date: form.vrf_sections.authorized_signatory_date,
-      place: form.vrf_sections.place,
-    },
-  };
-
-  return {
-    data: { ...normalized, vrf_data },
-    finalize: false,
-  };
+  return { data: normalized, finalize: false };
 }
 
 // ── Invalid token screen ───────────────────────────────────────────────────────
@@ -427,34 +315,127 @@ function InvalidTokenScreen({ message }: { message: string }) {
 
 function ManualStep({
   invitation,
+  initialSubmission,
   onSubmit,
   isPending,
   error,
 }: {
   invitation: VendorInvitation;
+  initialSubmission?: VendorOnboardingSubmission | null;
   onSubmit: (payload: { data: Record<string, unknown>; finalize: boolean }) => void;
   isPending: boolean;
   error: string | null;
 }) {
   const [form, setForm] = useState<ManualFormState>(emptyForm());
-  const [doFinalize, setDoFinalize] = useState(false);
-  const [declarationConfirmed, setDeclarationConfirmed] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
+
+  // Hydrate from existing draft on mount — guard prevents clobbering user edits after initial load
+  useEffect(() => {
+    if (hydrated || !initialSubmission) return;
+    const s = initialSubmission;
+    setForm({
+      title: s.normalized_title ?? "",
+      vendor_name: s.normalized_vendor_name ?? "",
+      vendor_type: s.normalized_vendor_type ?? "",
+      email: s.normalized_email ?? "",
+      phone: s.normalized_phone ?? "",
+      gst_registered: s.normalized_gst_registered ?? false,
+      gstin: s.normalized_gstin ?? "",
+      pan: s.normalized_pan ?? "",
+      address_line1: s.normalized_address_line1 ?? "",
+      address_line2: s.normalized_address_line2 ?? "",
+      address_line3: s.normalized_address_line3 ?? "",
+      city: s.normalized_city ?? "",
+      state: s.normalized_state ?? "",
+      country: s.normalized_country ?? "India",
+      pincode: s.normalized_pincode ?? "",
+      region: s.normalized_region ?? "",
+      head_office_no: s.normalized_head_office_no ?? "",
+      fax: s.normalized_fax ?? "",
+      preferred_payment_mode: s.normalized_preferred_payment_mode ?? "",
+      beneficiary_name: s.normalized_beneficiary_name ?? "",
+      bank_name: s.normalized_bank_name ?? "",
+      account_number: s.normalized_account_number ?? "",
+      bank_account_type: s.normalized_bank_account_type ?? "",
+      ifsc: s.normalized_ifsc ?? "",
+      micr_code: s.normalized_micr_code ?? "",
+      neft_code: s.normalized_neft_code ?? "",
+      bank_branch_address_line1: s.normalized_bank_branch_address_line1 ?? "",
+      bank_branch_address_line2: s.normalized_bank_branch_address_line2 ?? "",
+      bank_branch_city: s.normalized_bank_branch_city ?? "",
+      bank_branch_state: s.normalized_bank_branch_state ?? "",
+      bank_branch_country: s.normalized_bank_branch_country ?? "India",
+      bank_branch_pincode: s.normalized_bank_branch_pincode ?? "",
+      bank_phone: s.normalized_bank_phone ?? "",
+      bank_fax: s.normalized_bank_fax ?? "",
+      contact_persons: hydrateContactPersons(s.contact_persons_json),
+      head_office_address: {
+        address_line1: s.head_office_address_json?.address_line1 ?? "",
+        address_line2: s.head_office_address_json?.address_line2 ?? "",
+        city: s.head_office_address_json?.city ?? "",
+        state: s.head_office_address_json?.state ?? "",
+        country: s.head_office_address_json?.country ?? "India",
+        pincode: s.head_office_address_json?.pincode ?? "",
+        phone: s.head_office_address_json?.phone ?? "",
+        fax: s.head_office_address_json?.fax ?? "",
+      },
+      tax_registration_details: {
+        tax_registration_nos: s.tax_registration_details_json?.tax_registration_nos ?? "",
+        tin_no: s.tax_registration_details_json?.tin_no ?? "",
+        cst_no: s.tax_registration_details_json?.cst_no ?? "",
+        lst_no: s.tax_registration_details_json?.lst_no ?? "",
+        esic_reg_no: s.tax_registration_details_json?.esic_reg_no ?? "",
+        pan_ref_no: s.tax_registration_details_json?.pan_ref_no ?? "",
+        ppf_no: s.tax_registration_details_json?.ppf_no ?? "",
+      },
+      msme_registered: s.normalized_msme_registered ?? false,
+      msme_registration_number: s.normalized_msme_registration_number ?? "",
+      msme_enterprise_type: (s.normalized_msme_enterprise_type as ManualFormState["msme_enterprise_type"]) ?? "",
+      authorized_signatory_name: s.normalized_authorized_signatory_name ?? "",
+      declaration_accepted: s.declaration_accepted ?? false,
+    });
+    setHydrated(true);
+  }, [initialSubmission, hydrated]);
+
+  function hydrateContactPersons(
+    cps: ContactPerson[] | null,
+  ): [ContactPersonEntry, ContactPersonEntry] {
+    const rows = (cps ?? [])
+      .filter((cp) => cp.name?.trim() || cp.email?.trim())
+      .slice(0, 2);
+    while (rows.length < 2) rows.push(emptyContactPerson());
+    return rows as [ContactPersonEntry, ContactPersonEntry];
+  }
 
   const set = <K extends SectionKey>(key: K, value: ManualFormState[K]) => {
     setForm((f) => ({ ...f, [key]: value }));
   };
 
-  const setVrf = <K extends keyof VrfData>(key: K, value: VrfData[K]) => {
+  const setContactPerson = (idx: number, field: keyof ContactPersonEntry, value: string) => {
+    setForm((f) => {
+      const updated = [...f.contact_persons] as [ContactPersonEntry, ContactPersonEntry];
+      updated[idx] = { ...updated[idx], [field]: value };
+      return { ...f, contact_persons: updated };
+    });
+  };
+
+  const setHeadOffice = <K extends keyof HeadOfficeAddressBlock>(key: K, value: string) => {
     setForm((f) => ({
       ...f,
-      vrf_sections: { ...f.vrf_sections, [key]: value },
+      head_office_address: { ...f.head_office_address, [key]: value },
+    }));
+  };
+
+  const setTaxReg = <K extends keyof TaxRegistrationBlock>(key: K, value: string) => {
+    setForm((f) => ({
+      ...f,
+      tax_registration_details: { ...f.tax_registration_details, [key]: value },
     }));
   };
 
   const handleSubmit = (submitAsFinalize: boolean) => {
-    if (submitAsFinalize && !declarationConfirmed) return;
+    if (submitAsFinalize && !form.declaration_accepted) return;
     const payload = buildPayload(form);
-    // Override finalize in the pre-built payload
     payload.finalize = submitAsFinalize;
     onSubmit(payload);
   };
@@ -475,15 +456,31 @@ function ManualStep({
         </p>
       </div>
 
-      {/* ── SECTION 1: VENDOR BASIC DETAILS ─────────────────────────────── */}
+      {/* ── SECTION 1: BUSINESS DETAILS ─────────────────────────────────── */}
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-semibold tracking-wide uppercase text-muted-foreground">
-            Section 1 — Vendor Basic Details
+            Section 1 — Business Details
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-3 gap-4">
+            <div className="space-y-1">
+              <Label htmlFor="title">Title</Label>
+              <Select value={form.title} onValueChange={(v) => set("title", v)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Company">Company</SelectItem>
+                  <SelectItem value="Proprietorship">Proprietorship</SelectItem>
+                  <SelectItem value="Partnership">Partnership</SelectItem>
+                  <SelectItem value="LLP">LLP</SelectItem>
+                  <SelectItem value="Individual">Individual</SelectItem>
+                  <SelectItem value="Other">Other</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             <div className="col-span-2 space-y-1">
               <Label htmlFor="vendor_name">Vendor Name *</Label>
               <Input
@@ -511,19 +508,6 @@ function ManualStep({
               </Select>
             </div>
             <div className="space-y-1">
-              <Label htmlFor="stockiest">Stockiest</Label>
-              <Select value={form.stockiest} onValueChange={(v) => set("stockiest", v)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Yes">Yes</SelectItem>
-                  <SelectItem value="No">No</SelectItem>
-                  <SelectItem value="NA">NA</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
               <Label htmlFor="email">Email *</Label>
               <Input
                 id="email"
@@ -542,35 +526,32 @@ function ManualStep({
                 placeholder="+91 98765 43210"
               />
             </div>
-            <div className="col-span-2 space-y-1">
-              <Label htmlFor="website">Website</Label>
+            <div className="space-y-1">
+              <Label htmlFor="region">Region</Label>
               <Input
-                id="website"
-                value={form.website}
-                onChange={(e) => set("website", e.target.value)}
-                placeholder="https://www.company.com"
+                id="region"
+                value={form.region}
+                onChange={(e) => set("region", e.target.value)}
+                placeholder="e.g. West, East, North, South"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="head_office_no">Head Office / Site No.</Label>
+              <Input
+                id="head_office_no"
+                value={form.head_office_no}
+                onChange={(e) => set("head_office_no", e.target.value)}
+                placeholder="e.g. HO-001"
               />
             </div>
           </div>
-        </CardContent>
-      </Card>
 
-      {/* ── SECTION 2: REGISTRATION / TAX DETAILS ───────────────────────── */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-semibold tracking-wide uppercase text-muted-foreground">
-            Section 2 — Registration &amp; Tax Details
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
           <div className="flex items-center gap-3">
             <input
               type="checkbox"
               id="gst_registered"
-              checked={form.gst_registered === "true"}
-              onChange={(e) =>
-                set("gst_registered", e.target.checked ? "true" : "")
-              }
+              checked={form.gst_registered}
+              onChange={(e) => set("gst_registered", e.target.checked)}
               className="rounded border-border"
             />
             <Label htmlFor="gst_registered" className="text-sm font-normal">
@@ -578,7 +559,7 @@ function ManualStep({
             </Label>
           </div>
 
-          {form.gst_registered === "true" && (
+          {form.gst_registered && (
             <div className="space-y-1">
               <Label htmlFor="gstin">GSTIN *</Label>
               <Input
@@ -601,83 +582,14 @@ function ManualStep({
               maxLength={10}
             />
           </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1">
-              <Label htmlFor="tds_section">TDS Section</Label>
-              <Select value={form.vrf_sections.tds_section} onValueChange={(v) => setVrf("tds_section", v)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select section" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="194C">194C - Contractor</SelectItem>
-                  <SelectItem value="194">194 - Dividend</SelectItem>
-                  <SelectItem value="194A">194A - Interest</SelectItem>
-                  <SelectItem value="194H">194H - Commission</SelectItem>
-                  <SelectItem value="194I">194I - Rent</SelectItem>
-                  <SelectItem value="194J">194J - Professional</SelectItem>
-                  <SelectItem value="194Q">194Q - Purchase</SelectItem>
-                  <SelectItem value="N/A">N/A</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="tds_exemption_applicable">TDS Exemption Applicable</Label>
-              <Select value={form.vrf_sections.tds_exemption_applicable} onValueChange={(v) => setVrf("tds_exemption_applicable", v)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Yes">Yes</SelectItem>
-                  <SelectItem value="No">No</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="tds_exemption_threshold">TDS Exemption Threshold</Label>
-              <Input
-                id="tds_exemption_threshold"
-                value={form.vrf_sections.tds_exemption_threshold}
-                onChange={(e) => setVrf("tds_exemption_threshold", e.target.value)}
-                placeholder="e.g. As per applicable Act"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="msme_registered">MSME Registered</Label>
-              <Select value={form.vrf_sections.msme_registered} onValueChange={(v) => setVrf("msme_registered", v)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Yes">Yes</SelectItem>
-                  <SelectItem value="No">No</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            {form.vrf_sections.msme_registered === "Yes" && (
-              <div className="space-y-1">
-                <Label htmlFor="msme_type">MSME Type</Label>
-                <Select value={form.vrf_sections.msme_type} onValueChange={(v) => setVrf("msme_type", v)}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Micro">Micro</SelectItem>
-                    <SelectItem value="Small">Small</SelectItem>
-                    <SelectItem value="Medium">Medium</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-          </div>
         </CardContent>
       </Card>
 
-      {/* ── SECTION 3: BILLING / SUPPLY ADDRESS ─────────────────────────── */}
+      {/* ── SECTION 2: BILLING ADDRESS ───────────────────────────────────── */}
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-semibold tracking-wide uppercase text-muted-foreground">
-            Section 3 — Billing / Supply Address
+            Section 2 — Billing Address
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -695,6 +607,14 @@ function ManualStep({
               value={form.address_line2}
               onChange={(e) => set("address_line2", e.target.value)}
               placeholder="Building / floor / locality"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label>Address Line 3</Label>
+            <Input
+              value={form.address_line3}
+              onChange={(e) => set("address_line3", e.target.value)}
+              placeholder="Additional address info"
             />
           </div>
           <div className="grid grid-cols-2 gap-4">
@@ -730,18 +650,10 @@ function ManualStep({
               />
             </div>
             <div className="space-y-1">
-              <Label>Phone</Label>
-              <Input
-                value={form.address_phone}
-                onChange={(e) => set("address_phone", e.target.value)}
-                placeholder="+91 ..."
-              />
-            </div>
-            <div className="space-y-1">
               <Label>Fax</Label>
               <Input
-                value={form.address_fax}
-                onChange={(e) => set("address_fax", e.target.value)}
+                value={form.fax}
+                onChange={(e) => set("fax", e.target.value)}
                 placeholder="+91 ..."
               />
             </div>
@@ -749,197 +661,46 @@ function ManualStep({
         </CardContent>
       </Card>
 
-      {/* ── SECTION 4: HEAD OFFICE / REGISTERED OFFICE ADDRESS ─────────── */}
+      {/* ── SECTION 3: PAYMENT DETAILS ──────────────────────────────────── */}
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-semibold tracking-wide uppercase text-muted-foreground">
-            Section 4 — Head Office / Registered Office Address
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center gap-2 mb-1">
-            <input
-              type="checkbox"
-              id="same_as_billing"
-              checked={
-                form.vrf_sections.registered_address_line1 === form.address_line1 &&
-                form.address_line1 !== ""
-              }
-              onChange={(e) => {
-                if (e.target.checked) {
-                  setVrf("registered_address_line1", form.address_line1);
-                  setVrf("registered_address_line2", form.address_line2);
-                  setVrf("registered_city", form.city);
-                  setVrf("registered_state", form.state);
-                  setVrf("registered_country", form.country);
-                  setVrf("registered_pincode", form.pincode);
-                  setVrf("registered_phone", form.address_phone);
-                  setVrf("registered_fax", form.address_fax);
-                } else {
-                  setVrf("registered_address_line1", "");
-                  setVrf("registered_address_line2", "");
-                  setVrf("registered_city", "");
-                  setVrf("registered_state", "");
-                  setVrf("registered_country", "India");
-                  setVrf("registered_pincode", "");
-                  setVrf("registered_phone", "");
-                  setVrf("registered_fax", "");
-                }
-              }}
-              className="rounded border-border"
-            />
-            <Label htmlFor="same_as_billing" className="text-sm font-normal">
-              Same as Billing / Supply Address
-            </Label>
-          </div>
-
-          <div className="space-y-1">
-            <Label>Address Line 1</Label>
-            <Input
-              value={form.vrf_sections.registered_address_line1}
-              onChange={(e) => setVrf("registered_address_line1", e.target.value)}
-              placeholder="Street / area address"
-            />
-          </div>
-          <div className="space-y-1">
-            <Label>Address Line 2</Label>
-            <Input
-              value={form.vrf_sections.registered_address_line2}
-              onChange={(e) => setVrf("registered_address_line2", e.target.value)}
-              placeholder="Building / floor / locality"
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1">
-              <Label>City</Label>
-              <Input
-                value={form.vrf_sections.registered_city}
-                onChange={(e) => setVrf("registered_city", e.target.value)}
-                placeholder="Mumbai"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label>State</Label>
-              <Input
-                value={form.vrf_sections.registered_state}
-                onChange={(e) => setVrf("registered_state", e.target.value)}
-                placeholder="Maharashtra"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label>Country</Label>
-              <Input
-                value={form.vrf_sections.registered_country}
-                onChange={(e) => setVrf("registered_country", e.target.value)}
-              />
-            </div>
-            <div className="space-y-1">
-              <Label>Pincode</Label>
-              <Input
-                value={form.vrf_sections.registered_pincode}
-                onChange={(e) => setVrf("registered_pincode", e.target.value)}
-                placeholder="400001"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label>Phone</Label>
-              <Input
-                value={form.vrf_sections.registered_phone}
-                onChange={(e) => setVrf("registered_phone", e.target.value)}
-                placeholder="+91 ..."
-              />
-            </div>
-            <div className="space-y-1">
-              <Label>Fax</Label>
-              <Input
-                value={form.vrf_sections.registered_fax}
-                onChange={(e) => setVrf("registered_fax", e.target.value)}
-                placeholder="+91 ..."
-              />
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* ── SECTION 5: CONTACT PERSON DETAILS ───────────────────────────── */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-semibold tracking-wide uppercase text-muted-foreground">
-            Section 5 — Contact Person Details
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1">
-              <Label>Contact Person Name *</Label>
-              <Input
-                value={form.vrf_sections.contact_person_name}
-                onChange={(e) => setVrf("contact_person_name", e.target.value)}
-                placeholder="Full name"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label>Designation</Label>
-              <Input
-                value={form.vrf_sections.contact_person_designation}
-                onChange={(e) => setVrf("contact_person_designation", e.target.value)}
-                placeholder="e.g. Finance Manager"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label>Email *</Label>
-              <Input
-                type="email"
-                value={form.vrf_sections.contact_person_email}
-                onChange={(e) => setVrf("contact_person_email", e.target.value)}
-                placeholder="contact@company.com"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label>Phone (Landline)</Label>
-              <Input
-                value={form.vrf_sections.contact_person_phone}
-                onChange={(e) => setVrf("contact_person_phone", e.target.value)}
-                placeholder="+91 ..."
-              />
-            </div>
-            <div className="space-y-1">
-              <Label>Mobile</Label>
-              <Input
-                value={form.vrf_sections.contact_person_mobile}
-                onChange={(e) => setVrf("contact_person_mobile", e.target.value)}
-                placeholder="+91 98765 43210"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label>Fax</Label>
-              <Input
-                value={form.vrf_sections.contact_person_fax}
-                onChange={(e) => setVrf("contact_person_fax", e.target.value)}
-                placeholder="+91 ..."
-              />
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* ── SECTION 6: BANK / PAYMENT DETAILS ────────────────────────────── */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-semibold tracking-wide uppercase text-muted-foreground">
-            Section 6 — Bank / Payment Details
+            Section 3 — Payment Details
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-1">
-            <Label>Bank Name *</Label>
-            <Input
-              value={form.bank_name}
-              onChange={(e) => set("bank_name", e.target.value)}
-              placeholder="e.g. HDFC Bank"
-            />
+            <Label>Preferred Payment Mode</Label>
+            <Select value={form.preferred_payment_mode} onValueChange={(v) => set("preferred_payment_mode", v)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select mode" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="RTGS">RTGS</SelectItem>
+                <SelectItem value="NEFT">NEFT</SelectItem>
+                <SelectItem value="IMPS">IMPS</SelectItem>
+                <SelectItem value="Cheque">Cheque</SelectItem>
+                <SelectItem value="LC">Letter of Credit</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <Label>Beneficiary Name *</Label>
+              <Input
+                value={form.beneficiary_name}
+                onChange={(e) => set("beneficiary_name", e.target.value)}
+                placeholder="Name as per bank records"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>Bank Name *</Label>
+              <Input
+                value={form.bank_name}
+                onChange={(e) => set("bank_name", e.target.value)}
+                placeholder="e.g. HDFC Bank"
+              />
+            </div>
             <div className="space-y-1">
               <Label>Account Number *</Label>
               <Input
@@ -949,32 +710,8 @@ function ManualStep({
               />
             </div>
             <div className="space-y-1">
-              <Label>IFSC Code *</Label>
-              <Input
-                value={form.ifsc}
-                onChange={(e) => set("ifsc", e.target.value.toUpperCase())}
-                placeholder="HDFC0001234"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label>Bank Branch Name</Label>
-              <Input
-                value={form.vrf_sections.bank_branch_name}
-                onChange={(e) => setVrf("bank_branch_name", e.target.value)}
-                placeholder="Branch name"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label>Bank Branch Address</Label>
-              <Input
-                value={form.vrf_sections.bank_branch_address}
-                onChange={(e) => setVrf("bank_branch_address", e.target.value)}
-                placeholder="Branch address"
-              />
-            </div>
-            <div className="space-y-1">
               <Label>Account Type</Label>
-              <Select value={form.vrf_sections.bank_account_type} onValueChange={(v) => setVrf("bank_account_type", v)}>
+              <Select value={form.bank_account_type} onValueChange={(v) => set("bank_account_type", v)}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select type" />
                 </SelectTrigger>
@@ -987,155 +724,370 @@ function ManualStep({
               </Select>
             </div>
             <div className="space-y-1">
-              <Label>RTGS / NEFT / Fund Transfer Enabled</Label>
-              <Select value={form.vrf_sections.rtgs_neft_enabled} onValueChange={(v) => setVrf("rtgs_neft_enabled", v)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="RTGS">RTGS</SelectItem>
-                  <SelectItem value="NEFT">NEFT</SelectItem>
-                  <SelectItem value="Both">Both RTGS & NEFT</SelectItem>
-                  <SelectItem value="No">No</SelectItem>
-                </SelectContent>
-              </Select>
+              <Label>IFSC Code *</Label>
+              <Input
+                value={form.ifsc}
+                onChange={(e) => set("ifsc", e.target.value.toUpperCase())}
+                placeholder="HDFC0001234"
+              />
             </div>
             <div className="space-y-1">
               <Label>MICR Code</Label>
               <Input
-                value={form.vrf_sections.micr_code}
-                onChange={(e) => setVrf("micr_code", e.target.value)}
+                value={form.micr_code}
+                onChange={(e) => set("micr_code", e.target.value)}
                 placeholder="400123456"
               />
             </div>
             <div className="space-y-1">
-              <Label>Payment Terms</Label>
-              <Select value={form.vrf_sections.payment_terms} onValueChange={(v) => setVrf("payment_terms", v)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select terms" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Immediate">Immediate</SelectItem>
-                  <SelectItem value="15 Days">15 Days</SelectItem>
-                  <SelectItem value="30 Days">30 Days</SelectItem>
-                  <SelectItem value="45 Days">45 Days</SelectItem>
-                  <SelectItem value="60 Days">60 Days</SelectItem>
-                  <SelectItem value="90 Days">90 Days</SelectItem>
-                  <SelectItem value="As per contract">As per contract</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label>Currency</Label>
-              <Select value={form.vrf_sections.currency} onValueChange={(v) => setVrf("currency", v)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select currency" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="INR">INR - Indian Rupee</SelectItem>
-                  <SelectItem value="USD">USD - US Dollar</SelectItem>
-                  <SelectItem value="EUR">EUR - Euro</SelectItem>
-                  <SelectItem value="GBP">GBP - British Pound</SelectItem>
-                  <SelectItem value="SGD">SGD - Singapore Dollar</SelectItem>
-                  <SelectItem value="AED">AED - UAE Dirham</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label>Importer / Exporter Code (IEC)</Label>
+              <Label>NEFT Code</Label>
               <Input
-                value={form.vrf_sections.importer_exporter_code}
-                onChange={(e) => setVrf("importer_exporter_code", e.target.value)}
-                placeholder="AAABB1234C"
+                value={form.neft_code}
+                onChange={(e) => set("neft_code", e.target.value)}
+                placeholder="NEFT code"
+              />
+            </div>
+          </div>
+
+          {/* Bank branch contact */}
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide pt-2 pb-1">
+            Bank Branch Contact
+          </p>
+          <div className="space-y-1">
+            <Label>Branch Address Line 1</Label>
+            <Input
+              value={form.bank_branch_address_line1}
+              onChange={(e) => set("bank_branch_address_line1", e.target.value)}
+              placeholder="Street / area"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label>Branch Address Line 2</Label>
+            <Input
+              value={form.bank_branch_address_line2}
+              onChange={(e) => set("bank_branch_address_line2", e.target.value)}
+              placeholder="Building / floor"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <Label>Branch City</Label>
+              <Input
+                value={form.bank_branch_city}
+                onChange={(e) => set("bank_branch_city", e.target.value)}
+                placeholder="City"
               />
             </div>
             <div className="space-y-1">
-              <Label>Bank Guarantee Required</Label>
-              <Select value={form.vrf_sections.bank_guarantee_required} onValueChange={(v) => setVrf("bank_guarantee_required", v)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Yes">Yes</SelectItem>
-                  <SelectItem value="No">No</SelectItem>
-                </SelectContent>
-              </Select>
+              <Label>Branch State</Label>
+              <Input
+                value={form.bank_branch_state}
+                onChange={(e) => set("bank_branch_state", e.target.value)}
+                placeholder="State"
+              />
             </div>
-            {form.vrf_sections.bank_guarantee_required === "Yes" && (
+            <div className="space-y-1">
+              <Label>Branch Country</Label>
+              <Input
+                value={form.bank_branch_country}
+                onChange={(e) => set("bank_branch_country", e.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>Branch Pincode</Label>
+              <Input
+                value={form.bank_branch_pincode}
+                onChange={(e) => set("bank_branch_pincode", e.target.value)}
+                placeholder="400001"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>Branch Phone</Label>
+              <Input
+                value={form.bank_phone}
+                onChange={(e) => set("bank_phone", e.target.value)}
+                placeholder="+91 ..."
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>Branch Fax</Label>
+              <Input
+                value={form.bank_fax}
+                onChange={(e) => set("bank_fax", e.target.value)}
+                placeholder="+91 ..."
+              />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ── SECTION 4: CONTACT PERSONS ───────────────────────────────────── */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-semibold tracking-wide uppercase text-muted-foreground">
+            Section 4 — Contact Persons
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {form.contact_persons.map((cp, idx) => (
+            <div key={idx} className="rounded-lg border border-border p-4 space-y-3">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                Contact {idx + 1}
+                <span className="ml-2 normal-case font-normal">
+                  ({cp.type === "general_queries" ? "General Queries" : "Secondary"})
+                </span>
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label>Name *</Label>
+                  <Input
+                    value={cp.name}
+                    onChange={(e) => setContactPerson(idx, "name", e.target.value)}
+                    placeholder="Full name"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label>Designation</Label>
+                  <Input
+                    value={cp.designation}
+                    onChange={(e) => setContactPerson(idx, "designation", e.target.value)}
+                    placeholder="e.g. Finance Manager"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label>Email *</Label>
+                  <Input
+                    type="email"
+                    value={cp.email}
+                    onChange={(e) => setContactPerson(idx, "email", e.target.value)}
+                    placeholder="contact@company.com"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label>Telephone</Label>
+                  <Input
+                    value={cp.telephone}
+                    onChange={(e) => setContactPerson(idx, "telephone", e.target.value)}
+                    placeholder="+91 ..."
+                  />
+                </div>
+              </div>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
+      {/* ── SECTION 5: HEAD OFFICE ADDRESS ───────────────────────────────── */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-semibold tracking-wide uppercase text-muted-foreground">
+            Section 5 — Head Office Address
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-1">
+            <Label>Address Line 1</Label>
+            <Input
+              value={form.head_office_address.address_line1}
+              onChange={(e) => setHeadOffice("address_line1", e.target.value)}
+              placeholder="Street / area address"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label>Address Line 2</Label>
+            <Input
+              value={form.head_office_address.address_line2}
+              onChange={(e) => setHeadOffice("address_line2", e.target.value)}
+              placeholder="Building / floor / locality"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <Label>City</Label>
+              <Input
+                value={form.head_office_address.city}
+                onChange={(e) => setHeadOffice("city", e.target.value)}
+                placeholder="City"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>State</Label>
+              <Input
+                value={form.head_office_address.state}
+                onChange={(e) => setHeadOffice("state", e.target.value)}
+                placeholder="State"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>Country</Label>
+              <Input
+                value={form.head_office_address.country}
+                onChange={(e) => setHeadOffice("country", e.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>Pincode</Label>
+              <Input
+                value={form.head_office_address.pincode}
+                onChange={(e) => setHeadOffice("pincode", e.target.value)}
+                placeholder="400001"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>Phone</Label>
+              <Input
+                value={form.head_office_address.phone}
+                onChange={(e) => setHeadOffice("phone", e.target.value)}
+                placeholder="+91 ..."
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>Fax</Label>
+              <Input
+                value={form.head_office_address.fax}
+                onChange={(e) => setHeadOffice("fax", e.target.value)}
+                placeholder="+91 ..."
+              />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ── SECTION 6: TAX REGISTRATION DETAILS ─────────────────────────── */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-semibold tracking-wide uppercase text-muted-foreground">
+            Section 6 — Tax Registration Details
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <Label>Tax Registration Nos.</Label>
+              <Input
+                value={form.tax_registration_details.tax_registration_nos}
+                onChange={(e) => setTaxReg("tax_registration_nos", e.target.value)}
+                placeholder="Tax registration numbers"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>TIN No.</Label>
+              <Input
+                value={form.tax_registration_details.tin_no}
+                onChange={(e) => setTaxReg("tin_no", e.target.value)}
+                placeholder="TIN"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>CST No.</Label>
+              <Input
+                value={form.tax_registration_details.cst_no}
+                onChange={(e) => setTaxReg("cst_no", e.target.value)}
+                placeholder="CST"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>LST No.</Label>
+              <Input
+                value={form.tax_registration_details.lst_no}
+                onChange={(e) => setTaxReg("lst_no", e.target.value)}
+                placeholder="LST"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>ESIC Reg. No.</Label>
+              <Input
+                value={form.tax_registration_details.esic_reg_no}
+                onChange={(e) => setTaxReg("esic_reg_no", e.target.value)}
+                placeholder="ESIC"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>PAN Ref. No.</Label>
+              <Input
+                value={form.tax_registration_details.pan_ref_no}
+                onChange={(e) => setTaxReg("pan_ref_no", e.target.value)}
+                placeholder="PAN Ref"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>PPF No.</Label>
+              <Input
+                value={form.tax_registration_details.ppf_no}
+                onChange={(e) => setTaxReg("ppf_no", e.target.value)}
+                placeholder="PPF"
+              />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ── SECTION 7: MSME DECLARATION ─────────────────────────────────── */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-semibold tracking-wide uppercase text-muted-foreground">
+            Section 7 — MSME Declaration
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center gap-3">
+            <input
+              type="checkbox"
+              id="msme_registered"
+              checked={form.msme_registered}
+              onChange={(e) => set("msme_registered", e.target.checked)}
+              className="rounded border-border"
+            />
+            <Label htmlFor="msme_registered" className="text-sm font-normal">
+              MSME Registered
+            </Label>
+          </div>
+
+          {form.msme_registered && (
+            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1">
-                <Label>BG Amount</Label>
+                <Label>MSME Registration Number</Label>
                 <Input
-                  value={form.vrf_sections.bank_guarantee_amount}
-                  onChange={(e) => setVrf("bank_guarantee_amount", e.target.value)}
-                  placeholder="Amount in INR"
+                  value={form.msme_registration_number}
+                  onChange={(e) => set("msme_registration_number", e.target.value)}
+                  placeholder="UDYAM-XX-XXXX-XXXXX"
                 />
               </div>
-            )}
+              <div className="space-y-1">
+                <Label>Enterprise Type</Label>
+                <Select
+                  value={form.msme_enterprise_type}
+                  onValueChange={(v) => set("msme_enterprise_type", v as "micro" | "small" | "medium" | "")}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="micro">Micro</SelectItem>
+                    <SelectItem value="small">Small</SelectItem>
+                    <SelectItem value="medium">Medium</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-1">
+            <Label>Authorized Signatory Name</Label>
+            <Input
+              value={form.authorized_signatory_name}
+              onChange={(e) => set("authorized_signatory_name", e.target.value)}
+              placeholder="Full name of authorized signatory"
+            />
           </div>
         </CardContent>
       </Card>
 
-      {/* ── SECTION 7: INTERNAL / REQUESTOR DETAILS ──────────────────────── */}
+      {/* ── DECLARATION CARD ─────────────────────────────────────────────── */}
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-semibold tracking-wide uppercase text-muted-foreground">
-            Section 7 — Requestor Details
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <InternalNotice text="These fields are completed by the internal requestor at your organization. They do not need to be filled as part of this submission." />
-          <div className="grid grid-cols-2 gap-4">
-            <InfoBlock label="Requestor Name" value={form.vrf_sections.requestor_name} />
-            <InfoBlock label="Department" value={form.vrf_sections.requestor_department} />
-            <InfoBlock label="Email" value={form.vrf_sections.requestor_email} />
-            <InfoBlock label="Phone" value={form.vrf_sections.requestor_phone} />
-            <InfoBlock label="Date" value={form.vrf_sections.requestor_date} />
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* ── SECTION 8: COMPANY / PURCHASING / SAP DETAILS ────────────────── */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-semibold tracking-wide uppercase text-muted-foreground">
-            Section 8 — Company / Purchasing / SAP Details
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <InternalNotice text="SAP and company codes are assigned by the finance team after review. These fields are informational only." />
-          <div className="grid grid-cols-2 gap-4">
-            <InfoBlock label="SAP Vendor Code" value={form.vrf_sections.sap_vendor_code} />
-            <InfoBlock label="Company Code" value={form.vrf_sections.company_code} />
-            <InfoBlock label="Purchase Group" value={form.vrf_sections.purchase_group} />
-            <InfoBlock label="Purchasing Organization" value={form.vrf_sections.purchasing_org} />
-            <InfoBlock label="Purchase Make" value={form.vrf_sections.purchase_make} />
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* ── SECTION 9: APPROVER BLOCK ────────────────────────────────────── */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-semibold tracking-wide uppercase text-muted-foreground">
-            Section 9 — Approver Block
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <InternalNotice text="Approver details are completed by the internal team during the approval process." />
-          <div className="grid grid-cols-2 gap-4">
-            <InfoBlock label="Approver Name" value={form.vrf_sections.approver_name} />
-            <InfoBlock label="Designation" value={form.vrf_sections.approver_designation} />
-            <InfoBlock label="Department" value={form.vrf_sections.approver_department} />
-            <InfoBlock label="Email" value={form.vrf_sections.approver_email} />
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* ── SECTION 10: DECLARATION ──────────────────────────────────────── */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-semibold tracking-wide uppercase text-muted-foreground">
-            Section 10 — Declaration
+            Declaration
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -1147,49 +1099,15 @@ function ManualStep({
               organization&apos;s terms and conditions and any subsequent amendments thereto.
             </p>
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1">
-              <Label>Authorized Signatory Name *</Label>
-              <Input
-                value={form.vrf_sections.authorized_signatory_name}
-                onChange={(e) => setVrf("authorized_signatory_name", e.target.value)}
-                placeholder="Full name of signatory"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label>Designation *</Label>
-              <Input
-                value={form.vrf_sections.authorized_signatory_designation}
-                onChange={(e) => setVrf("authorized_signatory_designation", e.target.value)}
-                placeholder="e.g. Managing Director"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label>Date *</Label>
-              <Input
-                type="date"
-                value={form.vrf_sections.authorized_signatory_date}
-                onChange={(e) => setVrf("authorized_signatory_date", e.target.value)}
-              />
-            </div>
-            <div className="space-y-1">
-              <Label>Place *</Label>
-              <Input
-                value={form.vrf_sections.place}
-                onChange={(e) => setVrf("place", e.target.value)}
-                placeholder="e.g. Mumbai"
-              />
-            </div>
-          </div>
           <div className="flex items-center gap-3">
             <input
               type="checkbox"
-              id="declaration_confirmed"
-              checked={declarationConfirmed}
-              onChange={(e) => setDeclarationConfirmed(e.target.checked)}
+              id="declaration_accepted"
+              checked={form.declaration_accepted}
+              onChange={(e) => set("declaration_accepted", e.target.checked)}
               className="rounded border-border"
             />
-            <Label htmlFor="declaration_confirmed" className="text-sm font-normal">
+            <Label htmlFor="declaration_accepted" className="text-sm font-normal">
               I confirm that the information provided is accurate and I am authorized to submit this form on behalf of the organization.
             </Label>
           </div>
@@ -1217,21 +1135,17 @@ function ManualStep({
         </Button>
         <Button
           onClick={() => handleSubmit(true)}
-          disabled={isPending || !declarationConfirmed}
+          disabled={isPending || !form.declaration_accepted}
           className="flex-1"
         >
           {isPending ? (
             <><Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> Submitting...</>
           ) : (
-            doFinalize ? (
-              <><Send className="mr-1.5 h-4 w-4" /> Finalize & Submit</>
-            ) : (
-              <><Send className="mr-1.5 h-4 w-4" /> Submit & Finalize</>
-            )
+            <><Send className="mr-1.5 h-4 w-4" /> Submit & Finalize</>
           )}
         </Button>
       </div>
-      {!declarationConfirmed && (
+      {!form.declaration_accepted && (
         <p className="text-xs text-center text-muted-foreground">
           Please confirm the declaration above to submit.
         </p>
@@ -1350,16 +1264,13 @@ function ExcelStep({
 // ── Attachments step ──────────────────────────────────────────────────────────
 
 const ATTACHMENT_DOC_TYPES = [
-  "GST Certificate",
-  "PAN Card",
-  "Bank Letter / MICR",
-  "MSME Certificate",
-  "Address Proof",
-  "Import/Export Code",
-  "TDS Certificate",
-  "Cancelled Cheque",
-  "Contract / Agreement",
-  "Other",
+  { value: "msme_declaration_form", label: "MSME Declaration Form" },
+  { value: "msme_registration_certificate", label: "MSME Registration Certificate (UDYAM)" },
+  { value: "cancelled_cheque", label: "Cancelled Cheque" },
+  { value: "pan_copy", label: "PAN Copy" },
+  { value: "gst_certificate", label: "GST Certificate" },
+  { value: "bank_proof", label: "Bank Proof / Statement" },
+  { value: "supporting_document", label: "Supporting Document" },
 ];
 
 function AttachmentsStep({
@@ -1387,6 +1298,7 @@ function AttachmentsStep({
   const handleAdd = () => {
     if (!title.trim()) { setLocalError("Title is required."); return; }
     if (!file) { setLocalError("Please select a file."); return; }
+    if (!docType) { setLocalError("Please select a document type."); return; }
     setLocalError(null);
     onAdd(file, title.trim(), docType);
     setTitle("");
@@ -1479,7 +1391,7 @@ function AttachmentsStep({
                 </SelectTrigger>
                 <SelectContent>
                   {ATTACHMENT_DOC_TYPES.map((t) => (
-                    <SelectItem key={t} value={t}>{t}</SelectItem>
+                    <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -1494,7 +1406,7 @@ function AttachmentsStep({
             variant="outline"
             size="sm"
             onClick={handleAdd}
-            disabled={!file || !title.trim() || isAdding}
+            disabled={!file || !title.trim() || !docType || isAdding}
             className="gap-1.5"
           >
             {isAdding ? (
@@ -1576,6 +1488,15 @@ export default function VendorOnboardingPage() {
     { title: string; file_name: string; document_type: string }[]
   >([]);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [currentSubmission, setCurrentSubmission] = useState<VendorOnboardingSubmission | null>(null);
+
+  // Fetch existing draft when entering manual mode
+  useEffect(() => {
+    if (mode !== "manual" || !token) return;
+    getPublicSubmission(token)
+      .then((s) => setCurrentSubmission(s))
+      .catch(() => setCurrentSubmission(null));
+  }, [mode, token]);
 
   const submitManualMutation = useMutation({
     mutationFn: (payload: { data: Record<string, unknown>; finalize: boolean }) =>
@@ -1717,10 +1638,12 @@ export default function VendorOnboardingPage() {
 
             <ManualStep
               invitation={invitation}
+              initialSubmission={currentSubmission}
               onSubmit={(payload) => {
                 setSubmitError(null);
                 submitManualMutation.mutate(payload, {
-                  onSuccess: () => {
+                  onSuccess: (data) => {
+                    setCurrentSubmission(data);
                     if (payload.finalize) {
                       setMode("submitted");
                     } else {

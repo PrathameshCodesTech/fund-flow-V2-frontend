@@ -985,13 +985,20 @@ const CampaignsPage = () => {
   const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
   const [selectedCampaignId, setSelectedCampaignId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [page, setPage] = useState(1);
 
   const { data: organizations = [], isLoading: orgsLoading } = useOrganizations();
-  const { data: campaigns = [], isLoading: campaignsLoading } = useCampaigns(
-    statusFilter
-      ? { status: statusFilter, org: selectedOrgId ?? undefined }
-      : { org: selectedOrgId ?? undefined },
+  const { data: campaignResponse, isLoading: campaignsLoading } = useCampaigns(
+    {
+      org: selectedOrgId ?? undefined,
+      status: statusFilter !== "all" ? statusFilter : undefined,
+      page,
+    },
   );
+  const campaigns = campaignResponse?.results ?? [];
+  const campaignCount = campaignResponse?.count ?? 0;
+  const totalPages = Math.max(1, Math.ceil(campaignCount / 20));
+  const selectedCampaign = campaigns.find((c) => c.id === selectedCampaignId);
 
   const createCampaign = useCreateCampaign();
 
@@ -1001,6 +1008,12 @@ const CampaignsPage = () => {
       setSelectedOrgId(organizations[0].id);
     }
   }, [selectedOrgId, organizations]);
+
+  useEffect(() => {
+    if (selectedCampaignId && !campaignsLoading && !selectedCampaign) {
+      setSelectedCampaignId(null);
+    }
+  }, [campaignsLoading, selectedCampaign, selectedCampaignId]);
 
   return (
     <V2Shell
@@ -1036,10 +1049,11 @@ const CampaignsPage = () => {
               </div>
             ) : (
               <Select
-                value={selectedOrgId ?? undefined}
+                value={selectedOrgId ?? ""}
                 onValueChange={(v) => {
                   setSelectedOrgId(v);
                   setSelectedCampaignId(null);
+                  setPage(1);
                 }}
               >
                 <SelectTrigger>
@@ -1058,7 +1072,14 @@ const CampaignsPage = () => {
 
           {/* Status filter */}
           <div className="border-b border-border p-3">
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <Select
+              value={statusFilter}
+              onValueChange={(value) => {
+                setStatusFilter(value);
+                setSelectedCampaignId(null);
+                setPage(1);
+              }}
+            >
               <SelectTrigger>
                 <SelectValue placeholder="All statuses" />
               </SelectTrigger>
@@ -1088,6 +1109,12 @@ const CampaignsPage = () => {
               </div>
             ) : (
               <div className="py-1">
+                <div className="flex items-center justify-between border-b border-border px-3 py-2 text-xs text-muted-foreground">
+                  <span>
+                    Showing {(page - 1) * 20 + 1}-{(page - 1) * 20 + campaigns.length} of {campaignCount}
+                  </span>
+                  <span>Page {page} of {totalPages}</span>
+                </div>
                 {campaigns.map((campaign) => (
                   <button
                     key={campaign.id}
@@ -1109,6 +1136,30 @@ const CampaignsPage = () => {
                     <ChevronRight className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
                   </button>
                 ))}
+                <div className="sticky bottom-0 flex items-center justify-between gap-2 border-t border-border bg-background/95 p-2 backdrop-blur">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={!campaignResponse?.previous || campaignsLoading}
+                    onClick={() => {
+                      setSelectedCampaignId(null);
+                      setPage((current) => Math.max(1, current - 1));
+                    }}
+                  >
+                    Previous
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={!campaignResponse?.next || campaignsLoading}
+                    onClick={() => {
+                      setSelectedCampaignId(null);
+                      setPage((current) => current + 1);
+                    }}
+                  >
+                    Next
+                  </Button>
+                </div>
               </div>
             )}
           </div>
@@ -1116,9 +1167,9 @@ const CampaignsPage = () => {
 
         {/* Right panel: campaign detail */}
         <main className="flex-1 overflow-hidden bg-secondary/10">
-          {selectedCampaignId ? (
+          {selectedCampaign ? (
             <CampaignDetailPanel
-              campaign={campaigns.find((c) => c.id === selectedCampaignId)!}
+              campaign={selectedCampaign}
               onClose={() => setSelectedCampaignId(null)}
             />
           ) : (

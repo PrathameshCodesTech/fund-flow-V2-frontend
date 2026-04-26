@@ -3,7 +3,6 @@ import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { useAuth } from "@/contexts/AuthContext";
 import { ApiError } from "@/lib/api/client";
-import { getMyVendor } from "@/lib/api/v2vendor";
 import { Eye, EyeOff, ArrowRight, Loader2 } from "lucide-react";
 
 export default function LoginPage() {
@@ -21,11 +20,10 @@ export default function LoginPage() {
     setIsSubmitting(true);
 
     try {
-      await login(email, password);
-      try {
-        await getMyVendor();
+      const user = await login(email, password);
+      if (user.isVendorPortalUser) {
         navigate("/vendor-portal", { replace: true });
-      } catch {
+      } else {
         navigate("/", { replace: true });
       }
     } catch (err) {
@@ -47,27 +45,31 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen flex bg-background">
-      <div className="hidden lg:flex lg:w-[45%] bg-primary relative overflow-hidden flex-col justify-between p-12">
-        <div className="absolute inset-0 opacity-10">
-          <div className="absolute top-20 -left-20 w-96 h-96 rounded-full bg-primary-foreground/20 blur-3xl" />
-          <div className="absolute bottom-20 right-10 w-72 h-72 rounded-full bg-primary-foreground/10 blur-3xl" />
+      <div className="hidden lg:flex lg:w-[52%] relative overflow-hidden flex-col justify-center items-center bg-primary">
+        {/* Gradient depth overlay */}
+        <div className="absolute inset-0 bg-gradient-to-br from-black/25 via-transparent to-white/10 pointer-events-none" />
+        {/* Layered glow orbs */}
+        <div className="absolute inset-0 pointer-events-none">
+          <motion.div animate={{ scale: [1, 1.15, 1], opacity: [0.18, 0.28, 0.18] }} transition={{ duration: 7, repeat: Infinity, ease: "easeInOut" }} className="absolute -top-16 -left-16 w-80 h-80 rounded-full bg-white blur-3xl" />
+          <motion.div animate={{ scale: [1, 1.2, 1], opacity: [0.12, 0.22, 0.12] }} transition={{ duration: 9, repeat: Infinity, ease: "easeInOut", delay: 2 }} className="absolute bottom-0 -right-20 w-96 h-96 rounded-full bg-yellow-300 blur-3xl" />
+          <motion.div animate={{ scale: [1, 1.1, 1], opacity: [0.1, 0.18, 0.1] }} transition={{ duration: 6, repeat: Infinity, ease: "easeInOut", delay: 1 }} className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 rounded-full bg-orange-200 blur-2xl" />
         </div>
-        <div className="relative z-10">
-          <div className="w-12 h-12 rounded-2xl bg-primary-foreground/20 flex items-center justify-center mb-8">
-            <span className="text-primary-foreground font-bold text-lg font-display">IF</span>
-          </div>
-          <h1 className="text-4xl font-bold text-primary-foreground font-display leading-tight">
-            InvoFlow
-          </h1>
-          <p className="mt-4 text-primary-foreground/70 text-lg max-w-md">
-            Invoice and marketing fund governance from vendor bill to payment.
-          </p>
-        </div>
-        <div className="relative z-10">
-          <div className="flex items-center gap-3 text-primary-foreground/50 text-sm">
-            <div className="w-8 h-px bg-primary-foreground/30" />
-            <span>Trusted by leading enterprise teams</span>
-          </div>
+        {/* Subtle dot grid */}
+        <div className="absolute inset-0 pointer-events-none" style={{backgroundImage: "radial-gradient(circle, rgba(255,255,255,0.12) 1px, transparent 1px)", backgroundSize: "28px 28px"}} />
+        {/* Diagonal accent shapes */}
+        <div className="absolute -top-10 -right-10 w-64 h-64 rotate-45 bg-white/5 rounded-3xl pointer-events-none" />
+        <div className="absolute -bottom-16 -left-10 w-72 h-72 rotate-12 bg-black/10 rounded-3xl pointer-events-none" />
+
+        {/* Logo video — compact, centered */}
+        <div className="relative z-10 flex flex-col items-center">
+          <video
+            src="/LoginScreen.mp4"
+            autoPlay
+            loop
+            muted
+            playsInline
+            className="h-[420px] w-[480px] object-contain drop-shadow-2xl"
+          />
         </div>
       </div>
 
@@ -80,9 +82,10 @@ export default function LoginPage() {
         >
           <div className="lg:hidden mb-8">
             <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center mb-4">
-              <span className="text-primary-foreground font-bold text-sm font-display">IF</span>
+              <span className="text-primary-foreground font-bold text-xs font-display">VIMS</span>
             </div>
-            <h1 className="text-2xl font-bold font-display text-foreground">InvoFlow</h1>
+            <h1 className="text-2xl font-bold font-display text-foreground">VIMS</h1>
+            <p className="text-xs text-muted-foreground mt-0.5">Vendor Invoice Management System</p>
           </div>
 
           <h2 className="text-2xl font-bold font-display text-foreground">Welcome back</h2>

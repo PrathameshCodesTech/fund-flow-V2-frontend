@@ -180,8 +180,12 @@ export interface WorkflowTemplateVersion {
 export interface WorkflowTemplate {
   id: string;
   name: string;
+  code: string;
+  description: string;
   module: string;
   scope_node: string;
+  is_active: boolean;
+  is_default: boolean;
   created_by: string;
   created_at: string;
   updated_at: string;
@@ -194,6 +198,10 @@ export interface CreateTemplateRequest {
   name: string;
   module: string;
   scope_node: string;
+  code?: string;
+  description?: string;
+  is_active?: boolean;
+  is_default?: boolean;
 }
 
 export interface CreateVersionRequest {

@@ -15,11 +15,15 @@ export function ShellUtilityBar({ onSearchClick }: ShellUtilityBarProps) {
 
   return (
     <header className="flex items-center justify-between border-b border-border px-5 py-2.5 gap-4">
-      {/* Left: InvoFlow brand */}
-      <div className="shrink-0">
-        <p className="text-xl font-black tracking-tight text-primary leading-none">
-          InvoFlow
-        </p>
+      {/* Left: VIMs brand */}
+      <div className="shrink-0 flex items-center gap-2">
+        <video src="/LoginScreen.mp4" autoPlay loop muted playsInline className="h-9 w-9 object-contain" />
+        <div>
+          <p className="text-xl font-black tracking-tight text-primary leading-none">VIMS</p>
+          <p className="text-[10px] text-muted-foreground/70 leading-none mt-0.5">
+            Vendor Invoice Management System
+          </p>
+        </div>
       </div>
 
       {/* Center: prominent search */}
@@ -39,16 +43,16 @@ export function ShellUtilityBar({ onSearchClick }: ShellUtilityBarProps) {
         {/* Color variant toggle */}
         <div className="flex items-center rounded-md border border-border bg-secondary/50 p-0.5 gap-0.5">
           <button
-            onClick={() => setColorTheme("blue")}
-            title="Blue theme"
+            onClick={() => setColorTheme("orange")}
+            title="Orange theme"
             className={cn(
               "h-6 w-6 rounded flex items-center justify-center transition-all",
-              colorTheme === "blue"
+              colorTheme === "orange"
                 ? "bg-primary text-primary-foreground shadow-sm ring-1 ring-primary/30"
                 : "hover:bg-primary/10",
             )}
           >
-            <span className="h-2.5 w-2.5 rounded-full bg-blue-500" />
+            <span className="h-2.5 w-2.5 rounded-full bg-orange-500" />
           </button>
           <button
             onClick={() => setColorTheme("green")}

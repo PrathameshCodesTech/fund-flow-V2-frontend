@@ -1,8 +1,10 @@
-import { apiClient } from "./client";
+import { ApiError, apiClient } from "./client";
 import type {
   Invoice, InvoiceListResponse, CreateInvoiceRequest,
   VendorInvoiceSubmission, SubmissionCreateRequest,
-  SubmissionExtractResponse, SubmissionUpdateRequest,
+  SubmissionExtractResponse, SubmissionUpdateRequest, SubmissionSubmitRequest,
+  SubmissionSubmitResponse,
+  VendorSendToOption,
   InvoiceDocument, InvoiceDocumentCreateRequest,
 } from "../types/v2invoice";
 
@@ -88,10 +90,17 @@ export function updateSubmissionFields(
 
 export function submitSubmission(
   id: string,
-): Promise<{ detail: string; invoice_id: string; submission_status: string }> {
+  data: SubmissionSubmitRequest,
+): Promise<SubmissionSubmitResponse> {
   return apiClient.post(
     `/api/v1/invoices/vendor-invoice-submissions/${id}/submit/`,
-    {},
+    data,
+  );
+}
+
+export function listVendorSendToOptions(): Promise<VendorSendToOption[]> {
+  return apiClient.get<VendorSendToOption[]>(
+    "/api/v1/vendors/vendor-send-to-options/",
   );
 }
 
@@ -126,6 +135,7 @@ export function getDocument(id: string): Promise<InvoiceDocument> {
 export interface EligibleWorkflowVersion {
   template_id: number;
   template_name: string;
+  template_code: string;
   version_id: number;
   version_number: number;
   scope_node: number;
@@ -154,4 +164,71 @@ export function attachWorkflow(
   workflow_instance: { id: number; status: string; template_version_id: number };
 }> {
   return apiClient.post(`/api/v1/invoices/${invoiceId}/attach-workflow/`, data);
+}
+
+// ── Pending Review Queue ─────────────────────────────────────────────────────────
+
+export interface PendingReviewRoute {
+  template_id: number;
+  template_name: string;
+  template_code: string;
+  version_id: number;
+  version_number: number;
+  first_step_name: string;
+  user_can_begin: boolean;
+}
+
+export interface PendingReviewInvoice {
+  id: number;
+  title: string;
+  amount: string;
+  currency: string;
+  vendor_name: string | null;
+  scope_node: number;
+  scope_node_name: string;
+  created_at: string;
+  available_routes: PendingReviewRoute[];
+}
+
+export function getPendingReviewInvoices(): Promise<PendingReviewInvoice[]> {
+  return apiClient.get<PendingReviewInvoice[]>("/api/v1/invoices/pending-review/");
+}
+
+export interface BeginReviewResponse {
+  status: "activated" | "assignment_required";
+  invoice_id: number;
+  workflow_instance_id: number;
+  detail?: string;
+}
+
+export function beginInvoiceReview(
+  invoiceId: number,
+  templateVersionId: number,
+): Promise<BeginReviewResponse> {
+  return apiClient.post<BeginReviewResponse>(
+    `/api/v1/invoices/${invoiceId}/begin-review/`,
+    { template_version_id: templateVersionId },
+  );
+}
+
+// ── Invoice Payment ────────────────────────────────────────────────────────────
+
+import type { InvoicePayment } from "../types/invoice-payment";
+
+export function getInvoicePayment(invoiceId: string): Promise<InvoicePayment | null> {
+  return apiClient
+    .get<InvoicePayment>(`/api/v1/invoices/${invoiceId}/payment/`)
+    .catch((err: unknown) => {
+      if (err instanceof ApiError && err.status === 404) {
+        return null;
+      }
+      throw err;
+    });
+}
+
+export function recordInvoicePayment(
+  invoiceId: string,
+  data: Record<string, unknown>,
+): Promise<InvoicePayment> {
+  return apiClient.post<InvoicePayment>(`/api/v1/invoices/${invoiceId}/record-payment/`, data);
 }

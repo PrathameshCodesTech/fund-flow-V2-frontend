@@ -15,6 +15,7 @@ import type { V2User } from "@/lib/types/auth";
 export type UserRole =
   | "tenant_admin"
   | "org_admin"
+  | "marketing_executive"
   | "marketing_head"
   | "entity_manager"
   | "ho_executive"
@@ -28,6 +29,7 @@ export type UserRole =
 export const ROLE_LABELS: Record<UserRole, string> = {
   tenant_admin:    "Tenant Admin",
   org_admin:       "Org Admin",
+  marketing_executive: "Marketing Executive",
   marketing_head:  "Marketing Head",
   entity_manager:  "Entity Manager",
   ho_executive:    "HO Executive",
@@ -69,6 +71,7 @@ export interface User {
 const ROLE_PRIORITY: UserRole[] = [
   "tenant_admin",
   "org_admin",
+  "marketing_executive",
   "marketing_head",
   "ho_head",
   "ho_executive",
@@ -118,7 +121,7 @@ function mapCurrentUser(v2User: V2User): User {
     employee_id: v2User.employee_id ?? null,
     organization_id: null,
     organization_name: null,
-    capabilities: [],
+    capabilities: v2User.capabilities ?? [],
     isVendorPortalUser: v2User.is_vendor_portal_user ?? false,
     vendorId: v2User.vendor_id ?? null,
     vendorName: v2User.vendor_name ?? null,
@@ -130,7 +133,7 @@ function mapCurrentUser(v2User: V2User): User {
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<User>;
   logout: () => Promise<void>;
   isAuthenticated: boolean;
 }
@@ -162,9 +165,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = useCallback(
-    async (email: string, password: string): Promise<void> => {
+    async (email: string, password: string): Promise<User> => {
       const response = await apiLogin({ email, password });
-      setUser(mapCurrentUser(response.user));
+      const mappedUser = mapCurrentUser(response.user);
+      setUser(mappedUser);
+      return mappedUser;
     },
     [],
   );

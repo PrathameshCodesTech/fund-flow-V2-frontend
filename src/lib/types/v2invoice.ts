@@ -59,6 +59,7 @@ export interface Invoice {
   created_by: string;
   created_at: string;
   updated_at: string;
+  can_record_payment?: boolean;
 }
 
 // ── Vendor Invoice Submission ─────────────────────────────────────────────────
@@ -106,6 +107,10 @@ export interface VendorInvoiceSubmission {
   vendor_name: string;
   submitted_by: string;
   submitted_by_name: string;
+  correction_requested_by: string | null;
+  correction_requested_by_name: string;
+  correction_requested_at: string | null;
+  correction_note: string;
   scope_node: string;
   scope_node_name: string;
   status: SubmissionStatus;
@@ -149,6 +154,25 @@ export interface SubmissionExtractResponse {
 
 export interface SubmissionUpdateRequest {
   normalized_data: NormalizedInvoiceData;
+}
+
+export interface SubmissionSubmitRequest {
+  send_to_option_id: number;
+}
+
+export interface SubmissionSubmitResponse {
+  detail: string;
+  invoice_id: string;
+  invoice_status: string;
+  submission_status: string;
+  warnings?: Array<{ code: string; message: string }>;
+}
+
+export interface VendorSendToOption {
+  id: number;
+  code: string;
+  label: string;
+  display_order: number;
 }
 
 // ── Invoice Document ──────────────────────────────────────────────────────────

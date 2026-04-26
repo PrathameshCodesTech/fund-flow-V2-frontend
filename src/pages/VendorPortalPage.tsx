@@ -17,22 +17,32 @@ import {
   useExtractSubmission,
   useUpdateSubmissionFields,
   useSubmitSubmission,
+  useVendorSendToOptions,
   useCancelSubmission,
   useAddSubmissionDocument,
+  useInvoicePayment,
 } from "@/lib/hooks/useV2Invoice";
 import { useQuery } from "@tanstack/react-query";
 import { showErrorToast, extractErrorMessage } from "@/lib/utils/toast-error";
+import type { Vendor } from "@/lib/types/v2vendor";
 import type { Vendor } from "@/lib/types/v2vendor";
 import type {
   Invoice,
   VendorInvoiceSubmission,
   NormalizedInvoiceData,
+  VendorSendToOption,
 } from "@/lib/types/v2invoice";
 import { ApiError } from "@/lib/api/client";
 import {
   SUBMISSION_STATUS_LABELS,
   type SubmissionStatus,
 } from "@/lib/types/v2invoice";
+import {
+  PAYMENT_STATUS_LABELS,
+  PAYMENT_METHOD_LABELS,
+  type InvoicePaymentStatus,
+  type PaymentMethod,
+} from "@/lib/types/invoice-payment";
 import {
   LogOut,
   FileText,
@@ -53,7 +63,19 @@ import {
   Edit3,
   Ban,
   Eye,
+  User,
+  ShieldAlert,
 } from "lucide-react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  getPortalProfile,
+  getPortalProfileRevision,
+  savePortalDraftRevision,
+  submitPortalRevision,
+  getPortalRevisionHistory,
+} from "@/lib/api/v2vendor";
+import type { VendorProfileRevision } from "@/lib/types/v2vendor";
+import { PROFILE_REVISION_STATUS_LABELS } from "@/lib/types/v2vendor";
 
 const invoiceInputCls = "w-full px-3 py-2 text-sm rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary disabled:opacity-50";
 const invoiceErrCls = "border-destructive";
@@ -217,28 +239,102 @@ function InvoiceFormFields({
   );
 }
 
+function validatePreSubmit(form: NormalizedInvoiceData, sendToOptionId: string, vendor: Vendor): Record<string, string> {
+  const errs: Record<string, string> = {};
+  if (!sendToOptionId) errs.send_to_option_id = "Please select a Send To route.";
+  if (!form.vendor_invoice_number?.trim()) errs.vendor_invoice_number = "Required";
+  if (!form.invoice_date) errs.invoice_date = "Required";
+  if (!form.currency?.trim()) errs.currency = "Required";
+  const total = parseFloat(form.total_amount || "0") || (parseFloat(form.subtotal_amount || "0") + parseFloat(form.tax_amount || "0"));
+  if (!total || total <= 0) errs.total_amount = "Must be greater than zero";
+  if (vendor.po_mandate_enabled && !form.po_number?.trim()) errs.po_number = "PO number required for this vendor";
+  if (form.due_date && form.invoice_date && new Date(form.due_date) < new Date(form.invoice_date)) {
+    errs.due_date = "Due date cannot be before invoice date";
+  }
+  return errs;
+}
+
+function SendToField({
+  value,
+  onChange,
+  options,
+  disabled = false,
+  error,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  options: VendorSendToOption[];
+  disabled?: boolean;
+  error?: string;
+}) {
+  return (
+    <div>
+      <label className={invoiceLblCls}>Send To <span className="text-destructive">*</span></label>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className={`${invoiceInputCls} ${error ? invoiceErrCls : ""}`}
+        disabled={disabled}
+      >
+        <option value="">Select route...</option>
+        {options.map((opt) => (
+          <option key={opt.id} value={opt.id}>
+            {opt.label}
+          </option>
+        ))}
+      </select>
+      {error && <p className={invoiceErrMsgCls}>{error}</p>}
+    </div>
+  );
+}
+
 // ── Status helpers ────────────────────────────────────────────────────────────
 
-const STATUS_CONFIG: Record<string, { label: string; icon: React.ReactNode; color: string }> = {
-  draft: { label: "Draft", icon: <FileText className="w-3.5 h-3.5" />, color: "text-muted-foreground bg-muted" },
-  pending: { label: "Pending", icon: <Clock className="w-3.5 h-3.5" />, color: "text-yellow-700 bg-yellow-50 dark:text-yellow-400 dark:bg-yellow-950/40" },
-  in_review: { label: "Under Review", icon: <Clock className="w-3.5 h-3.5" />, color: "text-yellow-700 bg-yellow-50 dark:text-yellow-400 dark:bg-yellow-950/40" },
-  internally_approved: { label: "Approved", icon: <CheckCircle2 className="w-3.5 h-3.5" />, color: "text-green-700 bg-green-50 dark:text-green-400 dark:bg-green-950/40" },
-  finance_pending: { label: "Finance Pending", icon: <Clock className="w-3.5 h-3.5" />, color: "text-purple-700 bg-purple-50 dark:text-purple-400 dark:bg-purple-950/40" },
-  finance_approved: { label: "Finance Approved", icon: <CheckCircle2 className="w-3.5 h-3.5" />, color: "text-green-700 bg-green-50 dark:text-green-400 dark:bg-green-950/40" },
-  finance_rejected: { label: "Finance Rejected", icon: <XCircle className="w-3.5 h-3.5" />, color: "text-red-700 bg-red-50 dark:text-red-400 dark:bg-red-950/40" },
-  rejected: { label: "Rejected", icon: <XCircle className="w-3.5 h-3.5" />, color: "text-red-700 bg-red-50 dark:text-red-400 dark:bg-red-950/40" },
-  paid: { label: "Paid", icon: <CheckCircle2 className="w-3.5 h-3.5" />, color: "text-emerald-700 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-950/40" },
-  uploaded: { label: "Uploaded", icon: <Upload className="w-3.5 h-3.5" />, color: "text-blue-700 bg-blue-50 dark:text-blue-400 dark:bg-blue-950/40" },
-  extracting: { label: "Extracting…", icon: <Loader2 className="w-3.5 h-3.5 animate-spin" />, color: "text-blue-700 bg-blue-50 dark:text-blue-400 dark:bg-blue-950/40" },
-  needs_correction: { label: "Needs Correction", icon: <AlertCircle className="w-3.5 h-3.5" />, color: "text-orange-700 bg-orange-50 dark:text-orange-400 dark:bg-orange-950/40" },
-  ready: { label: "Ready to Submit", icon: <CheckCircle2 className="w-3.5 h-3.5" />, color: "text-green-700 bg-green-50 dark:text-green-400 dark:bg-green-950/40" },
-  submitted: { label: "Submitted", icon: <CheckCircle2 className="w-3.5 h-3.5" />, color: "text-green-700 bg-green-50 dark:text-green-400 dark:bg-green-950/40" },
-  cancelled: { label: "Cancelled", icon: <XCircle className="w-3.5 h-3.5" />, color: "text-muted-foreground bg-muted" },
+const VENDOR_DISPLAY_STATUS_CONFIG: Record<string, { label: string; icon: React.ReactNode; color: string }> = {
+  ready: {
+    label: "Ready to Submit",
+    icon: <CheckCircle2 className="w-3.5 h-3.5" />,
+    color: "text-green-700 bg-green-50 dark:text-green-400 dark:bg-green-950/40",
+  },
+  processing: {
+    label: "Processing",
+    icon: <Clock className="w-3.5 h-3.5" />,
+    color: "text-yellow-700 bg-yellow-50 dark:text-yellow-400 dark:bg-yellow-950/40",
+  },
+  action_required: {
+    label: "Action Required",
+    icon: <AlertCircle className="w-3.5 h-3.5" />,
+    color: "text-orange-700 bg-orange-50 dark:text-orange-400 dark:bg-orange-950/40",
+  },
+  paid: {
+    label: "Paid",
+    icon: <CheckCircle2 className="w-3.5 h-3.5" />,
+    color: "text-emerald-700 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-950/40",
+  },
+  cancelled: {
+    label: "Cancelled",
+    icon: <XCircle className="w-3.5 h-3.5" />,
+    color: "text-muted-foreground bg-muted",
+  },
 };
 
-function StatusBadge({ status }: { status: string }) {
-  const cfg = STATUS_CONFIG[status] ?? { label: status, icon: null, color: "text-muted-foreground bg-muted" };
+function getVendorDisplayStatus(status: string, paymentStatus?: InvoicePaymentStatus | null) {
+  if (paymentStatus === "paid" || status === "paid") return "paid";
+  if (status === "ready") return "ready";
+  if (status === "needs_correction") return "action_required";
+  if (status === "cancelled") return "cancelled";
+  return "processing";
+}
+
+function StatusBadge({
+  status,
+  paymentStatus,
+}: {
+  status: string;
+  paymentStatus?: InvoicePaymentStatus | null;
+}) {
+  const vendorStatus = getVendorDisplayStatus(status, paymentStatus);
+  const cfg = VENDOR_DISPLAY_STATUS_CONFIG[vendorStatus] ?? VENDOR_DISPLAY_STATUS_CONFIG.processing;
   return (
     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${cfg.color}`}>
       {cfg.icon}{cfg.label}
@@ -256,6 +352,19 @@ function fmtDate(dateStr: string | null | undefined) {
   if (!dateStr) return "—";
   try { return new Date(dateStr).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" }); }
   catch { return dateStr; }
+}
+
+function extractFieldErrors(err: unknown): Record<string, string> {
+  const apiErr = (err as { errors?: unknown })?.errors;
+  const fieldErrors: Record<string, string> = {};
+  if (apiErr && typeof apiErr === "object" && !Array.isArray(apiErr)) {
+    for (const [field, msgs] of Object.entries(apiErr as Record<string, unknown>)) {
+      if (Array.isArray(msgs) && msgs.length > 0) {
+        fieldErrors[field] = String(msgs[0]);
+      }
+    }
+  }
+  return fieldErrors;
 }
 
 // ── Portal header ─────────────────────────────────────────────────────────────
@@ -338,6 +447,8 @@ function MyInvoicesTab() {
 
 function InvoiceRow({ invoice }: { invoice: Invoice }) {
   const [expanded, setExpanded] = useState(false);
+  const { data: payment } = useInvoicePayment(invoice.id);
+
   return (
     <div className="rounded-xl border bg-card overflow-hidden border-border">
       <button
@@ -354,7 +465,7 @@ function InvoiceRow({ invoice }: { invoice: Invoice }) {
           </div>
         </div>
         <div className="flex items-center gap-3 shrink-0 ml-2">
-          <StatusBadge status={invoice.status} />
+          <StatusBadge status={invoice.status} paymentStatus={payment?.payment_status} />
           <span className="text-sm font-semibold text-foreground">{fmtAmount(invoice.amount, invoice.currency)}</span>
           <ChevronRight className={`w-4 h-4 text-muted-foreground transition-transform ${expanded ? "rotate-90" : ""}`} />
         </div>
@@ -370,6 +481,52 @@ function InvoiceRow({ invoice }: { invoice: Invoice }) {
             <div><span className="text-muted-foreground block mb-0.5">Currency</span><span className="font-medium">{invoice.currency}</span></div>
             <div><span className="text-muted-foreground block mb-0.5">Amount</span><span className="font-medium">{fmtAmount(invoice.amount, invoice.currency)}</span></div>
           </div>
+
+          {payment && (
+            <div className="rounded-lg border border-purple-200 bg-purple-50/60 dark:border-purple-800 dark:bg-purple-950/30 p-3 space-y-1.5">
+              <p className="text-xs font-semibold text-purple-900 dark:text-purple-100 mb-1.5">Payment Details</p>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+                <div><span className="text-muted-foreground">Status</span></div>
+                <div><span className="font-medium">{PAYMENT_STATUS_LABELS[payment.payment_status]}</span></div>
+                {payment.payment_method && (
+                  <>
+                    <div><span className="text-muted-foreground">Method</span></div>
+                    <div><span className="font-medium">{PAYMENT_METHOD_LABELS[payment.payment_method as PaymentMethod] ?? payment.payment_method}</span></div>
+                  </>
+                )}
+                {payment.paid_amount && (
+                  <>
+                    <div><span className="text-muted-foreground">Amount Paid</span></div>
+                    <div><span className="font-medium">{payment.currency} {parseFloat(payment.paid_amount).toLocaleString()}</span></div>
+                  </>
+                )}
+                {payment.payment_date && (
+                  <>
+                    <div><span className="text-muted-foreground">Payment Date</span></div>
+                    <div><span className="font-medium">{fmtDate(payment.payment_date)}</span></div>
+                  </>
+                )}
+                {payment.payment_reference_number && (
+                  <>
+                    <div><span className="text-muted-foreground">Ref Number</span></div>
+                    <div><span className="font-medium font-mono text-xs">{payment.payment_reference_number}</span></div>
+                  </>
+                )}
+                {payment.utr_number && (
+                  <>
+                    <div><span className="text-muted-foreground">UTR Number</span></div>
+                    <div><span className="font-medium font-mono text-xs">{payment.utr_number}</span></div>
+                  </>
+                )}
+                {payment.remarks && (
+                  <>
+                    <div><span className="text-muted-foreground">Remarks</span></div>
+                    <div><span className="font-medium">{payment.remarks}</span></div>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -392,6 +549,9 @@ function SubmissionRow({ submission, onClick }: { submission: VendorInvoiceSubmi
               {nd.vendor_invoice_number || submission.source_file_name || "Draft"}
             </p>
             <p className="text-xs text-muted-foreground">{fmtDate(submission.created_at)}</p>
+            {submission.status === "needs_correction" && submission.correction_note && (
+              <p className="text-xs text-orange-700 truncate mt-0.5">{submission.correction_note}</p>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-3 shrink-0 ml-2">
@@ -421,11 +581,14 @@ function SubmissionDetailPanel({
   const [form, setForm] = useState<NormalizedInvoiceData>({ ...nd });
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const updateSub = useUpdateSubmissionFields();
   const extractSub = useExtractSubmission();
   const submitSub = useSubmitSubmission();
+  const { data: sendToOptions = [] } = useVendorSendToOptions();
   const cancelSub = useCancelSubmission();
+  const [sendToOptionId, setSendToOptionId] = useState<string>("");
 
   const isBusy = updateSub.isPending || extractSub.isPending || submitSub.isPending || cancelSub.isPending;
 
@@ -440,6 +603,7 @@ function SubmissionDetailPanel({
       return next;
     });
     setValidationErrors((e) => { const n = { ...e }; delete n[key]; return n; });
+    setSubmitError(null);
   }
 
   function validateForm(data: NormalizedInvoiceData): boolean {
@@ -467,13 +631,31 @@ function SubmissionDetailPanel({
 
   async function handleSaveAndSubmit() {
     if (!validateForm(form)) return;
+    if (!sendToOptionId) {
+      setValidationErrors((prev) => ({ ...prev, send_to_option_id: "Please select a Send To route." }));
+      setSubmitError("Please select a Send To route.");
+      return;
+    }
     try {
       await updateSub.mutateAsync({ id: submission.id, data: { normalized_data: form } });
-      await submitSub.mutateAsync(submission.id);
+      await submitSub.mutateAsync({
+        id: submission.id,
+        data: { send_to_option_id: Number(sendToOptionId) },
+      });
       setSuccessMsg("Invoice submitted for review.");
+      setSubmitError(null);
       setTimeout(() => { onUpdated(); onClose(); }, 1500);
     } catch (err) {
-      showErrorToast(extractErrorMessage(err, "Failed to submit. Please try again."));
+      const msg = extractErrorMessage(err, "Failed to submit. Please try again.");
+      const fieldErrors = extractFieldErrors(err);
+      if (Object.keys(fieldErrors).length > 0) {
+        setValidationErrors((prev) => ({ ...prev, ...fieldErrors }));
+        setSubmitError(msg);
+        showErrorToast(msg);
+      } else {
+        setSubmitError(msg);
+        showErrorToast(msg);
+      }
     }
   }
 
@@ -492,6 +674,9 @@ function SubmissionDetailPanel({
   const isReadOnly = status === "submitted" || status === "cancelled";
   const isNeedsCorrection = status === "needs_correction";
   const isReady = status === "ready";
+  const workflowValidationMessage =
+    submission.validation_errors?.find((e) => e.field === "_workflow")?.message || "";
+  const correctionReason = submission.correction_note || workflowValidationMessage || validationErrors._workflow || "";
 
   const inputCls = "w-full px-3 py-2 text-sm rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary disabled:opacity-50";
   const errCls = "border-destructive";
@@ -520,8 +705,25 @@ function SubmissionDetailPanel({
 
         {/* Body */}
         <div className="px-5 py-4 space-y-4">
+          {isNeedsCorrection && correctionReason && (
+            <div className="rounded-lg border border-orange-300 bg-orange-50 px-3 py-2.5">
+              <p className="text-xs font-semibold text-orange-800 mb-1">Returned for correction</p>
+              <p className="text-sm text-orange-900">{correctionReason}</p>
+              {(submission.correction_requested_by_name || submission.correction_requested_at) && (
+                <p className="text-xs text-orange-700 mt-1">
+                  {submission.correction_requested_by_name ? `By ${submission.correction_requested_by_name}` : "Returned during internal review"}
+                  {submission.correction_requested_at ? ` on ${fmtDate(submission.correction_requested_at)}` : ""}
+                </p>
+              )}
+            </div>
+          )}
           {successMsg && (
             <div className="rounded-lg bg-green-50 text-green-700 text-sm px-3 py-2">{successMsg}</div>
+          )}
+          {submitError && (
+            <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2.5">
+              <p className="text-sm font-medium text-destructive">{submitError}</p>
+            </div>
           )}
 
           {/* Validation errors */}
@@ -554,6 +756,26 @@ function SubmissionDetailPanel({
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {!isReadOnly && (
+            <SendToField
+              value={sendToOptionId}
+              onChange={setSendToOptionId}
+              options={sendToOptions}
+              disabled={isBusy}
+              error={validationErrors.send_to_option_id}
+            />
+          )}
+
+          {/* Warnings */}
+          {submitSub.data?.warnings && submitSub.data.warnings.length > 0 && (
+            <div className="rounded-lg border border-yellow-500/30 bg-yellow-50 dark:bg-yellow-950 px-4 py-3">
+              <p className="text-xs font-semibold text-yellow-700 dark:text-yellow-300 mb-1">Warnings</p>
+              {submitSub.data.warnings.map((w, i) => (
+                <p key={i} className="text-xs text-yellow-600 dark:text-yellow-500">{w.message}</p>
+              ))}
             </div>
           )}
 
@@ -627,6 +849,7 @@ function SubmitInvoiceTab({ vendor }: { vendor: Vendor }) {
   const [extractedData, setExtractedData] = useState<NormalizedInvoiceData>({});
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const [scopeNode] = useState(vendor.scope_node || "");
   // Upload path state
@@ -644,6 +867,8 @@ function SubmitInvoiceTab({ vendor }: { vendor: Vendor }) {
   const updateSub = useUpdateSubmissionFields();
   const submitSub = useSubmitSubmission();
   const addDoc = useAddSubmissionDocument();
+  const { data: sendToOptions = [] } = useVendorSendToOptions();
+  const [sendToOptionId, setSendToOptionId] = useState<string>("");
 
   const isBusy = createSub.isPending || extractSub.isPending || submitSub.isPending;
 
@@ -671,7 +896,9 @@ function SubmitInvoiceTab({ vendor }: { vendor: Vendor }) {
     setSupportingFiles([]);
     setManualInvoiceFile(null);
     setManualSupportingFiles([]);
+    setSendToOptionId("");
     setSuccessMsg(null);
+    setSubmitError(null);
   }
 
   function handleFieldChange(key: keyof NormalizedInvoiceData, value: string) {
@@ -685,6 +912,7 @@ function SubmitInvoiceTab({ vendor }: { vendor: Vendor }) {
       return next;
     });
     setValidationErrors((e) => { const n = { ...e }; delete n[key]; return n; });
+    setSubmitError(null);
   }
 
   function validateForm(data: NormalizedInvoiceData): boolean {
@@ -709,6 +937,7 @@ function SubmitInvoiceTab({ vendor }: { vendor: Vendor }) {
     setValidationErrors({});
 
     try {
+      setSubmitError(null);
       const sub = await createSub.mutateAsync({
         scope_node: scopeNode,
         source_file: invoiceFile,
@@ -729,7 +958,9 @@ function SubmitInvoiceTab({ vendor }: { vendor: Vendor }) {
       setValidationErrors(fieldErrors);
       setStep("preview");
     } catch (err) {
-      showErrorToast(extractErrorMessage(err, "Failed to upload invoice. Please try again."));
+      const msg = extractErrorMessage(err, "Failed to upload invoice. Please try again.");
+      setSubmitError(msg);
+      showErrorToast(msg);
       setStep("upload_idle");
     }
   }
@@ -746,22 +977,52 @@ function SubmitInvoiceTab({ vendor }: { vendor: Vendor }) {
       setValidationErrors(fieldErrors);
       setStep("preview");
     } catch (err) {
-      showErrorToast(extractErrorMessage(err, "Failed to re-extract. Please fill in details manually."));
+      const msg = extractErrorMessage(err, "Failed to re-extract. Please fill in details manually.");
+      setSubmitError(msg);
+      showErrorToast(msg);
       setStep("preview");
     }
   }
 
   async function handleSubmitForReview() {
     if (!submissionId) return;
-    if (!validateForm(form)) return;
+    const preErrors = validatePreSubmit(form, sendToOptionId, vendor);
+    if (Object.keys(preErrors).length > 0) {
+      setValidationErrors(preErrors);
+      setSubmitError("Please fix the highlighted invoice fields before submitting.");
+      return;
+    }
     try {
       await updateSub.mutateAsync({ id: submissionId, data: { normalized_data: form } });
-      await submitSub.mutateAsync(submissionId);
-      setSuccessMsg("Invoice submitted for review.");
+      const result = await submitSub.mutateAsync({
+        id: submissionId,
+        data: { send_to_option_id: Number(sendToOptionId) },
+      });
+      if (result?.warnings?.length) {
+        setSuccessMsg("Invoice submitted for review.");
+      }
+      setSubmitError(null);
       setStep("submitted");
       setTimeout(resetAll, 3000);
     } catch (err) {
-      showErrorToast(extractErrorMessage(err, "Failed to submit invoice. Please try again."));
+      const msg = extractErrorMessage(err, "Failed to submit invoice. Please try again.");
+      const apiErr = (err as any)?.errors;
+      const fieldErrors: Record<string, string> = {};
+      if (apiErr && typeof apiErr === "object" && !Array.isArray(apiErr)) {
+        for (const [field, msgs] of Object.entries(apiErr as Record<string, unknown>)) {
+          if (Array.isArray(msgs) && msgs.length > 0) {
+            fieldErrors[field] = String(msgs[0]);
+          }
+        }
+      }
+      if (Object.keys(fieldErrors).length > 0) {
+        setValidationErrors(fieldErrors);
+        setSubmitError(msg);
+        showErrorToast(msg);
+      } else {
+        setSubmitError(msg);
+        showErrorToast(msg);
+      }
     }
   }
 
@@ -773,10 +1034,17 @@ function SubmitInvoiceTab({ vendor }: { vendor: Vendor }) {
       setStep("manual_filling");
       return;
     }
+    if (!sendToOptionId) {
+      setSubmitError("Select a Send To option before submitting.");
+      showErrorToast("Select a Send To option before submitting.");
+      setStep("manual_filling");
+      return;
+    }
     setStep("uploading");
     setValidationErrors({});
 
     try {
+      setSubmitError(null);
       const sub = await createSub.mutateAsync({
         scope_node: vendor.scope_node,
         source_file: manualInvoiceFile,
@@ -788,12 +1056,25 @@ function SubmitInvoiceTab({ vendor }: { vendor: Vendor }) {
         await addDoc.mutateAsync({ id: sub.id, data: { file, document_type: "supporting_document" } });
       }
 
-      await submitSub.mutateAsync(sub.id);
+      await submitSub.mutateAsync({
+        id: sub.id,
+        data: { send_to_option_id: Number(sendToOptionId) },
+      });
       setSuccessMsg("Invoice submitted for review.");
+      setSubmitError(null);
       setStep("submitted");
       setTimeout(resetAll, 3000);
     } catch (err) {
-      showErrorToast(extractErrorMessage(err, "Failed to submit invoice. Please try again."));
+      const msg = extractErrorMessage(err, "Failed to submit invoice. Please try again.");
+      const fieldErrors = extractFieldErrors(err);
+      if (Object.keys(fieldErrors).length > 0) {
+        setValidationErrors(fieldErrors);
+        setSubmitError(msg);
+        showErrorToast(msg);
+      } else {
+        setSubmitError(msg);
+        showErrorToast(msg);
+      }
       setStep("manual_filling");
     }
   }
@@ -1253,19 +1534,472 @@ function InvoiceFormFields({
   return null;
 }
 
+// ── My Profile tab ────────────────────────────────────────────────────────────
+
+const FIELD_LABELS: Record<string, string> = {
+  vendor_name: "Vendor Name", email: "Email", phone: "Phone",
+  title: "Title", vendor_type: "Vendor Type", fax: "Fax", region: "Region",
+  head_office_no: "Head Office No", gst_registered: "GST Registered",
+  address_line1: "Address Line 1", address_line2: "Address Line 2",
+  address_line3: "Address Line 3", city: "City", state: "State",
+  country: "Country", pincode: "Pincode", gstin: "GSTIN", pan: "PAN",
+  preferred_payment_mode: "Preferred Payment Mode",
+  bank_name: "Bank Name", account_number: "Account Number", ifsc: "IFSC",
+  beneficiary_name: "Beneficiary Name", bank_account_type: "Account Type",
+  micr_code: "MICR Code", neft_code: "NEFT Code",
+  bank_branch_address_line1: "Bank Branch Address Line 1",
+  bank_branch_address_line2: "Bank Branch Address Line 2",
+  bank_branch_city: "Bank Branch City",
+  bank_branch_state: "Bank Branch State",
+  bank_branch_country: "Bank Branch Country",
+  bank_branch_pincode: "Bank Branch Pincode",
+  bank_phone: "Bank Phone",
+  bank_fax: "Bank Fax",
+  authorized_signatory_name: "Authorized Signatory Name",
+  msme_registered: "MSME Registered",
+  msme_registration_number: "MSME Registration Number",
+  msme_enterprise_type: "MSME Enterprise Type",
+  declaration_accepted: "Declaration Accepted",
+};
+
+const PROFILE_SECTIONS: Array<{ title: string; fields: string[] }> = [
+  {
+    title: "Business Details",
+    fields: [
+      "title",
+      "vendor_name",
+      "vendor_type",
+      "email",
+      "phone",
+      "fax",
+      "region",
+      "head_office_no",
+    ],
+  },
+  {
+    title: "Tax Details",
+    fields: ["gst_registered", "gstin", "pan"],
+  },
+  {
+    title: "Billing Address",
+    fields: [
+      "address_line1",
+      "address_line2",
+      "address_line3",
+      "city",
+      "state",
+      "country",
+      "pincode",
+    ],
+  },
+  {
+    title: "Payment Details",
+    fields: [
+      "preferred_payment_mode",
+      "beneficiary_name",
+      "bank_name",
+      "account_number",
+      "bank_account_type",
+      "ifsc",
+      "micr_code",
+      "neft_code",
+    ],
+  },
+  {
+    title: "Bank Branch Details",
+    fields: [
+      "bank_branch_address_line1",
+      "bank_branch_address_line2",
+      "bank_branch_city",
+      "bank_branch_state",
+      "bank_branch_country",
+      "bank_branch_pincode",
+      "bank_phone",
+      "bank_fax",
+    ],
+  },
+  {
+    title: "Compliance",
+    fields: [
+      "authorized_signatory_name",
+      "msme_registered",
+      "msme_registration_number",
+      "msme_enterprise_type",
+      "declaration_accepted",
+    ],
+  },
+];
+
+function formatProfileValue(value: unknown) {
+  if (value === null || value === undefined || value === "") return "—";
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  return String(value);
+}
+
+function parseBooleanLike(value: unknown): boolean {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") return ["true", "1", "yes", "y"].includes(value.trim().toLowerCase());
+  return Boolean(value);
+}
+
+function statusBadgeCls(status: string) {
+  // applied — revision was applied to vendor profile
+  if (["applied"].includes(status)) return "bg-green-500/10 text-green-600 border-green-500/20";
+  // finance_approved — visible if portal polls after internal approval (before apply)
+  if (["finance_approved"].includes(status)) return "bg-purple-500/10 text-purple-600 border-purple-500/20";
+  // submitted — vendor submitted, waiting for internal review
+  if (["submitted"].includes(status)) return "bg-yellow-500/10 text-yellow-600 border-yellow-500/20";
+  // rejected outcomes
+  if (["finance_rejected", "cancelled"].includes(status)) return "bg-destructive/10 text-destructive border-destructive/20";
+  // draft/reopened — editable by vendor
+  return "bg-muted text-muted-foreground border-border";
+}
+
+function MyProfileTab({ vendor }: { vendor: Vendor }) {
+  const qc = useQueryClient();
+  const [editMode, setEditMode] = useState(false);
+  const [draftFields, setDraftFields] = useState<Record<string, unknown>>({});
+  const [noteInput, setNoteInput] = useState("");
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  const profileQ = useQuery({
+    queryKey: ["portal-profile"],
+    queryFn: getPortalProfile,
+  });
+
+  const revisionQ = useQuery({
+    queryKey: ["portal-profile-revision"],
+    queryFn: () => getPortalProfileRevision().catch(() => null),
+  });
+
+  const historyQ = useQuery({
+    queryKey: ["portal-revision-history"],
+    queryFn: getPortalRevisionHistory,
+  });
+
+  const saveDraftMut = useMutation({
+    mutationFn: (snap: Record<string, unknown>) => savePortalDraftRevision(snap),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["portal-profile-revision"] });
+      setEditMode(false);
+    },
+  });
+
+  const submitMut = useMutation({
+    mutationFn: submitPortalRevision,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["portal-profile-revision"] });
+      qc.invalidateQueries({ queryKey: ["portal-revision-history"] });
+      setSubmitError(null);
+    },
+    onError: (e: unknown) => {
+      setSubmitError(e instanceof Error ? e.message : "Submission failed.");
+    },
+  });
+
+  const snapshot = profileQ.data?.snapshot ?? {};
+  const revision = revisionQ.data;
+  const onHold = vendor.profile_change_pending;
+
+  function startEdit() {
+    setDraftFields(revision?.proposed_snapshot_json ?? { ...snapshot });
+    setEditMode(true);
+  }
+
+  function handleFieldChange(key: string, value: string) {
+    setDraftFields(prev => ({ ...prev, [key]: value }));
+  }
+
+  if (profileQ.isLoading) {
+    return <div className="flex items-center gap-2 py-12 justify-center text-muted-foreground"><Loader2 className="w-4 h-4 animate-spin" /><span className="text-sm">Loading profile…</span></div>;
+  }
+
+  const editableFields = Array.from(new Set(PROFILE_SECTIONS.flatMap((section) => section.fields)));
+  const contactPersons = Array.isArray(snapshot.contact_persons_json) ? snapshot.contact_persons_json : [];
+  const headOffice = (snapshot.head_office_address_json ?? {}) as Record<string, unknown>;
+  const taxRegistration = (snapshot.tax_registration_details_json ?? {}) as Record<string, unknown>;
+
+  return (
+    <div className="space-y-5">
+      {/* Hold banner */}
+      {onHold && (
+        <div className="flex items-start gap-3 px-4 py-3 rounded-xl bg-yellow-500/10 border border-yellow-500/20 text-yellow-700">
+          <ShieldAlert className="w-4 h-4 mt-0.5 shrink-0" />
+          <div>
+            <p className="text-sm font-medium">Profile under review</p>
+            <p className="text-xs mt-0.5 opacity-80">{vendor.profile_hold_reason || "A profile revision is pending review. New invoice submissions are paused until the revision is resolved."}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Active revision status */}
+      {revision && !editMode && (
+        <div className="rounded-xl border border-border bg-card p-4">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-sm font-medium text-foreground">Revision #{revision.revision_number}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {revision.changed_fields_json.length} field{revision.changed_fields_json.length !== 1 ? "s" : ""} changed
+                {revision.submitted_at && ` · submitted ${new Date(revision.submitted_at).toLocaleDateString()}`}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${statusBadgeCls(revision.status)}`}>
+                {PROFILE_REVISION_STATUS_LABELS[revision.status]}
+              </span>
+              {["draft", "reopened"].includes(revision.status) && (
+                <button onClick={startEdit} className="text-xs px-3 py-1 rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity">
+                  Edit
+                </button>
+              )}
+              {["draft", "reopened"].includes(revision.status) && revision.changed_fields_json.length > 0 && (
+                <button
+                  onClick={() => submitMut.mutate()}
+                  disabled={submitMut.isPending}
+                  className="text-xs px-3 py-1 rounded-lg border border-primary text-primary hover:bg-primary/5 transition-colors"
+                >
+                  {submitMut.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Submit"}
+                </button>
+              )}
+            </div>
+          </div>
+          {submitError && <p className="mt-2 text-xs text-destructive">{submitError}</p>}
+          {revision.changed_fields_json.length > 0 && (
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {revision.changed_fields_json.map(f => (
+                <span key={f} className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
+                  {FIELD_LABELS[f] ?? f}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Edit form */}
+      {editMode ? (
+        <div className="rounded-xl border border-border bg-card p-4 space-y-4">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-semibold text-foreground">Edit Profile Fields</p>
+            <button onClick={() => setEditMode(false)} className="text-muted-foreground hover:text-foreground"><X className="w-4 h-4" /></button>
+          </div>
+          <div className="space-y-5">
+            {PROFILE_SECTIONS.map((section) => (
+              <div key={section.title}>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                  {section.title}
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {section.fields.map((key) => {
+                    const value = draftFields[key] ?? snapshot[key] ?? "";
+                    if (key === "gst_registered" || key === "msme_registered" || key === "declaration_accepted") {
+                      return (
+                        <label key={key} className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground">
+                          <input
+                            type="checkbox"
+                            checked={parseBooleanLike(value)}
+                            onChange={(e) => handleFieldChange(key, e.target.checked ? "true" : "false")}
+                            className="h-4 w-4"
+                          />
+                          <span>{FIELD_LABELS[key] ?? key}</span>
+                        </label>
+                      );
+                    }
+                    return (
+                      <div key={key}>
+                        <label className="block text-xs font-medium text-foreground mb-1">{FIELD_LABELS[key] ?? key}</label>
+                        <input
+                          type="text"
+                          value={String(value)}
+                          onChange={e => handleFieldChange(key, e.target.value)}
+                          className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                Contact Persons
+              </p>
+              <div className="rounded-lg border border-border bg-background/50 p-3 text-xs text-muted-foreground">
+                Contact persons remain visible in profile. Structured editing for these rows is not yet supported in the portal revision form.
+              </div>
+            </div>
+
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                Head Office Address
+              </p>
+              <div className="rounded-lg border border-border bg-background/50 p-3 text-xs text-muted-foreground">
+                Head office address remains visible in profile. Structured editing for this block is not yet supported in the portal revision form.
+              </div>
+            </div>
+
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                Tax Registration Details
+              </p>
+              <div className="rounded-lg border border-border bg-background/50 p-3 text-xs text-muted-foreground">
+                Tax registration details remain visible in profile. Structured editing for this block is not yet supported in the portal revision form.
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 pt-2">
+            <button
+              onClick={() => saveDraftMut.mutate(draftFields)}
+              disabled={saveDraftMut.isPending}
+              className="px-4 py-2 text-sm rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-60 flex items-center gap-1.5"
+            >
+              {saveDraftMut.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+              Save Draft
+            </button>
+            <button onClick={() => setEditMode(false)} className="px-4 py-2 text-sm rounded-lg border border-border text-foreground hover:bg-muted transition-colors">
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        /* Read-only profile view */
+        <div className="rounded-xl border border-border bg-card p-4">
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-sm font-semibold text-foreground">Current Profile</p>
+            {!onHold && !["submitted", "finance_approved"].includes(revision?.status ?? "") && (
+              <button onClick={startEdit} className="text-xs px-3 py-1 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:border-primary transition-colors">
+                Request Changes
+              </button>
+            )}
+          </div>
+          <div className="space-y-5">
+            {PROFILE_SECTIONS.map((section) => (
+              <div key={section.title}>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                  {section.title}
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2.5">
+                  {section.fields.map((key) => (
+                    <div key={key}>
+                      <p className="text-[10px] text-muted-foreground uppercase tracking-wide">{FIELD_LABELS[key] ?? key}</p>
+                      <p className="text-sm text-foreground mt-0.5">{formatProfileValue(snapshot[key])}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                Contact Persons
+              </p>
+              {contactPersons.length > 0 ? (
+              <div>
+                <div className="space-y-3">
+                  {contactPersons.map((person, idx) => {
+                    const cp = person as Record<string, unknown>;
+                    return (
+                      <div key={idx} className="rounded-lg border border-border bg-background/50 p-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2.5">
+                          {["type", "name", "designation", "email", "telephone"]
+                            .map((key) => (
+                              <div key={key}>
+                                <p className="text-[10px] text-muted-foreground uppercase tracking-wide">
+                                  {FIELD_LABELS[key] ?? key}
+                                </p>
+                                <p className="text-sm text-foreground mt-0.5">{formatProfileValue(cp[key])}</p>
+                              </div>
+                            ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">—</p>
+              )}
+            </div>
+
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                Head Office Address
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2.5">
+                {["address_line1", "address_line2", "city", "state", "country", "pincode", "phone", "fax"].map((key) => (
+                  <div key={key}>
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-wide">{FIELD_LABELS[key] ?? key}</p>
+                    <p className="text-sm text-foreground mt-0.5">{formatProfileValue(headOffice[key])}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                Tax Registration Details
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2.5">
+                {["tax_registration_nos", "tin_no", "cst_no", "lst_no", "esic_reg_no", "pan_ref_no", "ppf_no"].map((key) => (
+                  <div key={key}>
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-wide">{FIELD_LABELS[key] ?? key}</p>
+                    <p className="text-sm text-foreground mt-0.5">{formatProfileValue(taxRegistration[key])}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* History */}
+      {historyQ.data && historyQ.data.length > 0 && (
+        <div className="rounded-xl border border-border bg-card p-4">
+          <p className="text-sm font-semibold text-foreground mb-3">Revision History</p>
+          <div className="space-y-2">
+            {historyQ.data.slice(0, 5).map(rev => (
+              <div key={rev.id} className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">Rev #{rev.revision_number}</span>
+                <span className="text-xs text-muted-foreground">{new Date(rev.created_at).toLocaleDateString()}</span>
+                <span className={`text-xs px-2 py-0.5 rounded-full border ${statusBadgeCls(rev.status)}`}>
+                  {PROFILE_REVISION_STATUS_LABELS[rev.status]}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 // ── Portal ─────────────────────────────────────────────────────────────────────
 
 function Portal({ vendor, userName, onLogout }: { vendor: Vendor; userName: string; onLogout: () => void }) {
-  const [tab, setTab] = useState<"invoices" | "submit">("invoices");
+  const [tab, setTab] = useState<"invoices" | "submit" | "profile">("invoices");
 
   return (
     <div className="min-h-screen bg-background">
       <PortalHeader vendorName={vendor.vendor_name} userName={userName} onLogout={onLogout} />
+
+      {/* Profile hold global banner */}
+      {vendor.profile_change_pending && (
+        <div className="bg-yellow-500/10 border-b border-yellow-500/20 px-4 py-2.5">
+          <div className="max-w-2xl mx-auto flex items-center gap-2 text-yellow-700 text-sm">
+            <ShieldAlert className="w-4 h-4 shrink-0" />
+            <span>Your profile is under review. New invoice submissions are paused. <button onClick={() => setTab("profile")} className="underline font-medium">View revision</button></span>
+          </div>
+        </div>
+      )}
+
       <div className="border-b border-border bg-card">
         <div className="max-w-2xl mx-auto px-4 sm:px-6 flex">
           {([
             { id: "invoices", label: "My Invoices", icon: <FileText className="w-4 h-4" /> },
             { id: "submit",   label: "Submit Invoice", icon: <Upload className="w-4 h-4" /> },
+            { id: "profile",  label: "My Profile", icon: <User className="w-4 h-4" /> },
           ] as const).map(({ id, label, icon }) => (
             <button
               key={id}
@@ -1275,6 +2009,9 @@ function Portal({ vendor, userName, onLogout }: { vendor: Vendor; userName: stri
               }`}
             >
               {icon}{label}
+              {id === "profile" && vendor.profile_change_pending && (
+                <span className="w-1.5 h-1.5 rounded-full bg-yellow-500 inline-block" />
+              )}
             </button>
           ))}
         </div>
@@ -1282,6 +2019,7 @@ function Portal({ vendor, userName, onLogout }: { vendor: Vendor; userName: stri
       <main className="max-w-2xl mx-auto px-4 sm:px-6 py-6">
         {tab === "invoices" && <MyInvoicesTab />}
         {tab === "submit"   && <SubmitInvoiceTab vendor={vendor} />}
+        {tab === "profile"  && <MyProfileTab vendor={vendor} />}
       </main>
     </div>
   );

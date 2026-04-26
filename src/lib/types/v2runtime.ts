@@ -201,6 +201,8 @@ export interface ReviewDocument {
   file_name: string;
   file_type: string;
   has_file: boolean;
+  is_source_file?: boolean;
+  file_url?: string | null;
 }
 
 export interface ReviewSubject {
@@ -296,6 +298,8 @@ export interface AllowedSplitEntity {
   business_unit_id?: number;
   business_unit_name?: string;
   eligible_approvers: AllocationEligibleApprover[];
+  approval_required: boolean;
+  approval_mode: string;
   categories?: Array<{
     id: number;
     name: string;
@@ -327,6 +331,15 @@ export interface AllowedSplitEntity {
     available_amount?: string;
     currency?: string;
   }>;
+  budget_lines?: Array<{
+    id: number;
+    budget_id: number;
+    category_id: number;
+    category_name: string | null;
+    subcategory_id: number | null;
+    subcategory_name: string | null;
+    allocated_amount: string;
+  }>;
   default_category_id: number | null;
   default_category_name: string | null;
   default_subcategory_id: number | null;
@@ -344,6 +357,7 @@ export interface SplitStepConfig {
   require_campaign: boolean;
   allow_multiple_lines_per_entity: boolean;
   approver_selection_mode: string;
+  branch_approval_policy: string;
 }
 
 export interface ExistingAllocationLine {
@@ -385,7 +399,7 @@ export interface AllocationLine {
   campaign?: number | null;
   budget?: number | null;
   amount: string;
-  selected_approver: number;
+  selected_approver: number | null;
   note?: string;
 }
 
@@ -427,18 +441,102 @@ export interface AllocationContextLine {
   campaign_id: number | null;
   campaign_name: string | null;
   budget_id: number | null;
+  budget_name?: string | null;
+  budget_code?: string | null;
   selected_approver: ReviewUser | null;
+  selected_by?: ReviewUser | null;
+  selected_at?: string | null;
+  approved_by?: ReviewUser | null;
+  approved_at?: string | null;
+  rejected_by?: ReviewUser | null;
+  rejected_at?: string | null;
   status: InvoiceAllocationStatus;
   rejection_reason: string;
   note: string;
   branch_id: number | null;
   revision_number: number;
+  budget_impact?: {
+    budget: {
+      id: number;
+      name: string | null;
+      code: string | null;
+      currency: string | null;
+      allocated_amount: string | null;
+      reserved_amount: string | null;
+      consumed_amount: string | null;
+      available_amount: string | null;
+      before_reserved_amount: string | null;
+      before_consumed_amount: string | null;
+      before_available_amount: string | null;
+      effect_reserved_amount: string | null;
+      effect_consumed_amount: string | null;
+      effect_released_amount: string | null;
+    };
+    line: {
+      id: number;
+      allocated_amount: string;
+      reserved_amount: string;
+      consumed_amount: string;
+      available_amount: string;
+      utilization_percent: string;
+      before_reserved_amount: string;
+      before_consumed_amount: string;
+      before_available_amount: string;
+      effect_reserved_amount: string;
+      effect_consumed_amount: string;
+      effect_released_amount: string;
+    } | null;
+  } | null;
 }
 
 export interface AllocationContext {
+  allocation_mode: "SINGLE" | "SPLIT";
   is_runtime_split: boolean;
   step_config: SplitStepConfig;
   allocations: AllocationContextLine[];
+}
+
+export interface AllocationAuditHistoryEntry {
+  id: number;
+  allocation_id: number;
+  revision_number: number;
+  changed_by: ReviewUser | null;
+  changed_at: string;
+  change_reason: string;
+  snapshot: {
+    entity_id: number | null;
+    entity_name: string | null;
+    category_id: number | null;
+    category_name: string | null;
+    subcategory_id: number | null;
+    subcategory_name: string | null;
+    campaign_id: number | null;
+    campaign_name: string | null;
+    budget_id: number | null;
+    budget_name: string | null;
+    budget_code: string | null;
+    amount: string | null;
+    selected_approver_id: number | null;
+    status: string | null;
+    note: string | null;
+  };
+}
+
+export interface AllocationAudit {
+  summary: {
+    invoice_amount: string;
+    currency: string;
+    line_count: number;
+    entity_count: number;
+    budget_count: number;
+    total_allocated: string;
+    is_balanced: boolean;
+    latest_revision_number: number;
+    splitters: ReviewUser[];
+    latest_selected_at: string | null;
+  };
+  current_allocations: AllocationContextLine[];
+  history: AllocationAuditHistoryEntry[];
 }
 
 export interface TaskReviewData {
@@ -448,6 +546,102 @@ export interface TaskReviewData {
   timeline: ReviewTimelineEvent[];
   allocation_context?: AllocationContext | null;
   branch_allocation?: AllocationContextLine | null;
+  allocation_audit?: AllocationAudit | null;
+}
+
+// ── Single Allocation (SINGLE_ALLOCATION step) ──────────────────────────────────
+
+export interface AllowedSingleEntity {
+  entity_id: number;
+  entity_name: string;
+  node_type: string;
+  categories: Array<{ id: number; name: string; code: string }>;
+  subcategories: Array<{ id: number; name: string; code: string; category_id: number }>;
+  campaigns: Array<{
+    id: number;
+    name: string;
+    code: string;
+    category_id: number | null;
+    subcategory_id: number | null;
+    budget_id: number | null;
+    approved_amount: string;
+  }>;
+  budgets: Array<{
+    id: number;
+    name: string;
+    category_id: number | null;
+    subcategory_id: number | null;
+    scope_node_id: number | null;
+    scope_node_name: string | null;
+    allocated_amount: string;
+    available_amount: string;
+    currency: string;
+  }>;
+}
+
+export interface SingleAllocationOptionsData {
+  invoice: {
+    id: number;
+    title: string;
+    amount: string;
+    currency: string;
+    vendor_name: string | null;
+    scope_node_id: number;
+    scope_node_name: string;
+  };
+  allowed_entities: AllowedSingleEntity[];
+  existing_allocation: {
+    id: number;
+    entity_id: number;
+    entity_name: string | null;
+    category_id: number | null;
+    subcategory_id: number | null;
+    campaign_id: number | null;
+    budget_id: number | null;
+    amount: string;
+    status: string;
+    note: string;
+    revision_number: number;
+  } | null;
+  step_config: {
+    allocation_mode: "SINGLE";
+    amount_locked: boolean;
+    amount: string;
+    require_category: boolean;
+    require_subcategory: boolean;
+    require_budget: boolean;
+    require_campaign: boolean;
+  };
+}
+
+export interface SubmitSingleAllocationRequest {
+  entity: number;
+  category?: number | null;
+  subcategory?: number | null;
+  campaign?: number | null;
+  budget?: number | null;
+  note?: string;
+}
+
+export interface SubmitSingleAllocationResult {
+  allocation: {
+    id: number;
+    entity_id: number;
+    entity_name: string;
+    amount: string;
+    percentage: string;
+    category_id: number | null;
+    subcategory_id: number | null;
+    campaign_id: number | null;
+    budget_id: number | null;
+    status: string;
+    revision_number: number;
+  };
+  budget_reservation: {
+    allocation_id: number;
+    status: string;
+    projected_utilization: string;
+  } | null;
 }
 
 // ── Request shapes ────────────────────────────────────────────────────────────

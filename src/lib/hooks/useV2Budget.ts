@@ -17,6 +17,14 @@ import {
   createBudget,
   updateBudget,
   deleteBudget,
+  listBudgetLines,
+  getBudgetLine,
+  createBudgetLine,
+  updateBudgetLine,
+  deleteBudgetLine,
+  reserveBudgetLine,
+  consumeBudgetLine,
+  releaseBudgetLine,
   listRules,
   getRule,
   createRule,
@@ -33,8 +41,13 @@ import type {
   UpdateCategoryRequest,
   CreateSubCategoryRequest,
   UpdateSubCategoryRequest,
+  CreateBudgetLineRequest,
+  UpdateBudgetLineRequest,
   CreateBudgetRequest,
   UpdateBudgetRequest,
+  ReserveBudgetLineRequest,
+  ConsumeBudgetLineRequest,
+  ReleaseBudgetLineRequest,
   CreateRuleRequest,
   UpdateRuleRequest,
   ReviewVarianceRequest,
@@ -155,8 +168,6 @@ export function useDeleteSubCategory() {
 export function useBudgets(params?: {
   org?: string;
   scope_node?: string;
-  category?: string;
-  subcategory?: string;
   financial_year?: string;
   status?: string;
 }) {
@@ -205,6 +216,116 @@ export function useDeleteBudget() {
     mutationFn: (id: string) => deleteBudget(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["v2", "budget", "budgets"] });
+    },
+  });
+}
+
+// ── BudgetLines ───────────────────────────────────────────────────────────────
+
+export function useBudgetLines(params?: { budget?: string; category?: string }) {
+  return useQuery({
+    queryKey: ["v2", "budget", "lines", params],
+    queryFn: async () => {
+      const res = await listBudgetLines(params);
+      return res.results;
+    },
+  });
+}
+
+export function useBudgetLine(id: string | null) {
+  return useQuery({
+    queryKey: ["v2", "budget", "line", id],
+    queryFn: () => getBudgetLine(id!),
+    enabled: !!id,
+  });
+}
+
+export function useCreateBudgetLine() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: CreateBudgetLineRequest & { budget: string }) =>
+      createBudgetLine(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["v2", "budget", "lines"] });
+    },
+  });
+}
+
+export function useUpdateBudgetLine() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: UpdateBudgetLineRequest }) =>
+      updateBudgetLine(id, data),
+    onSuccess: (_data, { id }) => {
+      queryClient.invalidateQueries({ queryKey: ["v2", "budget", "lines"] });
+      queryClient.invalidateQueries({ queryKey: ["v2", "budget", "line", id] });
+    },
+  });
+}
+
+export function useDeleteBudgetLine() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => deleteBudgetLine(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["v2", "budget", "lines"] });
+    },
+  });
+}
+
+// ── Runtime: Reserve / Consume / Release ─────────────────────────────────────
+
+export function useReserveBudgetLine() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      budgetId,
+      data,
+    }: {
+      budgetId: string;
+      data: ReserveBudgetLineRequest;
+    }) => reserveBudgetLine(budgetId, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["v2", "budget", "budgets"] });
+      queryClient.invalidateQueries({ queryKey: ["v2", "budget", "lines"] });
+      queryClient.invalidateQueries({ queryKey: ["v2", "budget", "consumptions"] });
+      queryClient.invalidateQueries({ queryKey: ["v2", "budget", "varianceRequests"] });
+    },
+  });
+}
+
+export function useConsumeBudgetLine() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      budgetId,
+      data,
+    }: {
+      budgetId: string;
+      data: ConsumeBudgetLineRequest;
+    }) => consumeBudgetLine(budgetId, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["v2", "budget", "budgets"] });
+      queryClient.invalidateQueries({ queryKey: ["v2", "budget", "lines"] });
+      queryClient.invalidateQueries({ queryKey: ["v2", "budget", "consumptions"] });
+    },
+  });
+}
+
+export function useReleaseBudgetLine() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      budgetId,
+      data,
+    }: {
+      budgetId: string;
+      data: ReleaseBudgetLineRequest;
+    }) => releaseBudgetLine(budgetId, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["v2", "budget", "budgets"] });
+      queryClient.invalidateQueries({ queryKey: ["v2", "budget", "lines"] });
+      queryClient.invalidateQueries({ queryKey: ["v2", "budget", "consumptions"] });
     },
   });
 }
@@ -265,6 +386,7 @@ export function useDeleteRule() {
 
 export function useConsumptions(params?: {
   budget?: string;
+  budget_line?: string;
   source_type?: string;
   source_id?: string;
   consumption_type?: string;

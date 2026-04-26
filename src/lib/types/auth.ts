@@ -97,6 +97,8 @@ export interface V2User {
   is_staff: boolean;
   is_superuser: boolean;
   assigned_roles: V2AssignedRole[];
+  /** Stable capability strings computed server-side from role assignments. */
+  capabilities: string[];
   /** True when the user has an active UserVendorAssignment (vendor portal user). */
   is_vendor_portal_user: boolean;
   vendor_id: string | null;

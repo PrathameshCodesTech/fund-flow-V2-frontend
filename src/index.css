@@ -7,7 +7,7 @@
 @layer base {
   /* ── Blue Light (default) ────────────────────────────────────────────────── */
   :root,
-  [data-color="blue"] {
+  [data-color="orange"] {
     --background: 40 33% 98%;
     --foreground: 220 20% 14%;
 
@@ -17,7 +17,7 @@
     --popover: 0 0% 100%;
     --popover-foreground: 220 20% 14%;
 
-    --primary: 224 76% 48%;
+    --primary: 24 95% 53%;
     --primary-foreground: 0 0% 100%;
 
     --secondary: 220 14% 96%;
@@ -34,7 +34,7 @@
 
     --border: 220 13% 91%;
     --input: 220 13% 91%;
-    --ring: 224 76% 48%;
+    --ring: 24 95% 53%;
 
     --radius: 1rem;
 
@@ -53,12 +53,12 @@
 
     --sidebar-background: 0 0% 100%;
     --sidebar-foreground: 220 10% 46%;
-    --sidebar-primary: 224 76% 48%;
+    --sidebar-primary: 24 95% 53%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 224 76% 48%;
+    --sidebar-accent: 24 95% 53%;
     --sidebar-accent-foreground: 0 0% 100%;
     --sidebar-border: 220 13% 93%;
-    --sidebar-ring: 224 76% 48%;
+    --sidebar-ring: 24 95% 53%;
 
     --surface-raised: 0 0% 100%;
     --surface-sunken: 40 33% 97%;
@@ -66,7 +66,7 @@
 
   /* ── Blue Dark ───────────────────────────────────────────────────────────── */
   .dark,
-  [data-color="blue"].dark {
+  [data-color="orange"].dark {
     --background: 220 20% 8%;
     --foreground: 220 14% 90%;
 
@@ -76,7 +76,7 @@
     --popover: 220 18% 11%;
     --popover-foreground: 220 14% 90%;
 
-    --primary: 224 76% 62%;
+    --primary: 24 95% 60%;
     --primary-foreground: 0 0% 100%;
 
     --secondary: 220 16% 16%;
@@ -93,7 +93,7 @@
 
     --border: 220 16% 18%;
     --input: 220 16% 18%;
-    --ring: 224 76% 62%;
+    --ring: 24 95% 60%;
 
     --success: 152 60% 42%;
     --success-foreground: 0 0% 100%;
@@ -110,12 +110,12 @@
 
     --sidebar-background: 220 20% 8%;
     --sidebar-foreground: 220 10% 56%;
-    --sidebar-primary: 224 76% 62%;
+    --sidebar-primary: 24 95% 60%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 224 76% 62%;
+    --sidebar-accent: 24 95% 60%;
     --sidebar-accent-foreground: 0 0% 100%;
     --sidebar-border: 220 16% 14%;
-    --sidebar-ring: 224 76% 62%;
+    --sidebar-ring: 24 95% 60%;
 
     --surface-raised: 220 18% 11%;
     --surface-sunken: 220 20% 6%;

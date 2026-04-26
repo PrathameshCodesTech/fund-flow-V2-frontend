@@ -22,8 +22,10 @@ export function useHotkey(
       const wantsMeta = combo.includes("meta");
       const wantsCtrl = combo.includes("ctrl");
       const key = combo[combo.length - 1];
+      const eventKey = typeof e.key === "string" ? e.key : "";
 
-      if (e.key.toLowerCase() !== key.toLowerCase()) return;
+      if (typeof key !== "string" || !key) return;
+      if (!eventKey || eventKey.toLowerCase() !== key.toLowerCase()) return;
       if (wantsMeta && !e.metaKey) return;
       if (wantsCtrl && !e.ctrlKey) return;
 

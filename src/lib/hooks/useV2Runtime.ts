@@ -16,6 +16,8 @@ import {
   getTaskReview,
   getSplitOptions,
   submitSplit,
+  getSingleAllocationOptions,
+  submitSingleAllocation,
   listSplitOptions,
   createSplitOption,
   updateSplitOption,
@@ -32,6 +34,7 @@ import type {
   AssignmentPlan,
   TaskKind,
   SubmitSplitRequest,
+  SubmitSingleAllocationRequest,
 } from "../types/v2runtime";
 
 // ── Instances ────────────────────────────────────────────────────────────────
@@ -231,6 +234,30 @@ export function useSubmitSplit() {
       queryClient.invalidateQueries({ queryKey: ["v2", "tasks"] });
       queryClient.invalidateQueries({ queryKey: ["v2", "instances"] });
       queryClient.invalidateQueries({ queryKey: ["v2", "splitOptions"] });
+      queryClient.invalidateQueries({ queryKey: ["v2", "taskReview"] });
+    },
+  });
+}
+
+// ── Single Allocation ─────────────────────────────────────────────────────────
+
+export function useSingleAllocationOptions(instanceStepId: string | null) {
+  return useQuery({
+    queryKey: ["v2", "singleAllocationOptions", instanceStepId],
+    queryFn: () => getSingleAllocationOptions(instanceStepId!),
+    enabled: !!instanceStepId,
+  });
+}
+
+export function useSubmitSingleAllocation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ instanceStepId, data }: { instanceStepId: string; data: SubmitSingleAllocationRequest }) =>
+      submitSingleAllocation(instanceStepId, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["v2", "tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["v2", "instances"] });
+      queryClient.invalidateQueries({ queryKey: ["v2", "singleAllocationOptions"] });
       queryClient.invalidateQueries({ queryKey: ["v2", "taskReview"] });
     },
   });

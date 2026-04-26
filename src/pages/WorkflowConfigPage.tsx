@@ -22,6 +22,11 @@ import {
 } from "@/lib/hooks/useV2WorkflowConfig";
 import { useOrganizations, useScopeNodes } from "@/lib/hooks/useScopeNodes";
 import { useRoles } from "@/lib/hooks/useAccess";
+import {
+  useVendorSubmissionRoutes,
+  useCreateVendorSubmissionRoute,
+  useUpdateVendorSubmissionRoute,
+} from "@/lib/hooks/useV2Vendor";
 import { UserPicker } from "@/components/v2/UserPicker";
 import { MultiSelectUnits } from "@/components/v2/MultiSelectUnits";
 import type {
@@ -49,6 +54,7 @@ import {
   SPLIT_TARGET_MODE_LABELS,
   JOIN_POLICY_LABELS,
 } from "@/lib/types/v2workflow";
+import type { VendorSubmissionRoute } from "@/lib/types/v2vendor";
 import { ApiError } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -181,6 +187,8 @@ function CreateWorkflowDialog({
 }) {
   const { data: nodes = [] } = useScopeNodes(orgId ?? undefined);
   const [selectedModule, setSelectedModule] = useState("");
+  const [isDefault, setIsDefault] = useState(false);
+  const [isActive, setIsActive] = useState(true);
 
   const {
     register,
@@ -193,6 +201,8 @@ function CreateWorkflowDialog({
       name: "",
       module: "",
       scope_node: nodeId ?? "",
+      code: "",
+      description: "",
     },
   });
 
@@ -211,6 +221,8 @@ function CreateWorkflowDialog({
     if (!v) {
       reset();
       setSelectedModule("");
+      setIsDefault(false);
+      setIsActive(true);
     }
   }
 
@@ -220,6 +232,10 @@ function CreateWorkflowDialog({
         name: data.name,
         module: data.module,
         scope_node: data.scope_node,
+        code: data.code || undefined,
+        description: data.description || undefined,
+        is_active: isActive,
+        is_default: isDefault,
       });
       handleClose(false);
       onSuccess?.(result.id ?? result as unknown as string);
@@ -230,9 +246,7 @@ function CreateWorkflowDialog({
 
   const submitError =
     createTemplate.isError && createTemplate.error instanceof ApiError
-      ? createTemplate.error.message.includes("module, scope_node")
-        ? `A ${selectedModule || "workflow"} already exists for ${selectedNodeLabel}. This model allows one workflow template per module per unit. Create a new version of the existing workflow instead.`
-        : createTemplate.error.message
+      ? createTemplate.error.message
       : createTemplate.isError
       ? "Failed to create workflow"
       : null;
@@ -251,6 +265,13 @@ function CreateWorkflowDialog({
             <Input
               {...register("name", { required: "Required" })}
               placeholder="e.g. Invoice Approval Flow"
+            />
+          </FormField>
+
+          <FormField label="Code" error={errors.code?.message} hint="Stable slug identifier — auto-generated from name if left blank.">
+            <Input
+              {...register("code")}
+              placeholder="e.g. invoice-6-step (optional)"
             />
           </FormField>
 
@@ -275,6 +296,34 @@ function CreateWorkflowDialog({
           <FormField label="Unit" error={errors.scope_node?.message} hint="This workflow will be created for the unit selected in the page header.">
             <Input value={selectedNodeLabel} readOnly disabled />
           </FormField>
+
+          <FormField label="Description" error={errors.description?.message}>
+            <Input
+              {...register("description")}
+              placeholder="Optional description"
+            />
+          </FormField>
+
+          <div className="flex gap-4">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={isActive}
+                onChange={(e) => setIsActive(e.target.checked)}
+                className="h-4 w-4"
+              />
+              Active
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={isDefault}
+                onChange={(e) => setIsDefault(e.target.checked)}
+                className="h-4 w-4"
+              />
+              Default variant for this module &amp; unit
+            </label>
+          </div>
 
           {submitError && (
             <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -1202,23 +1251,30 @@ function EditWorkflowTemplateDialog({
   const deleteTemplate = useDeleteTemplate();
   const { data: nodes = [] } = useScopeNodes(undefined);
 
+  const [editIsActive, setEditIsActive] = useState(template.is_active);
+  const [editIsDefault, setEditIsDefault] = useState(template.is_default);
+
+  const scopeNodeLabel = nodes.find((n) => n.id === template.scope_node)?.name ?? template.scope_node;
+  const moduleLabel = MODULE_OPTIONS.find((m) => m.value === template.module)?.label ?? template.module;
+
   const {
     register,
     handleSubmit,
     reset,
-    setValue,
     formState: { errors },
-  } = useForm<{ name: string; module: string; scope_node: string }>({
+  } = useForm<{ name: string; description: string }>({
     defaultValues: {
       name: template.name,
-      module: template.module,
-      scope_node: template.scope_node,
+      description: template.description,
     },
   });
 
-  const onSubmit = async (data: { name: string; module: string; scope_node: string }) => {
+  const onSubmit = async (data: { name: string; description: string }) => {
     try {
-      await updateTemplate.mutateAsync({ id: template.id, data });
+      await updateTemplate.mutateAsync({
+        id: template.id,
+        data: { name: data.name, description: data.description, is_active: editIsActive, is_default: editIsDefault },
+      });
       setOpen(false);
       onUpdated?.();
     } catch {}
@@ -1241,7 +1297,7 @@ function EditWorkflowTemplateDialog({
           <DialogHeader>
             <DialogTitle>Edit Workflow</DialogTitle>
             <DialogDescription>
-              Update the workflow name or change its module assignment.
+              Update the workflow name, description, or variant settings.
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
@@ -1252,23 +1308,45 @@ function EditWorkflowTemplateDialog({
               />
             </FormField>
 
-            <FormField label="Module" error={errors.module?.message}>
-              <Select
-                defaultValue={template.module}
-                onValueChange={(v) => setValue("module", v)}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {MODULE_OPTIONS.map((m) => (
-                    <SelectItem key={m.value} value={m.value}>
-                      {m.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <FormField label="Code" hint="Read-only — set at creation time.">
+              <Input value={template.code} readOnly disabled />
             </FormField>
+
+            <FormField label="Module" hint="Read-only — cannot be changed after creation.">
+              <Input value={moduleLabel} readOnly disabled />
+            </FormField>
+
+            <FormField label="Unit" hint="Read-only — cannot be changed after creation.">
+              <Input value={scopeNodeLabel} readOnly disabled />
+            </FormField>
+
+            <FormField label="Description" error={errors.description?.message}>
+              <Input
+                {...register("description")}
+                placeholder="Optional description"
+              />
+            </FormField>
+
+            <div className="flex gap-4">
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={editIsActive}
+                  onChange={(e) => setEditIsActive(e.target.checked)}
+                  className="h-4 w-4"
+                />
+                Active
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={editIsDefault}
+                  onChange={(e) => setEditIsDefault(e.target.checked)}
+                  className="h-4 w-4"
+                />
+                Default variant
+              </label>
+            </div>
 
             {submitError && (
               <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -1353,7 +1431,15 @@ function WorkflowCard({
     >
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
-          <p className="truncate pr-2 text-sm font-medium text-foreground">{workflow.name}</p>
+          <div className="flex items-center gap-1.5 pr-2">
+            <p className="truncate text-sm font-medium text-foreground">{workflow.name}</p>
+            {!workflow.is_active && (
+              <Badge variant="outline" className="text-xs text-muted-foreground shrink-0">Inactive</Badge>
+            )}
+            {workflow.is_default && (
+              <Badge variant="outline" className="text-xs bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 shrink-0">Default</Badge>
+            )}
+          </div>
           <div className="mt-1 flex flex-wrap items-center gap-1.5">
             <Badge
               variant="outline"
@@ -1361,6 +1447,11 @@ function WorkflowCard({
             >
               {workflow.module}
             </Badge>
+            {workflow.code && (
+              <Badge variant="outline" className="text-xs font-mono text-muted-foreground">
+                {workflow.code}
+              </Badge>
+            )}
             {workflow.scope_node && nodeMap[workflow.scope_node] && (
               <Badge variant="outline" className="max-w-full text-xs">
                 <Building2 className="mr-1 h-2.5 w-2.5 shrink-0" />
@@ -1954,6 +2045,7 @@ function ApprovalPipelineView({
                 <ApprovalGroupCard
                   key={group.id}
                   group={group}
+                  existingGroups={groups}
                   isLast={idx === groups.length - 1}
                   versionStatus={liveVersion.status}
                   orgId={orgId}
@@ -1990,12 +2082,14 @@ function ApprovalPipelineView({
 
 function ApprovalGroupCard({
   group,
+  existingGroups,
   isLast,
   versionStatus,
   orgId,
   onRefresh,
 }: {
   group: StepGroup;
+  existingGroups: StepGroup[];
   isLast: boolean;
   versionStatus: string;
   orgId: string | null;
@@ -2041,7 +2135,9 @@ function ApprovalGroupCard({
             {isDraft && (
               <EditApprovalGroupDialog
                 group={group}
-                existingGroups={[]}
+                existingGroups={existingGroups.filter(
+                  (g) => g.id !== group.id && g.display_order < group.display_order,
+                )}
                 onSuccess={onRefresh}
               />
             )}
@@ -2346,6 +2442,7 @@ function VersionSelector({
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 const WorkflowConfigPage = () => {
+  const [viewMode, setViewMode] = useState<"workflows" | "routes">("workflows");
   const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
@@ -2475,118 +2572,131 @@ const WorkflowConfigPage = () => {
         )
       }
     >
-      <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
-        {/* Left: workflow list */}
-        <aside className="flex w-[20rem] shrink-0 flex-col border-r border-border bg-background xl:w-[22rem]">
-          {/* Header + create */}
-          <div className="border-b border-border p-3">
-            <p className="text-xs text-muted-foreground mb-2">
-              Define approval flows for each module and unit.
-            </p>
-            <Button
-              size="sm"
-              className="gap-1.5 w-full"
-              onClick={() => setCreateOpen(true)}
-              disabled={!selectedNodeId}
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        <div className="border-b border-border bg-background px-5 py-3">
+          <div className="inline-flex rounded-lg border border-border bg-secondary/40 p-1">
+            <button
+              className={`rounded-md px-3 py-1.5 text-sm ${viewMode === "workflows" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground"}`}
+              onClick={() => setViewMode("workflows")}
             >
-              <Plus className="h-3.5 w-3.5" />
-              New Workflow
-            </Button>
+              Workflows
+            </button>
+            <button
+              className={`rounded-md px-3 py-1.5 text-sm ${viewMode === "routes" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground"}`}
+              onClick={() => setViewMode("routes")}
+            >
+              Send To Routes
+            </button>
           </div>
+        </div>
 
-          {/* Workflow list */}
-          <ScrollArea className="flex-1">
-            {templatesLoading ? (
-              <PageLoading />
-            ) : templates.length === 0 ? (
-              <div className="flex flex-col items-center gap-2 p-6 text-center">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
-                  <GitBranch className="h-5 w-5 text-primary" />
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-foreground">
-                    {selectedNodeId ? "No workflows yet" : "Select a unit first"}
-                  </p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {selectedNodeId
-                      ? "Create a workflow for this unit to get started."
-                      : "Choose an organization and unit to see its workflows."}
-                  </p>
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-1 p-2">
-                {templates.map((t) => (
-                  <WorkflowCard
-                    key={t.id}
-                    workflow={t}
-                    isSelected={selectedTemplateId === t.id}
-                    onClick={() => handleSelectTemplate(t.id)}
-                    nodeMap={nodeMap}
-                    onUpdated={refetchTemplates}
-                    onDeleted={handleTemplateDeleted}
-                  />
-                ))}
-              </div>
-            )}
-          </ScrollArea>
-        </aside>
-
-        {/* Right: workflow detail */}
-        <main className="flex min-h-0 min-w-0 flex-1 overflow-hidden bg-secondary/5">
-          {!selectedTemplateId ? (
-            <div className="flex h-full flex-col items-center justify-center gap-3 text-center px-8">
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
-                <GitBranch className="h-6 w-6 text-primary" />
-              </div>
-              <div>
-                <p className="text-sm font-medium text-foreground">
-                  Select a workflow
+        {viewMode === "routes" ? (
+          <SendToRoutesManager orgId={selectedOrgId} nodeId={selectedNodeId} />
+        ) : (
+          <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
+            <aside className="flex w-[20rem] shrink-0 flex-col border-r border-border bg-background xl:w-[22rem]">
+              <div className="border-b border-border p-3">
+                <p className="mb-2 text-xs text-muted-foreground">
+                  Define approval flows for each module and unit.
                 </p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Choose a workflow from the list to view its versions and approval stages.
-                </p>
-              </div>
-            </div>
-          ) : (
-            <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
-              {/* Left: versions */}
-              <div className="w-[16rem] shrink-0 overflow-y-auto border-r border-border bg-background p-4 xl:w-[18rem]">
-                <VersionSelector
-                  templateId={selectedTemplateId}
-                  versions={versions}
-                  selectedVersionId={selectedVersionId}
-                  onSelect={setSelectedVersionId}
-                  orgId={selectedOrgId}
-                  onRefresh={handleVersionRefresh}
-                />
+                <Button
+                  size="sm"
+                  className="w-full gap-1.5"
+                  onClick={() => setCreateOpen(true)}
+                  disabled={!selectedNodeId}
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  New Workflow
+                </Button>
               </div>
 
-              {/* Right: pipeline view */}
-              <div className="min-h-0 min-w-0 flex-1 overflow-y-auto p-5">
-                {!selectedVersionId ? (
-                  <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
-                    <Layers className="h-8 w-8 text-muted-foreground" />
+              <ScrollArea className="flex-1">
+                {templatesLoading ? (
+                  <PageLoading />
+                ) : templates.length === 0 ? (
+                  <div className="flex flex-col items-center gap-2 p-6 text-center">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
+                      <GitBranch className="h-5 w-5 text-primary" />
+                    </div>
                     <div>
                       <p className="text-sm font-medium text-foreground">
-                        Select a version
+                        {selectedNodeId ? "No workflows yet" : "Select a unit first"}
                       </p>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        Choose the live version to see the current approval flow, or a draft to continue editing.
+                        {selectedNodeId
+                          ? "Create a workflow for this unit to get started."
+                          : "Choose an organization and unit to see its workflows."}
                       </p>
                     </div>
                   </div>
-                ) : selectedVersion ? (
-                  <ApprovalPipelineView
-                    version={selectedVersion}
-                    orgId={selectedOrgId}
-                    onRefresh={handleVersionRefresh}
-                  />
-                ) : null}
-              </div>
-            </div>
-          )}
-        </main>
+                ) : (
+                  <div className="space-y-1 p-2">
+                    {templates.map((t) => (
+                      <WorkflowCard
+                        key={t.id}
+                        workflow={t}
+                        isSelected={selectedTemplateId === t.id}
+                        onClick={() => handleSelectTemplate(t.id)}
+                        nodeMap={nodeMap}
+                        onUpdated={refetchTemplates}
+                        onDeleted={handleTemplateDeleted}
+                      />
+                    ))}
+                  </div>
+                )}
+              </ScrollArea>
+            </aside>
+
+            <main className="flex min-h-0 min-w-0 flex-1 overflow-hidden bg-secondary/5">
+              {!selectedTemplateId ? (
+                <div className="flex h-full flex-col items-center justify-center gap-3 px-8 text-center">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
+                    <GitBranch className="h-6 w-6 text-primary" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-foreground">Select a workflow</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Choose a workflow from the list to view its versions and approval stages.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
+                  <div className="w-[16rem] shrink-0 overflow-y-auto border-r border-border bg-background p-4 xl:w-[18rem]">
+                    <VersionSelector
+                      templateId={selectedTemplateId}
+                      versions={versions}
+                      selectedVersionId={selectedVersionId}
+                      onSelect={setSelectedVersionId}
+                      orgId={selectedOrgId}
+                      onRefresh={handleVersionRefresh}
+                    />
+                  </div>
+
+                  <div className="min-h-0 min-w-0 flex-1 overflow-y-auto p-5">
+                    {!selectedVersionId ? (
+                      <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
+                        <Layers className="h-8 w-8 text-muted-foreground" />
+                        <div>
+                          <p className="text-sm font-medium text-foreground">Select a version</p>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            Choose the live version to see the current approval flow, or a draft to continue editing.
+                          </p>
+                        </div>
+                      </div>
+                    ) : selectedVersion ? (
+                      <ApprovalPipelineView
+                        version={selectedVersion}
+                        orgId={selectedOrgId}
+                        onRefresh={handleVersionRefresh}
+                      />
+                    ) : null}
+                  </div>
+                </div>
+              )}
+            </main>
+          </div>
+        )}
       </div>
 
       <CreateWorkflowDialog
@@ -2850,6 +2960,331 @@ function SplitOptionForm({
           <button onClick={() => setOpen(false)} className="px-2 py-0.5 border rounded text-[11px]">Cancel</button>
         )}
       </div>
+    </div>
+  );
+}
+
+function SendToRouteDialog({
+  open,
+  onOpenChange,
+  orgId,
+  templates,
+  route,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  orgId: string | null;
+  templates: WorkflowTemplate[];
+  route?: VendorSubmissionRoute | null;
+}) {
+  const isEdit = !!route;
+  const createRoute = useCreateVendorSubmissionRoute();
+  const updateRoute = useUpdateVendorSubmissionRoute();
+  const [form, setForm] = useState({
+    code: "",
+    label: "",
+    description: "",
+    display_order: "0",
+    is_active: true,
+    workflow_template: "",
+  });
+
+  useEffect(() => {
+    if (!open) return;
+    setForm({
+      code: route?.code ?? "",
+      label: route?.label ?? "",
+      description: route?.description ?? "",
+      display_order: String(route?.display_order ?? 0),
+      is_active: route?.is_active ?? true,
+      workflow_template: route?.workflow_template ?? "",
+    });
+  }, [open, route]);
+
+  const templateOptions = route && !templates.some((template) => template.id === route.workflow_template)
+    ? [
+        {
+          id: route.workflow_template,
+          name: route.workflow_template_name,
+          code: route.workflow_template_code,
+        },
+        ...templates.map((template) => ({
+          id: template.id,
+          name: template.name,
+          code: template.code,
+        })),
+      ]
+    : templates.map((template) => ({
+        id: template.id,
+        name: template.name,
+        code: template.code,
+      }));
+
+  const mutationError =
+    (createRoute.error instanceof ApiError && createRoute.error) ||
+    (updateRoute.error instanceof ApiError && updateRoute.error) ||
+    null;
+
+  const handleSubmit = async () => {
+    if (!orgId && !isEdit) return;
+    const payload = {
+      label: form.label.trim(),
+      description: form.description.trim(),
+      display_order: Number(form.display_order || "0"),
+      is_active: form.is_active,
+      workflow_template: form.workflow_template,
+    };
+    try {
+      if (isEdit && route) {
+        await updateRoute.mutateAsync({ id: route.id, data: payload });
+        toast.success("Send To route updated.");
+      } else {
+        await createRoute.mutateAsync({
+          org: orgId!,
+          code: form.code.trim(),
+          ...payload,
+        });
+        toast.success("Send To route created.");
+      }
+      onOpenChange(false);
+    } catch {
+      // surfaced inline
+    }
+  };
+
+  const isPending = createRoute.isPending || updateRoute.isPending;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{isEdit ? "Edit Send To Route" : "New Send To Route"}</DialogTitle>
+          <DialogDescription>
+            Configure the vendor-facing label and map it to an invoice workflow template.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          {!isEdit ? (
+            <FormField label="Code" hint="Stable internal key. Vendors never see this.">
+              <Input
+                value={form.code}
+                onChange={(e) => setForm((v) => ({ ...v, code: e.target.value }))}
+                placeholder="e.g. send-to-me1"
+              />
+            </FormField>
+          ) : null}
+
+          <FormField label="Vendor Label">
+            <Input
+              value={form.label}
+              onChange={(e) => setForm((v) => ({ ...v, label: e.target.value }))}
+              placeholder="e.g. Marketing Executive 1 - marketingexecutive1@horizon.local"
+            />
+          </FormField>
+
+          <FormField label="Workflow Template" hint="Only invoice templates for the selected unit are shown.">
+            <Select
+              value={form.workflow_template}
+              onValueChange={(value) => setForm((v) => ({ ...v, workflow_template: value }))}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder={templateOptions.length ? "Select invoice template" : "Select a unit first"} />
+              </SelectTrigger>
+              <SelectContent>
+                {templateOptions.map((template) => (
+                  <SelectItem key={template.id} value={template.id}>
+                    {template.name} ({template.code})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </FormField>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <FormField label="Display Order">
+              <Input
+                type="number"
+                min={0}
+                value={form.display_order}
+                onChange={(e) => setForm((v) => ({ ...v, display_order: e.target.value }))}
+              />
+            </FormField>
+            <div className="space-y-1.5">
+              <Label>Status</Label>
+              <label className="flex h-10 items-center gap-2 rounded-md border border-input px-3 text-sm">
+                <input
+                  type="checkbox"
+                  checked={form.is_active}
+                  onChange={(e) => setForm((v) => ({ ...v, is_active: e.target.checked }))}
+                />
+                Active for vendor dropdown
+              </label>
+            </div>
+          </div>
+
+          <FormField label="Description">
+            <Input
+              value={form.description}
+              onChange={(e) => setForm((v) => ({ ...v, description: e.target.value }))}
+              placeholder="Optional internal note"
+            />
+          </FormField>
+
+          {mutationError ? (
+            <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {mutationError.message}
+            </p>
+          ) : null}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button
+            onClick={handleSubmit}
+            disabled={
+              isPending ||
+              !form.label.trim() ||
+              !form.workflow_template ||
+              (!isEdit && (!orgId || !form.code.trim()))
+            }
+          >
+            {isPending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}
+            {isEdit ? "Update Route" : "Create Route"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function SendToRoutesManager({
+  orgId,
+  nodeId,
+}: {
+  orgId: string | null;
+  nodeId: string | null;
+}) {
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingRoute, setEditingRoute] = useState<VendorSubmissionRoute | null>(null);
+  const { data: routes = [], isLoading } = useVendorSubmissionRoutes(
+    orgId ? { org: orgId } : undefined,
+  );
+  const { data: invoiceTemplates = [] } = useTemplates(
+    nodeId ? { scope_node: nodeId, module: "invoice" } : undefined,
+  );
+
+  return (
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+      <div className="border-b border-border bg-background px-5 py-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="text-sm font-medium text-foreground">Vendor Send To Routes</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Manage the vendor-facing dropdown labels that map to published invoice workflows.
+            </p>
+          </div>
+          <Button
+            size="sm"
+            className="gap-1.5"
+            onClick={() => {
+              setEditingRoute(null);
+              setDialogOpen(true);
+            }}
+            disabled={!orgId || !nodeId}
+          >
+            <Plus className="h-3.5 w-3.5" />
+            New Route
+          </Button>
+        </div>
+        <div className="mt-3 rounded-lg border border-border/60 bg-secondary/30 px-3 py-2 text-xs text-muted-foreground">
+          {!orgId
+            ? "Select an organization to manage routes."
+            : !nodeId
+              ? "Select a unit to choose invoice templates for new or edited routes. Existing org routes are still listed below."
+              : "Create or update routes against invoice templates in the selected unit. Vendors only see active labels."}
+        </div>
+      </div>
+
+      <ScrollArea className="flex-1">
+        {!orgId ? (
+          <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">
+            Choose an organization first.
+          </div>
+        ) : isLoading ? (
+          <PageLoading />
+        ) : routes.length === 0 ? (
+          <div className="flex h-48 flex-col items-center justify-center gap-2 text-center">
+            <Users className="h-8 w-8 text-muted-foreground" />
+            <div>
+              <p className="text-sm font-medium text-foreground">No Send To routes yet</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Create the vendor dropdown options that point to your invoice workflows.
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="grid gap-4 p-5 xl:grid-cols-2">
+            {routes.map((route) => (
+              <div key={route.id} className="rounded-xl border border-border bg-background p-4 shadow-sm">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-sm font-medium text-foreground">{route.label}</p>
+                      <Badge
+                        variant="outline"
+                        className={route.is_active ? "border-emerald-200 text-emerald-700" : "border-gray-200 text-gray-600"}
+                      >
+                        {route.is_active ? "Active" : "Inactive"}
+                      </Badge>
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">{route.code}</p>
+                  </div>
+                  <Button variant="outline" size="sm" onClick={() => {
+                    setEditingRoute(route);
+                    setDialogOpen(true);
+                  }}>
+                    Edit
+                  </Button>
+                </div>
+
+                <div className="mt-4 space-y-2 text-sm">
+                  <div className="flex items-start justify-between gap-4">
+                    <span className="text-muted-foreground">Workflow</span>
+                    <div className="text-right">
+                      <p className="font-medium text-foreground">{route.workflow_template_name}</p>
+                      <p className="text-xs text-muted-foreground">{route.workflow_template_code}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start justify-between gap-4">
+                    <span className="text-muted-foreground">Published Version</span>
+                    <span className={route.published_version_number ? "text-foreground" : "text-amber-600"}>
+                      {route.published_version_number ? `v${route.published_version_number}` : "Not published"}
+                    </span>
+                  </div>
+                  <div className="flex items-start justify-between gap-4">
+                    <span className="text-muted-foreground">Display Order</span>
+                    <span className="text-foreground">{route.display_order}</span>
+                  </div>
+                  {route.description ? (
+                    <div className="rounded-md border border-border/60 bg-secondary/30 px-3 py-2 text-xs text-muted-foreground">
+                      {route.description}
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </ScrollArea>
+
+      <SendToRouteDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        orgId={orgId}
+        templates={invoiceTemplates}
+        route={editingRoute}
+      />
     </div>
   );
 }
