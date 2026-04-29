@@ -7,7 +7,7 @@ export function V2Footer() {
 
         {/* Brand */}
         <div className="flex items-center gap-2.5">
-          <video src="/LoginScreen.mp4" autoPlay loop muted playsInline className="h-8 w-8 object-contain" />
+          <img src="/vims-brand.png" alt="VIMS" className="h-8 w-auto object-contain" />
           <div className="flex flex-col gap-0">
             <span className="text-[12px] font-black tracking-tight text-primary leading-none">VIMS</span>
             <span className="text-[9px] text-muted-foreground/50 leading-none mt-0.5 tracking-wide uppercase">Vendor Invoice Management System</span>

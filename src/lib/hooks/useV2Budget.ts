@@ -35,7 +35,15 @@ import {
   getVarianceRequest,
   reviewVarianceRequest,
   getBudgetOverview,
+  getBudgetLiveBalances,
+  getBudgetInUse,
+  listImportBatches,
+  getImportBatch,
+  uploadImportBatch,
+  validateImportBatch,
+  commitImportBatch,
 } from "../api/v2budget";
+import type { UploadImportBatchRequest } from "../api/v2budget";
 import type {
   CreateCategoryRequest,
   UpdateCategoryRequest,
@@ -446,5 +454,77 @@ export function useBudgetOverview() {
     queryKey: ["v2", "budget", "overview"],
     queryFn: getBudgetOverview,
     staleTime: 60_000,
+  });
+}
+
+// ── Live Balances ─────────────────────────────────────────────────────────────
+
+export function useBudgetLiveBalances(budgetId: string | null) {
+  return useQuery({
+    queryKey: ["v2", "budget", "liveBalances", budgetId],
+    queryFn: () => getBudgetLiveBalances(budgetId!),
+    enabled: !!budgetId,
+    staleTime: 30_000,
+  });
+}
+
+// ── In-Use Summary ────────────────────────────────────────────────────────────
+
+export function useBudgetInUse(budgetId: string | null) {
+  return useQuery({
+    queryKey: ["v2", "budget", "inUse", budgetId],
+    queryFn: () => getBudgetInUse(budgetId!),
+    enabled: !!budgetId,
+  });
+}
+
+// ── Import Batches ────────────────────────────────────────────────────────────
+
+export function useBudgetImportBatches() {
+  return useQuery({
+    queryKey: ["v2", "budget", "importBatches"],
+    queryFn: listImportBatches,
+  });
+}
+
+export function useBudgetImportBatch(id: number | null) {
+  return useQuery({
+    queryKey: ["v2", "budget", "importBatch", id],
+    queryFn: () => getImportBatch(id!),
+    enabled: !!id,
+  });
+}
+
+export function useUploadBudgetImportBatch() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: UploadImportBatchRequest) => uploadImportBatch(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["v2", "budget", "importBatches"] });
+    },
+  });
+}
+
+export function useValidateBudgetImportBatch() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => validateImportBatch(id),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["v2", "budget", "importBatches"] });
+      queryClient.setQueryData(["v2", "budget", "importBatch", data.id], data);
+    },
+  });
+}
+
+export function useCommitBudgetImportBatch() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => commitImportBatch(id),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["v2", "budget", "importBatches"] });
+      queryClient.setQueryData(["v2", "budget", "importBatch", data.id], data);
+      // Budgets may have been created/updated — invalidate the list
+      queryClient.invalidateQueries({ queryKey: ["v2", "budget", "budgets"] });
+    },
   });
 }

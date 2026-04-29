@@ -10,6 +10,10 @@ import type {
   BudgetRule,
   BudgetConsumption,
   BudgetVarianceRequest,
+  BudgetImportBatch,
+  BudgetImportBatchList,
+  BudgetLiveBalances,
+  BudgetInUseSummary,
   CreateCategoryRequest,
   UpdateCategoryRequest,
   CreateSubCategoryRequest,
@@ -252,4 +256,52 @@ export async function reviewVarianceRequest(
 
 export async function getBudgetOverview(): Promise<BudgetOverviewPayload> {
   return apiClient.get("/api/v1/budgets/overview/");
+}
+
+// ── Live Balances ─────────────────────────────────────────────────────────────
+
+export async function getBudgetLiveBalances(budgetId: string): Promise<BudgetLiveBalances> {
+  return apiClient.get(`/api/v1/budgets/${budgetId}/live-balances/`);
+}
+
+// ── In-Use Summary ────────────────────────────────────────────────────────────
+
+export async function getBudgetInUse(budgetId: string): Promise<BudgetInUseSummary> {
+  return apiClient.get(`/api/v1/budgets/${budgetId}/in-use/`);
+}
+
+// ── Import Batches ────────────────────────────────────────────────────────────
+
+export async function listImportBatches(): Promise<BudgetImportBatchList[]> {
+  return apiClient.get("/api/v1/budgets/import-batches/");
+}
+
+export async function getImportBatch(id: number): Promise<BudgetImportBatch> {
+  return apiClient.get(`/api/v1/budgets/import-batches/${id}/`);
+}
+
+export interface UploadImportBatchRequest {
+  file: File;
+  financial_year?: string;
+  import_mode?: string;
+  org?: string;
+}
+
+export async function uploadImportBatch(
+  data: UploadImportBatchRequest,
+): Promise<BudgetImportBatchList> {
+  const fd = new FormData();
+  fd.append("file", data.file);
+  if (data.financial_year) fd.append("financial_year", data.financial_year);
+  if (data.import_mode) fd.append("import_mode", data.import_mode);
+  if (data.org) fd.append("org", data.org);
+  return apiClient.multipart("/api/v1/budgets/import-batches/upload/", fd);
+}
+
+export async function validateImportBatch(id: number): Promise<BudgetImportBatch> {
+  return apiClient.post(`/api/v1/budgets/import-batches/${id}/validate/`);
+}
+
+export async function commitImportBatch(id: number): Promise<BudgetImportBatch> {
+  return apiClient.post(`/api/v1/budgets/import-batches/${id}/commit/`);
 }

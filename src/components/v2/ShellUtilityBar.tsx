@@ -17,7 +17,7 @@ export function ShellUtilityBar({ onSearchClick }: ShellUtilityBarProps) {
     <header className="flex items-center justify-between border-b border-border px-5 py-2.5 gap-4">
       {/* Left: VIMs brand */}
       <div className="shrink-0 flex items-center gap-2">
-        <video src="/LoginScreen.mp4" autoPlay loop muted playsInline className="h-9 w-9 object-contain" />
+        <img src="/vims-brand.png" alt="VIMS" className="h-9 w-auto object-contain" />
         <div>
           <p className="text-xl font-black tracking-tight text-primary leading-none">VIMS</p>
           <p className="text-[10px] text-muted-foreground/70 leading-none mt-0.5">

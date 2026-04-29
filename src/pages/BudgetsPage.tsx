@@ -33,6 +33,11 @@ import {
   useDeleteRule,
   useReviewVarianceRequest,
   useBudgetOverview,
+  useBudgetImportBatches,
+  useBudgetImportBatch,
+  useUploadBudgetImportBatch,
+  useValidateBudgetImportBatch,
+  useCommitBudgetImportBatch,
 } from "@/lib/hooks/useV2Budget";
 import type {
   BudgetCategory,
@@ -42,6 +47,12 @@ import type {
   BudgetRule,
   BudgetConsumption,
   BudgetVarianceRequest,
+  BudgetImportBatchList,
+  BudgetImportBatch,
+  BudgetImportRow,
+  ImportMode,
+  ImportBatchStatus,
+  ImportRowStatus,
   BudgetStatus,
   PeriodType,
   VarianceStatus,
@@ -52,6 +63,7 @@ import type {
   CreateBudgetRequest,
   CreateBudgetLineRequest,
   CreateRuleRequest,
+  BudgetCategoryOverview,
 } from "@/lib/types/v2budget";
 import {
   BUDGET_STATUS_LABELS,
@@ -60,6 +72,10 @@ import {
   CONSUMPTION_TYPE_LABELS,
   CONSUMPTION_STATUS_LABELS,
   SOURCE_TYPE_LABELS,
+  IMPORT_MODE_LABELS,
+  IMPORT_MODE_DESCRIPTIONS,
+  IMPORT_BATCH_STATUS_LABELS,
+  IMPORT_ROW_STATUS_LABELS,
 } from "@/lib/types/v2budget";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -108,6 +124,12 @@ import {
   DollarSign,
   Target,
   Bookmark,
+  Upload,
+  FileSpreadsheet,
+  ShieldCheck,
+  Send,
+  Info,
+  RotateCcw,
 } from "lucide-react";
 
 // ── Status Badges ─────────────────────────────────────────────────────────────
@@ -2289,11 +2311,14 @@ function ScopeBudgetMatrix({
 
 const CAT_COLORS = ["#3b82f6","#8b5cf6","#ec4899","#f59e0b","#10b981","#06b6d4","#6366f1"];
 
-function CategoryChart({ categories }: { categories: any[] }) {
+function CategoryChart({ categories }: { categories: BudgetCategoryOverview[] }) {
   if (!categories?.length) return null;
-  const data = categories.slice(0, 10).map((c: any, i: number) => ({
+  const data = categories.slice(0, 10).map((c, i) => ({
     name: c.name.length > 22 ? c.name.slice(0, 22) + "…" : c.name,
-    amount: parseFloat(c.allocated_amount || 0),
+    amount: parseFloat(c.allocated_amount || "0"),
+    reserved: parseFloat(c.reserved_amount || "0"),
+    consumed: parseFloat(c.consumed_amount || "0"),
+    available: parseFloat(c.available_amount || "0"),
     count: c.budgets_count,
     color: CAT_COLORS[i % CAT_COLORS.length],
   }));
@@ -2304,7 +2329,21 @@ function CategoryChart({ categories }: { categories: any[] }) {
           <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
           <XAxis dataKey="name" tick={{ fontSize: 9 }} angle={-20} textAnchor="end" interval={0} />
           <YAxis tick={{ fontSize: 9 }} tickFormatter={v => `₹${(v/100000).toFixed(0)}L`} />
-          <Tooltip formatter={(v: number) => [fmtCurrency(v), "Allocated"]} />
+          <Tooltip
+            content={({ active, payload }) => {
+              if (!active || !payload?.length) return null;
+              const d = payload[0].payload;
+              return (
+                <div className="rounded border bg-popover px-3 py-2 text-xs shadow">
+                  <p className="font-semibold mb-1">{d.name}</p>
+                  <p>Allocated: {fmtCurrency(d.amount)}</p>
+                  <p>Reserved: {fmtCurrency(d.reserved)}</p>
+                  <p>Consumed: {fmtCurrency(d.consumed)}</p>
+                  <p className="text-emerald-600">Available: {fmtCurrency(d.available)}</p>
+                </div>
+              );
+            }}
+          />
           <Bar dataKey="amount" radius={[3, 3, 0, 0]} name="Allocated">
             {data.map((d, i) => <Cell key={i} fill={d.color} />)}
           </Bar>
@@ -2459,6 +2498,565 @@ function BudgetsDashboardTab({
   );
 }
 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Budget Import UI
+// ─────────────────────────────────────────────────────────────────────────────
+
+const IMPORT_BATCH_STATUS_COLORS: Record<ImportBatchStatus, string> = {
+  pending: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
+  validated: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
+  committed: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
+  failed: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
+};
+
+const IMPORT_ROW_STATUS_COLORS: Record<ImportRowStatus, string> = {
+  pending: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
+  valid: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
+  error: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
+  committed: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
+  skipped: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300",
+};
+
+function ImportBatchStatusBadge({ status }: { status: ImportBatchStatus }) {
+  return (
+    <Badge className={IMPORT_BATCH_STATUS_COLORS[status] ?? ""} variant="outline">
+      {IMPORT_BATCH_STATUS_LABELS[status] ?? status}
+    </Badge>
+  );
+}
+
+function ImportRowStatusBadge({ status }: { status: ImportRowStatus }) {
+  return (
+    <Badge className={IMPORT_ROW_STATUS_COLORS[status] ?? ""} variant="outline">
+      {IMPORT_ROW_STATUS_LABELS[status] ?? status}
+    </Badge>
+  );
+}
+
+// ── Upload Panel ──────────────────────────────────────────────────────────────
+
+function UploadPanel({
+  orgId,
+  onBatchCreated,
+}: {
+  orgId: string | null;
+  onBatchCreated?: (batchId: number) => void;
+}) {
+  const [file, setFile] = useState<File | null>(null);
+  const [importMode, setImportMode] = useState<ImportMode>("safe_update");
+  const [financialYear, setFinancialYear] = useState("");
+  const [dragOver, setDragOver] = useState(false);
+  const upload = useUploadBudgetImportBatch();
+  const fileRef = useState<HTMLInputElement | null>(null)[1];
+
+  const handleFile = (f: File) => {
+    const ext = f.name.split(".").pop()?.toLowerCase();
+    if (ext !== "xlsx" && ext !== "xls") {
+      return;
+    }
+    setFile(f);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    const f = e.dataTransfer.files[0];
+    if (f) handleFile(f);
+  };
+
+  const handleUpload = async () => {
+    if (!file) return;
+    try {
+      const batch = await upload.mutateAsync({
+        file,
+        financial_year: financialYear || undefined,
+        import_mode: importMode,
+        org: orgId ?? undefined,
+      });
+      setFile(null);
+      setFinancialYear("");
+      onBatchCreated?.(batch.id);
+    } catch { /* error rendered below */ }
+  };
+
+  const uploadError =
+    upload.isError && upload.error instanceof ApiError
+      ? upload.error.message
+      : upload.isError
+      ? "Upload failed"
+      : null;
+
+  return (
+    <div className="rounded-lg border bg-card p-5 space-y-4">
+      <div className="flex items-center gap-2">
+        <Upload className="h-4 w-4 text-muted-foreground" />
+        <h3 className="text-sm font-semibold">Upload Budget Excel</h3>
+      </div>
+
+      {/* Drop zone */}
+      <div
+        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={handleDrop}
+        className={cn(
+          "border-2 border-dashed rounded-md px-6 py-8 flex flex-col items-center justify-center gap-2 cursor-pointer transition-colors",
+          dragOver ? "border-primary bg-primary/5" : "border-border hover:border-primary/50",
+        )}
+        onClick={() => {
+          const input = document.createElement("input");
+          input.type = "file";
+          input.accept = ".xlsx,.xls";
+          input.onchange = (e) => {
+            const f = (e.target as HTMLInputElement).files?.[0];
+            if (f) handleFile(f);
+          };
+          input.click();
+        }}
+      >
+        <FileSpreadsheet className="h-8 w-8 text-muted-foreground opacity-60" />
+        {file ? (
+          <div className="text-center">
+            <p className="text-sm font-medium">{file.name}</p>
+            <p className="text-xs text-muted-foreground">{(file.size / 1024).toFixed(1)} KB</p>
+          </div>
+        ) : (
+          <div className="text-center">
+            <p className="text-sm text-muted-foreground">Drop an Excel file here or click to browse</p>
+            <p className="text-xs text-muted-foreground">.xlsx or .xls only</p>
+          </div>
+        )}
+      </div>
+
+      {/* Options row */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="space-y-1.5">
+          <Label className="text-xs">Import Mode *</Label>
+          <Select value={importMode} onValueChange={(v) => setImportMode(v as ImportMode)}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {(["setup_only", "safe_update", "full"] as ImportMode[]).map((m) => (
+                <SelectItem key={m} value={m}>{IMPORT_MODE_LABELS[m]}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-[11px] text-muted-foreground leading-snug">
+            {IMPORT_MODE_DESCRIPTIONS[importMode]}
+          </p>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label className="text-xs">Financial Year (optional)</Label>
+          <Input
+            value={financialYear}
+            onChange={(e) => setFinancialYear(e.target.value)}
+            placeholder="e.g. 2025-26"
+            className="h-9"
+          />
+          <p className="text-[11px] text-muted-foreground">Stored on the batch for reference only.</p>
+        </div>
+      </div>
+
+      {uploadError && (
+        <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {uploadError}
+        </p>
+      )}
+
+      <Button
+        onClick={handleUpload}
+        disabled={!file || upload.isPending}
+        className="gap-1.5"
+      >
+        {upload.isPending
+          ? <><Loader2 className="h-4 w-4 animate-spin" />Uploading...</>
+          : <><Upload className="h-4 w-4" />Upload &amp; Parse</>
+        }
+      </Button>
+    </div>
+  );
+}
+
+// ── Batch List ────────────────────────────────────────────────────────────────
+
+function BatchListPanel({
+  batches,
+  isLoading,
+  selectedId,
+  onSelect,
+}: {
+  batches: BudgetImportBatchList[];
+  isLoading: boolean;
+  selectedId: number | null;
+  onSelect: (id: number) => void;
+}) {
+  if (isLoading) return <PageLoading />;
+  if (!batches.length) return <EmptyState message="No import batches yet. Upload a file above." icon={FileSpreadsheet} />;
+
+  return (
+    <div className="divide-y divide-border rounded-lg border overflow-hidden">
+      {batches.map((b) => (
+        <button
+          key={b.id}
+          onClick={() => onSelect(b.id)}
+          className={cn(
+            "w-full text-left px-4 py-3 flex items-start gap-3 hover:bg-accent/50 transition-colors",
+            selectedId === b.id && "bg-accent",
+          )}
+        >
+          <FileSpreadsheet className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-sm font-medium truncate">{b.file_name}</span>
+              <ImportBatchStatusBadge status={b.status} />
+              <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                {IMPORT_MODE_LABELS[b.import_mode]}
+              </Badge>
+            </div>
+            <div className="mt-1 flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
+              {b.financial_year && <span>FY {b.financial_year}</span>}
+              <span>{new Date(b.created_at).toLocaleString()}</span>
+              {b.created_by_email && <span>by {b.created_by_email}</span>}
+            </div>
+            <div className="mt-1.5 flex items-center gap-2 text-xs flex-wrap">
+              <span className="text-muted-foreground">Total: <strong>{b.total_rows}</strong></span>
+              {b.valid_rows > 0 && (
+                <span className="text-blue-600 dark:text-blue-400">Valid: <strong>{b.valid_rows}</strong></span>
+              )}
+              {b.error_rows > 0 && (
+                <span className="text-destructive">Errors: <strong>{b.error_rows}</strong></span>
+              )}
+              {b.skipped_rows > 0 && (
+                <span className="text-muted-foreground">Skipped: <strong>{b.skipped_rows}</strong></span>
+              )}
+              {b.committed_rows > 0 && (
+                <span className="text-green-600 dark:text-green-400">Committed: <strong>{b.committed_rows}</strong></span>
+              )}
+            </div>
+          </div>
+          <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-muted-foreground" />
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ── Row Detail Table ──────────────────────────────────────────────────────────
+
+function ImportRowTable({ rows }: { rows: BudgetImportRow[] }) {
+  const [filter, setFilter] = useState<ImportRowStatus | "all">("all");
+
+  const filtered = filter === "all" ? rows : rows.filter((r) => r.status === filter);
+  const counts = {
+    all: rows.length,
+    pending: rows.filter((r) => r.status === "pending").length,
+    valid: rows.filter((r) => r.status === "valid").length,
+    error: rows.filter((r) => r.status === "error").length,
+    skipped: rows.filter((r) => r.status === "skipped").length,
+    committed: rows.filter((r) => r.status === "committed").length,
+  };
+
+  return (
+    <div className="space-y-3">
+      {/* Filter chips */}
+      <div className="flex items-center gap-1.5 flex-wrap">
+        {(["all", "valid", "error", "skipped", "committed", "pending"] as const).map((s) => {
+          const count = counts[s];
+          if (s !== "all" && count === 0) return null;
+          return (
+            <button
+              key={s}
+              onClick={() => setFilter(s)}
+              className={cn(
+                "rounded-full px-2.5 py-0.5 text-xs font-medium border transition-colors",
+                filter === s
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "border-border hover:bg-accent",
+              )}
+            >
+              {s === "all" ? "All" : IMPORT_ROW_STATUS_LABELS[s]} ({count})
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Table */}
+      {filtered.length === 0 ? (
+        <p className="text-sm text-muted-foreground py-4 text-center">No rows match this filter.</p>
+      ) : (
+        <div className="rounded-md border overflow-x-auto">
+          <table className="min-w-full text-xs">
+            <thead className="bg-secondary/30 border-b border-border">
+              <tr>
+                <th className="px-3 py-2 text-left text-[11px] font-semibold text-muted-foreground">#</th>
+                <th className="px-3 py-2 text-left text-[11px] font-semibold text-muted-foreground">Status</th>
+                <th className="px-3 py-2 text-left text-[11px] font-semibold text-muted-foreground">Budget Code</th>
+                <th className="px-3 py-2 text-left text-[11px] font-semibold text-muted-foreground">Budget Name</th>
+                <th className="px-3 py-2 text-left text-[11px] font-semibold text-muted-foreground">Scope Node</th>
+                <th className="px-3 py-2 text-left text-[11px] font-semibold text-muted-foreground">Category</th>
+                <th className="px-3 py-2 text-left text-[11px] font-semibold text-muted-foreground">Subcategory</th>
+                <th className="px-3 py-2 text-right text-[11px] font-semibold text-muted-foreground">Amount</th>
+                <th className="px-3 py-2 text-left text-[11px] font-semibold text-muted-foreground">Notes</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {filtered.map((row) => (
+                <tr key={row.id} className={cn(
+                  "hover:bg-accent/30",
+                  row.status === "error" && "bg-destructive/5",
+                )}>
+                  <td className="px-3 py-2 text-muted-foreground">{row.row_number}</td>
+                  <td className="px-3 py-2"><ImportRowStatusBadge status={row.status} /></td>
+                  <td className="px-3 py-2 font-mono">{row.raw_budget_code || <span className="text-muted-foreground">—</span>}</td>
+                  <td className="px-3 py-2 max-w-[160px] truncate" title={row.raw_budget_name}>{row.raw_budget_name || <span className="text-muted-foreground">—</span>}</td>
+                  <td className="px-3 py-2 font-mono">{row.raw_scope_node_code || <span className="text-muted-foreground">—</span>}</td>
+                  <td className="px-3 py-2 font-mono">{row.raw_category_code || <span className="text-muted-foreground">—</span>}</td>
+                  <td className="px-3 py-2 font-mono">{row.raw_subcategory_code || <span className="text-muted-foreground">—</span>}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">
+                    {row.raw_allocated_amount
+                      ? `${row.raw_currency || ""} ${row.raw_allocated_amount}`.trim()
+                      : <span className="text-muted-foreground">—</span>}
+                  </td>
+                  <td className="px-3 py-2 max-w-[220px]">
+                    {row.errors.length > 0 && (
+                      <ul className="space-y-0.5">
+                        {row.errors.map((e, i) => (
+                          <li key={i} className="text-destructive text-[11px] leading-snug">
+                            {e}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {row.skipped_reason && (
+                      <p className="text-muted-foreground text-[11px] italic">{row.skipped_reason}</p>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Batch Detail Panel ────────────────────────────────────────────────────────
+
+function BatchDetailPanel({
+  batchId,
+  onClose,
+}: {
+  batchId: number;
+  onClose: () => void;
+}) {
+  const { data: batch, isLoading, refetch } = useBudgetImportBatch(batchId);
+  const validate = useValidateBudgetImportBatch();
+  const commit = useCommitBudgetImportBatch();
+
+  const handleValidate = async () => {
+    try {
+      await validate.mutateAsync(batchId);
+      refetch();
+    } catch { /* error via validate.error */ }
+  };
+
+  const handleCommit = async () => {
+    try {
+      await commit.mutateAsync(batchId);
+      refetch();
+    } catch { /* error via commit.error */ }
+  };
+
+  const validateError =
+    validate.isError && validate.error instanceof ApiError
+      ? validate.error.message
+      : validate.isError ? "Validation failed" : null;
+
+  const commitError =
+    commit.isError && commit.error instanceof ApiError
+      ? commit.error.message
+      : commit.isError ? "Commit failed" : null;
+
+  if (isLoading) return <PageLoading />;
+  if (!batch) return null;
+
+  const canValidate = batch.status === "pending";
+  const canCommit = batch.status === "validated" && batch.valid_rows > 0;
+
+  return (
+    <div className="space-y-5">
+      {/* Header bar */}
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <FileSpreadsheet className="h-4 w-4 text-muted-foreground shrink-0" />
+            <span className="font-semibold text-sm truncate">{batch.file_name}</span>
+            <ImportBatchStatusBadge status={batch.status} />
+            <Badge variant="outline" className="text-[10px] px-1.5">{IMPORT_MODE_LABELS[batch.import_mode]}</Badge>
+          </div>
+          <p className="text-xs text-muted-foreground mt-1">
+            Uploaded {new Date(batch.created_at).toLocaleString()}
+            {batch.created_by_email && ` by ${batch.created_by_email}`}
+            {batch.financial_year && ` · FY ${batch.financial_year}`}
+          </p>
+        </div>
+        <button onClick={onClose} className="text-muted-foreground hover:text-foreground text-xs">
+          ← Back
+        </button>
+      </div>
+
+      {/* Row count summary */}
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+        {[
+          { label: "Total", value: batch.total_rows, color: "text-foreground" },
+          { label: "Valid", value: batch.valid_rows, color: "text-blue-600 dark:text-blue-400" },
+          { label: "Errors", value: batch.error_rows, color: "text-destructive" },
+          { label: "Skipped", value: batch.skipped_rows, color: "text-muted-foreground" },
+          { label: "Committed", value: batch.committed_rows, color: "text-green-600 dark:text-green-400" },
+        ].map(({ label, value, color }) => (
+          <div key={label} className="rounded-md border bg-card px-3 py-2 text-center">
+            <p className={cn("text-lg font-bold tabular-nums", color)}>{value}</p>
+            <p className="text-[11px] text-muted-foreground">{label}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Validation errors summary (batch-level) */}
+      {batch.validation_errors.length > 0 && (
+        <div className="rounded-md border border-destructive/30 bg-destructive/5 px-4 py-3 space-y-1">
+          <p className="text-xs font-semibold text-destructive flex items-center gap-1.5">
+            <AlertTriangle className="h-3.5 w-3.5" />
+            Batch-level validation issues
+          </p>
+          {batch.validation_errors.map((e, i) => (
+            <p key={i} className="text-xs text-destructive">{e}</p>
+          ))}
+        </div>
+      )}
+
+      {/* Committed result */}
+      {batch.status === "committed" && (
+        <div className="rounded-md border border-green-300 bg-green-50 dark:bg-green-950 dark:border-green-700 px-4 py-3 flex items-center gap-2">
+          <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400 shrink-0" />
+          <div>
+            <p className="text-sm font-medium text-green-700 dark:text-green-300">
+              Batch committed — {batch.committed_rows} row(s) applied
+            </p>
+            {batch.committed_by_email && (
+              <p className="text-xs text-green-600 dark:text-green-400">
+                by {batch.committed_by_email} at {batch.committed_at ? new Date(batch.committed_at).toLocaleString() : "—"}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Action errors */}
+      {(validateError || commitError) && (
+        <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {validateError ?? commitError}
+        </p>
+      )}
+
+      {/* Action buttons */}
+      <div className="flex items-center gap-2 flex-wrap">
+        {canValidate && (
+          <Button
+            onClick={handleValidate}
+            disabled={validate.isPending}
+            variant="outline"
+            className="gap-1.5"
+          >
+            {validate.isPending
+              ? <><Loader2 className="h-4 w-4 animate-spin" />Validating...</>
+              : <><ShieldCheck className="h-4 w-4" />Validate Batch</>
+            }
+          </Button>
+        )}
+        {canCommit && (
+          <Button
+            onClick={handleCommit}
+            disabled={commit.isPending}
+            className="gap-1.5"
+          >
+            {commit.isPending
+              ? <><Loader2 className="h-4 w-4 animate-spin" />Committing...</>
+              : <><Send className="h-4 w-4" />Commit {batch.valid_rows} Valid Row(s)</>
+            }
+          </Button>
+        )}
+        <Button variant="ghost" size="sm" onClick={() => refetch()} className="gap-1 text-muted-foreground">
+          <RotateCcw className="h-3.5 w-3.5" />
+          Refresh
+        </Button>
+      </div>
+
+      {/* Mode info */}
+      <div className="flex items-start gap-1.5 text-xs text-muted-foreground rounded-md bg-secondary/30 px-3 py-2">
+        <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+        <span>
+          <strong>Mode:</strong> {IMPORT_MODE_LABELS[batch.import_mode]} — {IMPORT_MODE_DESCRIPTIONS[batch.import_mode]}
+        </span>
+      </div>
+
+      {/* Row table */}
+      {batch.rows.length > 0 && (
+        <div className="space-y-2">
+          <h4 className="text-sm font-semibold">Row Detail</h4>
+          <ImportRowTable rows={batch.rows} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Main Import Panel ─────────────────────────────────────────────────────────
+
+function BudgetImportPanel({ orgId }: { orgId: string | null }) {
+  const { data: batches = [], isLoading: batchesLoading, refetch } = useBudgetImportBatches();
+  const [selectedBatchId, setSelectedBatchId] = useState<number | null>(null);
+
+  const handleBatchCreated = (id: number) => {
+    refetch();
+    setSelectedBatchId(id);
+  };
+
+  return (
+    <div className="p-6 space-y-6">
+      {/* Upload */}
+      <UploadPanel orgId={orgId} onBatchCreated={handleBatchCreated} />
+
+      {/* Detail or list */}
+      {selectedBatchId !== null ? (
+        <div className="space-y-4">
+          <BatchDetailPanel
+            batchId={selectedBatchId}
+            onClose={() => setSelectedBatchId(null)}
+          />
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold">Recent Batches</h3>
+            <Button variant="ghost" size="sm" onClick={() => refetch()} className="gap-1 text-muted-foreground h-7">
+              <RotateCcw className="h-3.5 w-3.5" />
+              Refresh
+            </Button>
+          </div>
+          <BatchListPanel
+            batches={batches}
+            isLoading={batchesLoading}
+            selectedId={selectedBatchId}
+            onSelect={setSelectedBatchId}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function BudgetsPage() {
   const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
@@ -2658,6 +3256,18 @@ export default function BudgetsPage() {
             ),
           }
         );
+      case "imports":
+        return (
+          {
+            left: (
+              <div className="flex min-h-11 items-center">
+                <p className="text-xs text-muted-foreground">
+                  Upload and manage bulk budget import batches.
+                </p>
+              </div>
+            ),
+          }
+        );
       default:
         return { left: null };
     }
@@ -2734,6 +3344,10 @@ export default function BudgetsPage() {
                 )}
               </TabsTrigger>
               <TabsTrigger value="consumptions">Consumptions</TabsTrigger>
+              <TabsTrigger value="imports">
+                <FileSpreadsheet className="mr-1 h-3.5 w-3.5" />
+                Imports
+              </TabsTrigger>
             </TabsList>
           </div>
 
@@ -2793,6 +3407,13 @@ export default function BudgetsPage() {
           <TabsContent value="consumptions" className="m-0 data-[state=inactive]:hidden flex min-h-0 flex-1 flex-col overflow-hidden">
             <ScrollArea className="flex-1">
               <ConsumptionList consumptions={consumptions} isLoading={consumptionsLoading} />
+            </ScrollArea>
+          </TabsContent>
+
+          {/* IMPORTS TAB */}
+          <TabsContent value="imports" className="m-0 data-[state=inactive]:hidden flex min-h-0 flex-1 flex-col overflow-hidden">
+            <ScrollArea className="flex-1">
+              <BudgetImportPanel orgId={selectedOrgId} />
             </ScrollArea>
           </TabsContent>
         </Tabs>

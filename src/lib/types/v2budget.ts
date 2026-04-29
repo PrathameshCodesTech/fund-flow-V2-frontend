@@ -10,7 +10,18 @@ export type BudgetStatus = "draft" | "active" | "exhausted" | "frozen" | "closed
 export type ConsumptionType = "reserved" | "consumed" | "released" | "adjusted";
 export type ConsumptionStatus = "pending" | "applied" | "reversed";
 export type VarianceStatus = "pending" | "approved" | "rejected" | "cancelled";
-export type SourceType = "campaign" | "invoice" | "manual_adjustment";
+export type SourceType =
+  | "campaign"
+  | "invoice"
+  | "invoice_allocation"
+  | "manual_expense"
+  | "manual_adjustment";
+
+// ── Import enums ──────────────────────────────────────────────────────────────
+
+export type ImportMode = "setup_only" | "safe_update" | "full";
+export type ImportBatchStatus = "pending" | "validated" | "committed" | "failed";
+export type ImportRowStatus = "pending" | "valid" | "error" | "committed" | "skipped";
 
 // ── Labels ────────────────────────────────────────────────────────────────────
 
@@ -52,7 +63,36 @@ export const VARIANCE_STATUS_LABELS: Record<VarianceStatus, string> = {
 export const SOURCE_TYPE_LABELS: Record<SourceType, string> = {
   campaign: "Campaign",
   invoice: "Invoice",
+  invoice_allocation: "Invoice Allocation",
+  manual_expense: "Manual Expense",
   manual_adjustment: "Manual Adjustment",
+};
+
+export const IMPORT_MODE_LABELS: Record<ImportMode, string> = {
+  setup_only: "Setup Only (Create Only)",
+  safe_update: "Safe Update (Skip In-Use)",
+  full: "Full Update",
+};
+
+export const IMPORT_MODE_DESCRIPTIONS: Record<ImportMode, string> = {
+  setup_only: "Only create new Budget/BudgetLine records. Existing records are skipped silently.",
+  safe_update: "Create new records AND update non-operational existing records. In-use records are skipped.",
+  full: "Create new records AND update ALL existing records. Use with explicit intent.",
+};
+
+export const IMPORT_BATCH_STATUS_LABELS: Record<ImportBatchStatus, string> = {
+  pending: "Pending",
+  validated: "Validated",
+  committed: "Committed",
+  failed: "Failed",
+};
+
+export const IMPORT_ROW_STATUS_LABELS: Record<ImportRowStatus, string> = {
+  pending: "Pending",
+  valid: "Valid",
+  error: "Error",
+  committed: "Committed",
+  skipped: "Skipped",
 };
 
 // ── Models ────────────────────────────────────────────────────────────────────
@@ -386,6 +426,9 @@ export interface BudgetCategoryOverview {
   id: number;
   name: string;
   allocated_amount: string;
+  reserved_amount: string;
+  consumed_amount: string;
+  available_amount: string;
   budgets_count: number;
   campaigns_count: number;
 }
@@ -395,6 +438,9 @@ export interface BudgetSubcategoryOverview {
   name: string;
   category_name: string;
   allocated_amount: string;
+  reserved_amount: string;
+  consumed_amount: string;
+  available_amount: string;
 }
 
 export interface BudgetCampaignOverview {
@@ -406,6 +452,99 @@ export interface BudgetCampaignOverview {
   subcategory_name: string;
   approved_amount: string;
   status: string;
+}
+
+// ── Import Batch models ──────────────────────────────────────────────────────
+
+export interface BudgetImportRow {
+  id: number;
+  row_number: number;
+  status: ImportRowStatus;
+  // Raw Excel values
+  raw_scope_node_code: string;
+  raw_budget_code: string;
+  raw_budget_name: string;
+  raw_financial_year: string;
+  raw_period_type: string;
+  raw_period_start: string;
+  raw_period_end: string;
+  raw_category_code: string;
+  raw_subcategory_code: string;
+  raw_allocated_amount: string;
+  raw_currency: string;
+  // Resolved FK IDs (null if resolution failed)
+  resolved_scope_node: number | null;
+  resolved_category: number | null;
+  resolved_subcategory: number | null;
+  resolved_budget: number | null;
+  resolved_budget_line: number | null;
+  // Validation
+  errors: string[];
+  skipped_reason: string;
+}
+
+export interface BudgetImportBatch {
+  id: number;
+  org: number;
+  file_name: string;
+  financial_year: string;
+  status: ImportBatchStatus;
+  import_mode: ImportMode;
+  total_rows: number;
+  valid_rows: number;
+  error_rows: number;
+  skipped_rows: number;
+  committed_rows: number;
+  validation_errors: string[];
+  created_by: number | null;
+  created_by_email: string | null;
+  committed_by: number | null;
+  committed_by_email: string | null;
+  committed_at: string | null;
+  created_at: string;
+  updated_at: string;
+  rows: BudgetImportRow[];
+}
+
+export type BudgetImportBatchList = Omit<BudgetImportBatch, "rows" | "validation_errors">;
+
+// ── Live Balances ─────────────────────────────────────────────────────────────
+
+export interface BudgetLineLiveBalance {
+  id: number;
+  category_id: number;
+  category_name: string;
+  subcategory_id: number | null;
+  subcategory_name: string | null;
+  allocated_amount: string;
+  reserved_amount: string;
+  consumed_amount: string;
+  available_amount: string;
+}
+
+export interface BudgetLiveBalances {
+  budget_id: number;
+  allocated_amount: string;
+  reserved_amount: string;
+  consumed_amount: string;
+  available_amount: string;
+  utilization_percent: string;
+  lines: BudgetLineLiveBalance[];
+}
+
+// ── In-Use Summary ────────────────────────────────────────────────────────────
+
+export interface BudgetInUseSummary {
+  is_in_use: boolean;
+  has_ledger_history: boolean;
+  net_reserved: string;
+  consumed_total: string;
+  pending_variance_count: number;
+  linked_invoice_allocations_count: number;
+  linked_manual_expenses_count: number;
+  linked_campaign_count: number;
+  lines_in_use_count: number;
+  blocking_reasons: string[];
 }
 
 export interface BudgetOverviewPayload {
