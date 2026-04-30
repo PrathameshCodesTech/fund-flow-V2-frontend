@@ -62,7 +62,6 @@ export default function LoginPage() {
               VIMS
             </h1>
           </div>
-          <div className="mt-3 h-[2px] w-10 rounded-full bg-primary/40" />
         </div>
 
         {/* Video fills the rest */}
