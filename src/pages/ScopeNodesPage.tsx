@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+﻿import { useState, useEffect, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { V2Shell } from "@/components/v2/V2Shell";
 import {
@@ -251,7 +251,7 @@ function AddUnitDialog({
             )}
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {/* Internal Code */}
             <div className="space-y-1.5">
               <Label htmlFor="code">Internal Code *</Label>
@@ -403,7 +403,7 @@ function UnitDetailPanel({
       <ScrollArea className="flex-1">
         <div className="space-y-5 p-5">
           {/* Key details */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="rounded-lg border border-border bg-secondary/20 p-3">
               <div className="flex items-center gap-1.5 mb-1">
                 <Hash className="h-3 w-3 text-muted-foreground" />
@@ -565,9 +565,9 @@ const ScopeNodesPage = () => {
         </Button>
       }
     >
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
         {/* Left panel: org selector + hierarchy list */}
-        <aside className="flex w-72 flex-col border-r border-border bg-background">
+        <aside className="flex w-full md:w-72 flex-col border-b border-border md:border-b-0 md:border-r bg-background max-h-[45vh] md:max-h-none">
           {/* Org selector */}
           <div className="border-b border-border p-3">
             <Label className="mb-1.5 block text-xs font-medium text-muted-foreground">
@@ -683,3 +683,4 @@ const ScopeNodesPage = () => {
 };
 
 export default ScopeNodesPage;
+

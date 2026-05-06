@@ -1,4 +1,4 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import { motion } from "framer-motion";
 import { AppLayout } from "@/components/AppLayout";
 import { useAuth } from "@/contexts/AuthContext";
@@ -194,7 +194,7 @@ function OrganizationSection() {
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
         <div className="widget-card p-4 text-center">
           <p className="text-2xl font-semibold text-foreground">{entityCount}</p>
           <p className="text-xs text-muted-foreground">Legal Entities</p>
@@ -294,6 +294,7 @@ function LegalStructureSection() {
       {isLoading ? <LoadingState /> : (
         <div className="widget-card overflow-hidden">
           {!entities?.length ? <EmptyState message="No legal entities found." /> : (
+            <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border">
@@ -325,6 +326,7 @@ function LegalStructureSection() {
                 ))}
               </tbody>
             </table>
+            </div>
           )}
         </div>
       )}
@@ -348,7 +350,7 @@ function LegalStructureSection() {
               <Label>Name</Label>
               <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <Label>Short Name</Label>
                 <Input value={form.short_name} onChange={(e) => setForm({ ...form, short_name: e.target.value })} />
@@ -358,7 +360,7 @@ function LegalStructureSection() {
                 <Input value={form.currency} onChange={(e) => setForm({ ...form, currency: e.target.value })} />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <Label>Country</Label>
                 <Input value={form.country} onChange={(e) => setForm({ ...form, country: e.target.value })} />
@@ -457,7 +459,7 @@ function OrgUnitTypesSection() {
             <DialogTitle>{editing ? "Edit Unit Type" : "Add Unit Type"}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3 py-2">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <Label>Code</Label>
                 <Input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} placeholder="e.g. division" />
@@ -583,7 +585,7 @@ function OrgUnitsSection() {
             <DialogTitle>{editing ? "Edit Org Unit" : "Add Org Unit"}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3 py-2">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <Label>Organization</Label>
                 <Select value={form.organization} onValueChange={(v) => setForm({ ...form, organization: v })}>
@@ -599,7 +601,7 @@ function OrgUnitsSection() {
                 </Select>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <Label>Code</Label>
                 <Input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} />
@@ -894,7 +896,7 @@ function UsersSection() {
                 <p className="text-xs text-muted-foreground mt-1">User will be placed in this org unit immediately on creation.</p>
               </div>
             )}
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <Label>First Name</Label>
                 <Input value={form.first_name} onChange={(e) => setForm({ ...form, first_name: e.target.value })} />
@@ -904,7 +906,7 @@ function UsersSection() {
                 <Input value={form.last_name} onChange={(e) => setForm({ ...form, last_name: e.target.value })} />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <Label>Employee ID</Label>
                 <Input value={form.employee_id} onChange={(e) => setForm({ ...form, employee_id: e.target.value })} />
@@ -1020,7 +1022,7 @@ function OrgAssignmentsSection() {
                 <SelectContent>{units?.map((u) => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}</SelectContent>
               </Select>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <Label>Valid From</Label>
                 <Input type="date" value={form.valid_from} onChange={(e) => setForm({ ...form, valid_from: e.target.value })} />
@@ -1140,7 +1142,7 @@ function RoleAssignmentsSection() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <Label>Valid From</Label>
                 <Input type="date" value={form.valid_from} onChange={(e) => setForm({ ...form, valid_from: e.target.value })} />
@@ -1268,3 +1270,5 @@ export default function TenantAdminPage() {
     </AppLayout>
   );
 }
+
+

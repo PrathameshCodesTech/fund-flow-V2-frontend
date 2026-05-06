@@ -1,4 +1,4 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { useNavigate } from "react-router-dom";
 import { V2Shell } from "@/components/v2/V2Shell";
@@ -114,7 +114,7 @@ function AddPersonDialog({
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1">
               <Label htmlFor="ap-first">First name</Label>
               <Input
@@ -229,7 +229,7 @@ function EditPersonDialog({
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1">
               <Label htmlFor="ep-first">First name</Label>
               <Input id="ep-first" {...register("first_name")} />
@@ -316,7 +316,7 @@ function PersonDetailPanel({
       <ScrollArea className="flex-1">
         <div className="space-y-5 p-5">
           {/* Key facts */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="rounded-lg border border-border bg-secondary/20 p-3">
               <div className="mb-1 flex items-center gap-1">
                 <Mail className="h-3 w-3 text-muted-foreground" />
@@ -450,9 +450,9 @@ const PeoplePage = () => {
         </Button>
       }
     >
-      <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
+      <div className="flex flex-col md:flex-row min-h-0 min-w-0 flex-1 overflow-hidden">
         {/* Left panel: search + list */}
-        <aside className="flex w-80 shrink-0 flex-col overflow-hidden border-r border-border bg-background xl:w-96">
+        <aside className="flex w-full md:w-80 shrink-0 flex-col overflow-hidden border-b border-border md:border-b-0 md:border-r bg-background max-h-[45vh] md:max-h-none xl:w-96">
           {/* Search */}
           <div className="border-b border-border p-3">
             <div className="relative">
@@ -612,3 +612,4 @@ const PeoplePage = () => {
 };
 
 export default PeoplePage;
+

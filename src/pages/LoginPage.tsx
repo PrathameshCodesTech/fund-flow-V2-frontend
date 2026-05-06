@@ -44,40 +44,48 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex">
-      {/* Left panel — white bg, branding top + video centered */}
-      <div className="hidden lg:flex lg:w-[52%] flex-col bg-white">
-        {/* Top branding */}
-        <div className="px-10 pt-10">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-gray-400">
+    <div className="min-h-screen flex flex-col lg:flex-row">
+      {/* Top / Left panel */}
+      <div className="flex flex-col lg:w-[52%] lg:shrink-0 bg-primary lg:bg-white">
+
+        {/* Mobile-only: compact brand header */}
+        <div className="flex flex-col items-center justify-center py-10 px-6 border-b border-white/15 lg:hidden">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/20">
+              <img src="/vims-brand.png" alt="VIMS" className="h-8 w-auto object-contain" />
+            </div>
+            <h1 className="text-3xl font-extrabold tracking-tight text-white">VIMS</h1>
+          </div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/55">
             Vendor Invoice Management System
           </p>
-          <div className="flex items-center gap-2 mt-2">
-            <img
-              src="/vims-brand.png"
-              alt="VIMS"
-              className="h-12 w-auto object-contain"
-            />
-            <h1 className="text-4xl font-extrabold text-primary tracking-tight">
-              VIMS
-            </h1>
-          </div>
         </div>
 
-        {/* Video fills the rest */}
-        <div className="flex flex-1 items-center justify-center px-6 pb-6">
-          <video
-            src="/logovideo.mp4"
-            autoPlay
-            loop
-            muted
-            playsInline
-            className="w-full object-contain"
-          />
+        {/* Desktop-only: branding + video */}
+        <div className="hidden lg:flex flex-col h-full">
+          <div className="px-10 pt-10">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-gray-400">
+              Vendor Invoice Management System
+            </p>
+            <div className="flex items-center gap-2 mt-2">
+              <img src="/vims-brand.png" alt="VIMS" className="h-12 w-auto object-contain" />
+              <h1 className="text-4xl font-extrabold text-primary tracking-tight">VIMS</h1>
+            </div>
+          </div>
+          <div className="flex flex-1 items-center justify-center px-6 pb-6">
+            <video
+              src="/logovideo.mp4"
+              autoPlay
+              loop
+              muted
+              playsInline
+              className="w-full object-contain"
+            />
+          </div>
         </div>
       </div>
 
-      {/* Right panel — orange bg */}
+      {/* Bottom / Right panel — sign-in form */}
       <div className="flex-1 flex items-center justify-center p-6 sm:p-12 bg-primary">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -85,14 +93,6 @@ export default function LoginPage() {
           transition={{ duration: 0.5 }}
           className="w-full max-w-md"
         >
-          <div className="lg:hidden mb-8">
-            <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center mb-4">
-              <span className="text-white font-bold text-xs font-display">VIMS</span>
-            </div>
-            <h1 className="text-2xl font-bold font-display text-white">VIMS</h1>
-            <p className="text-xs text-white/70 mt-0.5">Vendor Invoice Management System</p>
-          </div>
-
           <h2 className="text-2xl font-bold font-display text-white">Welcome back</h2>
           <p className="text-white/75 mt-1 mb-8">
             Sign in with your work email and password.

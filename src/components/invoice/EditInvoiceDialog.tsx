@@ -1,4 +1,4 @@
-/**
+﻿/**
  * EditInvoiceDialog — PATCH /api/v1/invoices/<id>/
  *
  * Only shown when invoice is in a mutable state (draft) and user has
@@ -205,7 +205,7 @@ export function EditInvoiceDialog({ invoice, onClose }: Props) {
           </div>
 
           {/* Dates */}
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             <div>
               <label className="mb-1.5 block text-xs font-medium text-muted-foreground">Invoice Date *</label>
               <input
@@ -237,7 +237,7 @@ export function EditInvoiceDialog({ invoice, onClose }: Props) {
           </div>
 
           {/* Amounts */}
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             <div>
               <label className="mb-1.5 block text-xs font-medium text-muted-foreground">Subtotal *</label>
               <input
@@ -343,3 +343,4 @@ export function EditInvoiceDialog({ invoice, onClose }: Props) {
     </div>
   );
 }
+

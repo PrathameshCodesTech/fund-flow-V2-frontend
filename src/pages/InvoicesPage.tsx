@@ -1,5 +1,6 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { InvoiceControlTowerContent } from "./InvoiceControlTowerPage";
 import { useForm } from "react-hook-form";
 import { V2Shell } from "@/components/v2/V2Shell";
 import {
@@ -263,7 +264,7 @@ function CreateInvoiceDialog({
             )}
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label>Amount</Label>
               <Input
@@ -693,7 +694,7 @@ function RecordPaymentButton({ invoiceId }: { invoiceId: string }) {
                   <Separator />
                   <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Update Payment</p>
 
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <Label className="text-xs">Status</Label>
                       <Select value={form.payment_status} onValueChange={(v) => handleStatusChange(v as InvoicePaymentStatus)}>
@@ -730,7 +731,7 @@ function RecordPaymentButton({ invoiceId }: { invoiceId: string }) {
 
                   {form.payment_status === "paid" && (
                     <>
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
                           <Label className="text-xs">Paid Amount</Label>
                           <Input
@@ -756,7 +757,7 @@ function RecordPaymentButton({ invoiceId }: { invoiceId: string }) {
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
                           <Label className="text-xs">Ref Number</Label>
                           <Input
@@ -778,7 +779,7 @@ function RecordPaymentButton({ invoiceId }: { invoiceId: string }) {
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
                           <Label className="text-xs">Transaction ID</Label>
                           <Input
@@ -799,7 +800,7 @@ function RecordPaymentButton({ invoiceId }: { invoiceId: string }) {
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
                           <Label className="text-xs">Payer Bank</Label>
                           <Input
@@ -836,7 +837,7 @@ function RecordPaymentButton({ invoiceId }: { invoiceId: string }) {
             </div>
           ) : (
             <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <Label className="text-xs">Status</Label>
                   <Select value={form.payment_status} onValueChange={(v) => handleStatusChange(v as InvoicePaymentStatus)}>
@@ -873,7 +874,7 @@ function RecordPaymentButton({ invoiceId }: { invoiceId: string }) {
 
               {form.payment_status === "paid" && (
                 <>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <Label className="text-xs">Paid Amount *</Label>
                       <Input
@@ -899,7 +900,7 @@ function RecordPaymentButton({ invoiceId }: { invoiceId: string }) {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <Label className="text-xs">Ref Number</Label>
                       <Input
@@ -921,7 +922,7 @@ function RecordPaymentButton({ invoiceId }: { invoiceId: string }) {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <Label className="text-xs">Transaction ID</Label>
                       <Input
@@ -942,7 +943,7 @@ function RecordPaymentButton({ invoiceId }: { invoiceId: string }) {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <Label className="text-xs">Payer Bank</Label>
                       <Input
@@ -1036,7 +1037,7 @@ function InvoiceDetailPanel({
       <ScrollArea className="flex-1">
         <div className="space-y-5 p-5">
           {/* Key facts */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="rounded-lg border border-border bg-secondary/20 p-3">
               <div className="mb-1 flex items-center gap-1">
                 <p className="text-xs text-muted-foreground">Unit</p>
@@ -1266,6 +1267,7 @@ function InvoiceDetailPanel({
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 const InvoicesPage = () => {
+  const navigate = useNavigate();
   const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -1367,9 +1369,9 @@ const InvoicesPage = () => {
           </Button>
       }
     >
-      <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
-        {/* Left: list panel */}
-        <aside className="flex w-[24rem] shrink-0 flex-col border-r border-border bg-background xl:w-[26rem]">
+      <div className="flex flex-col md:flex-row min-h-0 min-w-0 flex-1 overflow-hidden">
+        {/* Left: list panel — hidden on mobile when an invoice is open */}
+        <aside className={`w-full md:w-[24rem] shrink-0 flex-col border-b border-border md:border-b-0 md:border-r bg-background md:max-h-none xl:w-[26rem] ${selectedInvoice ? "hidden md:flex" : "flex max-h-[50vh] md:max-h-none"}`}>
           {/* Quick filters */}
           <div className="border-b border-border px-3 py-2">
             <div className="inline-flex flex-wrap items-center gap-1 rounded-lg border border-orange-200/70 bg-gradient-to-r from-orange-50/80 via-background to-background p-1">
@@ -1457,23 +1459,46 @@ const InvoicesPage = () => {
           </ScrollArea>
         </aside>
 
-        {/* Right: detail panel */}
-        <main className="flex min-h-0 min-w-0 flex-1 overflow-hidden bg-secondary/5">
+        {/* Right: control tower panel — hidden on mobile when nothing selected */}
+        <main className={`min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-secondary/5 ${selectedInvoice ? "flex" : "hidden md:flex"}`}>
           {selectedInvoice ? (
-            <InvoiceDetailPanel
-              invoice={selectedInvoice}
-              nodeMap={nodeMap}
-              onAttachWorkflow={() => setAttachWorkflowOpen(true)}
-            />
+            <div className="flex h-full flex-col overflow-hidden">
+              {/* Panel toolbar */}
+              <div className="shrink-0 flex items-center gap-2 border-b border-border bg-background px-3 py-2.5">
+                {/* Back button — mobile only */}
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="md:hidden h-7 w-7 shrink-0"
+                  onClick={() => setSelectedInvoiceId(null)}
+                >
+                  <ArrowRight className="h-4 w-4 rotate-180" />
+                </Button>
+                <GitBranch className="h-4 w-4 text-muted-foreground shrink-0 hidden md:block" />
+                <span className="text-sm font-medium truncate flex-1">{selectedInvoice.title}</span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="shrink-0 gap-1.5 text-xs"
+                  onClick={() => navigate("/tasks")}
+                >
+                  <Inbox className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">View Approval Tasks</span>
+                  <span className="sm:hidden">Tasks</span>
+                </Button>
+              </div>
+              {/* Embedded control tower */}
+              <ScrollArea className="flex-1">
+                <InvoiceControlTowerContent invoiceId={selectedInvoice.id} />
+              </ScrollArea>
+            </div>
           ) : (
             <div className="flex h-full flex-col items-center justify-center gap-3 text-center px-8">
               <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
                 <FileText className="h-6 w-6 text-primary" />
               </div>
               <div>
-                <p className="text-sm font-medium text-foreground">
-                  Select an invoice
-                </p>
+                <p className="text-sm font-medium text-foreground">Select an invoice</p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   Choose an invoice from the list to view its details and actions.
                 </p>
@@ -1503,3 +1528,4 @@ const InvoicesPage = () => {
 };
 
 export default InvoicesPage;
+

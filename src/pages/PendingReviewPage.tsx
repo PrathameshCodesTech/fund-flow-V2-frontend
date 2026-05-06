@@ -366,9 +366,9 @@ export default function PendingReviewPage() {
 
   return (
     <V2Shell>
-      <div className="flex h-full overflow-hidden">
+      <div className="flex flex-col md:flex-row h-full overflow-hidden">
         {/* Queue panel */}
-        <div className="flex w-72 shrink-0 flex-col border-r">
+        <div className="flex w-full md:w-72 shrink-0 flex-col border-b md:border-b-0 md:border-r max-h-[45vh] md:max-h-none">
           {/* Header */}
           <div className="flex items-center gap-2 border-b px-4 py-3">
             <Inbox className="h-4 w-4 text-muted-foreground shrink-0" />

@@ -13,8 +13,32 @@ import type {
 export function listInvoices(params?: {
   scope_node?: string;
   status?: string;
+  page?: number;
 }): Promise<InvoiceListResponse> {
   return apiClient.get<InvoiceListResponse>("/api/v1/invoices/", params);
+}
+
+export async function listAllInvoices(params?: {
+  scope_node?: string;
+  status?: string;
+}): Promise<Invoice[]> {
+  const invoices: Invoice[] = [];
+  let page = 1;
+
+  while (true) {
+    const response = await listInvoices({ ...params, page });
+    if (Array.isArray(response)) {
+      return response;
+    }
+
+    invoices.push(...response.results);
+    if (!response.next) {
+      break;
+    }
+    page += 1;
+  }
+
+  return invoices;
 }
 
 // ── Invoice Detail ────────────────────────────────────────────────────────────

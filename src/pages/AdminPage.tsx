@@ -1,4 +1,4 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import { motion } from "framer-motion";
 import { AppLayout } from "@/components/AppLayout";
 import { useAuth, ROLE_LABELS, UserRole } from "@/contexts/AuthContext";
@@ -752,7 +752,7 @@ function OverviewTab({
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-      <div className="grid grid-cols-2 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
         {stats.map((stat, i) => (
           <motion.div
             key={stat.label}
@@ -862,3 +862,4 @@ export default function AdminPage() {
     </AppLayout>
   );
 }
+

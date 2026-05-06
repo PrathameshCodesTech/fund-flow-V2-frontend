@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+﻿import { useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -214,7 +214,7 @@ export function StepDialog({
           </div>
 
           {/* Order + Type */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1">
               <Label>Order *</Label>
               <Input
@@ -374,3 +374,4 @@ export function StepDialog({
     </Dialog>
   );
 }
+

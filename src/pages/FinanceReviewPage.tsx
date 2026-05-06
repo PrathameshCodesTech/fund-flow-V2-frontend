@@ -518,16 +518,18 @@ export default function FinanceReviewPage() {
           <div className="flex-1 min-w-0">
             {isInvoice && data.invoice ? (
               <Tabs defaultValue="overview" className="w-full">
-                <TabsList className="mb-4">
-                  <TabsTrigger value="overview">Overview</TabsTrigger>
-                  <TabsTrigger value="documents">
-                    Documents{data.documents?.length ? ` (${data.documents.length})` : ""}
-                  </TabsTrigger>
-                  <TabsTrigger value="allocations">
-                    Allocations{data.allocations?.length ? ` (${data.allocations.length})` : ""}
-                  </TabsTrigger>
-                  <TabsTrigger value="workflow">Workflow</TabsTrigger>
-                </TabsList>
+                <div className="overflow-x-auto pb-px mb-4">
+                  <TabsList>
+                    <TabsTrigger value="overview">Overview</TabsTrigger>
+                    <TabsTrigger value="documents">
+                      Documents{data.documents?.length ? ` (${data.documents.length})` : ""}
+                    </TabsTrigger>
+                    <TabsTrigger value="allocations">
+                      Allocations{data.allocations?.length ? ` (${data.allocations.length})` : ""}
+                    </TabsTrigger>
+                    <TabsTrigger value="workflow">Workflow</TabsTrigger>
+                  </TabsList>
+                </div>
 
                 <TabsContent value="overview">
                   <OverviewTab data={data} />

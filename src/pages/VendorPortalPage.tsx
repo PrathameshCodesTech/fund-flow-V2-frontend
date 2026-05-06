@@ -1,12 +1,12 @@
-/**
+﻿/**
  * VendorPortalPage — self-service portal for vendor-role users.
  *
  * Tabs:
  *   A. My Invoices      — all submitted invoices and in-progress drafts
- *   B. Submit Invoice  — upload Excel/PDF OR manual entry
+ *   B. Submit Invoice  — upload PDF invoice only
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useMyVendor } from "@/lib/hooks/useV2Vendor";
 import {
@@ -24,7 +24,6 @@ import {
 } from "@/lib/hooks/useV2Invoice";
 import { useQuery } from "@tanstack/react-query";
 import { showErrorToast, extractErrorMessage } from "@/lib/utils/toast-error";
-import type { Vendor } from "@/lib/types/v2vendor";
 import type { Vendor } from "@/lib/types/v2vendor";
 import type {
   Invoice,
@@ -58,24 +57,12 @@ import {
   X,
   RefreshCw,
   Download,
-  FileSpreadsheet,
-  FileType,
-  Edit3,
   Ban,
   Eye,
   User,
-  ShieldAlert,
 } from "lucide-react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-  getPortalProfile,
-  getPortalProfileRevision,
-  savePortalDraftRevision,
-  submitPortalRevision,
-  getPortalRevisionHistory,
-} from "@/lib/api/v2vendor";
-import type { VendorProfileRevision } from "@/lib/types/v2vendor";
-import { PROFILE_REVISION_STATUS_LABELS } from "@/lib/types/v2vendor";
+import { getPortalProfile } from "@/lib/api/v2vendor";
+import { listAllInvoices } from "@/lib/api/v2invoice";
 
 const invoiceInputCls = "w-full px-3 py-2 text-sm rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary disabled:opacity-50";
 const invoiceErrCls = "border-destructive";
@@ -130,7 +117,7 @@ function InvoiceFormFields({
           {validationErrors.po_number && <p className={invoiceErrMsgCls}>{validationErrors.po_number}</p>}
         </div>
       )}
-      <div className="grid grid-cols-2 gap-3">
+      <div>
         <div>
           <label className={invoiceLblCls}>Invoice Date <span className="text-destructive">*</span></label>
           {readOnly ? (
@@ -144,19 +131,6 @@ function InvoiceFormFields({
             />
           )}
           {validationErrors.invoice_date && <p className={invoiceErrMsgCls}>{validationErrors.invoice_date}</p>}
-        </div>
-        <div>
-          <label className={invoiceLblCls}>Due Date</label>
-          {readOnly ? (
-            <p className="text-sm py-2">{form.due_date || "â€”"}</p>
-          ) : (
-            <input
-              type="date"
-              value={form.due_date || ""}
-              onChange={(e) => onChange("due_date", e.target.value)}
-              className={invoiceInputCls}
-            />
-          )}
         </div>
       </div>
       <div>
@@ -174,7 +148,7 @@ function InvoiceFormFields({
         )}
         {validationErrors.currency && <p className={invoiceErrMsgCls}>{validationErrors.currency}</p>}
       </div>
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         <div>
           <label className={invoiceLblCls}>Subtotal</label>
           {readOnly ? (
@@ -248,9 +222,6 @@ function validatePreSubmit(form: NormalizedInvoiceData, sendToOptionId: string, 
   const total = parseFloat(form.total_amount || "0") || (parseFloat(form.subtotal_amount || "0") + parseFloat(form.tax_amount || "0"));
   if (!total || total <= 0) errs.total_amount = "Must be greater than zero";
   if (vendor.po_mandate_enabled && !form.po_number?.trim()) errs.po_number = "PO number required for this vendor";
-  if (form.due_date && form.invoice_date && new Date(form.due_date) < new Date(form.invoice_date)) {
-    errs.due_date = "Due date cannot be before invoice date";
-  }
   return errs;
 }
 
@@ -371,19 +342,29 @@ function extractFieldErrors(err: unknown): Record<string, string> {
 
 function PortalHeader({ vendorName, userName, onLogout }: { vendorName: string; userName: string; onLogout: () => void }) {
   return (
-    <header className="sticky top-0 z-20 bg-card border-b border-border px-4 sm:px-6 py-3">
-      <div className="max-w-2xl mx-auto flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-primary flex items-center justify-center">
-            <span className="text-primary-foreground font-bold text-sm">IF</span>
+    <header className="sticky top-0 z-20 bg-card border-b border-border px-4 sm:px-8 py-4">
+      <div className="max-w-4xl mx-auto flex items-center justify-between gap-4">
+        {/* Brand + vendor info */}
+        <div className="flex items-center gap-4 min-w-0">
+          {/* VIMS logo */}
+          <div className="flex items-center gap-2 shrink-0 pr-4 border-r border-border">
+            <img src="/vims-brand.png" alt="VIMS" className="h-9 w-auto object-contain" />
+            <span className="hidden sm:block text-base font-extrabold text-primary tracking-tight">VIMS</span>
           </div>
-          <div>
-            <p className="text-sm font-semibold text-foreground">{vendorName || "Vendor Portal"}</p>
-            {userName && <p className="text-xs text-muted-foreground">{userName}</p>}
+          {/* Vendor identity */}
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-foreground truncate">{vendorName || "Vendor Portal"}</p>
+            {userName && <p className="text-xs text-muted-foreground truncate">{userName}</p>}
           </div>
         </div>
-        <button onClick={onLogout} className="text-muted-foreground hover:text-foreground transition-colors" title="Sign out">
-          <LogOut className="w-5 h-5" />
+        {/* Sign out */}
+        <button
+          onClick={onLogout}
+          className="flex items-center gap-1.5 shrink-0 text-sm text-muted-foreground hover:text-foreground transition-colors"
+          title="Sign out"
+        >
+          <LogOut className="w-4 h-4" />
+          <span className="hidden sm:block">Sign out</span>
         </button>
       </div>
     </header>
@@ -393,7 +374,12 @@ function PortalHeader({ vendorName, userName, onLogout }: { vendorName: string; 
 // ── My Invoices tab ───────────────────────────────────────────────────────────
 
 function MyInvoicesTab() {
-  const { data: invoices = [], isLoading: invLoading } = useInvoices();
+  const PAGE_SIZE = 8;
+  const [page, setPage] = useState(1);
+  const { data: invoices = [], isLoading: invLoading } = useQuery({
+    queryKey: ["v2", "vendor-portal", "all-invoices"],
+    queryFn: () => listAllInvoices(),
+  });
   const { data: submissions = [], isLoading: subLoading } = useSubmissions();
 
   const isLoading = invLoading || subLoading;
@@ -408,6 +394,17 @@ function MyInvoicesTab() {
     ...invoices.map((i) => ({ kind: "invoice" as const, data: i })),
     ...submissions.filter((s) => s.status !== "submitted").map((s) => ({ kind: "submission" as const, data: s })),
   ].sort((a, b) => b.data.created_at.localeCompare(a.data.created_at));
+
+  const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const pageStart = (currentPage - 1) * PAGE_SIZE;
+  const pagedRows = rows.slice(pageStart, pageStart + PAGE_SIZE);
+
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [page, totalPages]);
 
   return (
     <div className="space-y-3">
@@ -428,10 +425,51 @@ function MyInvoicesTab() {
           <p className="text-xs text-muted-foreground">Submit your first invoice using the Submit Invoice tab.</p>
         </div>
       )}
-      {!isLoading && rows.map((row) =>
+      {!isLoading && pagedRows.map((row) =>
         row.kind === "invoice"
           ? <InvoiceRow key={`inv-${row.data.id}`} invoice={row.data} />
           : <SubmissionRow key={`sub-${row.data.id}`} submission={row.data} onClick={() => setSelectedSubmission(row.data)} />
+      )}
+
+      {!isLoading && rows.length > PAGE_SIZE && (
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3">
+          <p className="text-xs text-muted-foreground">
+            Showing {pageStart + 1}-{Math.min(pageStart + PAGE_SIZE, rows.length)} of {rows.length}
+          </p>
+          <div className="flex items-center gap-1.5 flex-wrap justify-end">
+            <button
+              onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+              disabled={currentPage === 1}
+              className="px-3 py-1.5 rounded-lg border border-border text-xs font-medium text-foreground hover:bg-secondary transition-colors disabled:opacity-50 disabled:hover:bg-transparent"
+            >
+              Previous
+            </button>
+            {Array.from({ length: totalPages }, (_, index) => {
+              const pageNumber = index + 1;
+              const isActive = pageNumber === currentPage;
+              return (
+                <button
+                  key={pageNumber}
+                  onClick={() => setPage(pageNumber)}
+                  className={`min-w-9 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
+                    isActive
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-border text-foreground hover:bg-secondary"
+                  }`}
+                >
+                  {pageNumber}
+                </button>
+              );
+            })}
+            <button
+              onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
+              disabled={currentPage === totalPages}
+              className="px-3 py-1.5 rounded-lg border border-border text-xs font-medium text-foreground hover:bg-secondary transition-colors disabled:opacity-50 disabled:hover:bg-transparent"
+            >
+              Next
+            </button>
+          </div>
+        </div>
       )}
 
       {selectedSubmission && (
@@ -447,7 +485,7 @@ function MyInvoicesTab() {
 
 function InvoiceRow({ invoice }: { invoice: Invoice }) {
   const [expanded, setExpanded] = useState(false);
-  const { data: payment } = useInvoicePayment(invoice.id);
+  const { data: payment } = useInvoicePayment(expanded ? invoice.id : null);
 
   return (
     <div className="rounded-xl border bg-card overflow-hidden border-border">
@@ -476,7 +514,6 @@ function InvoiceRow({ invoice }: { invoice: Invoice }) {
             <div><span className="text-muted-foreground block mb-0.5">Invoice Ref</span><span className="font-medium">{invoice.vendor_invoice_number || "—"}</span></div>
             <div><span className="text-muted-foreground block mb-0.5">PO Number</span><span className="font-medium">{invoice.po_number || "—"}</span></div>
             <div><span className="text-muted-foreground block mb-0.5">Invoice Date</span><span className="font-medium">{fmtDate(invoice.invoice_date)}</span></div>
-            <div><span className="text-muted-foreground block mb-0.5">Due Date</span><span className="font-medium">{fmtDate(invoice.due_date)}</span></div>
             <div><span className="text-muted-foreground block mb-0.5">Created</span><span className="font-medium">{fmtDate(invoice.created_at)}</span></div>
             <div><span className="text-muted-foreground block mb-0.5">Currency</span><span className="font-medium">{invoice.currency}</span></div>
             <div><span className="text-muted-foreground block mb-0.5">Amount</span><span className="font-medium">{fmtAmount(invoice.amount, invoice.currency)}</span></div>
@@ -839,11 +876,9 @@ function SubmissionDetailPanel({
 
 // ── Submit Invoice tab ────────────────────────────────────────────────────────
 
-type SubmitMode = "upload" | "manual";
-type Step = "choose" | "upload_idle" | "uploading" | "extracting" | "preview" | "manual_idle" | "manual_filling" | "submitted";
+type Step = "choose" | "upload_idle" | "uploading" | "extracting" | "preview" | "submitted";
 
 function SubmitInvoiceTab({ vendor }: { vendor: Vendor }) {
-  const [mode, setMode] = useState<SubmitMode>("upload");
   const [step, setStep] = useState<Step>("choose");
   const [submissionId, setSubmissionId] = useState<string | null>(null);
   const [extractedData, setExtractedData] = useState<NormalizedInvoiceData>({});
@@ -856,10 +891,6 @@ function SubmitInvoiceTab({ vendor }: { vendor: Vendor }) {
   const [invoiceFile, setInvoiceFile] = useState<File | null>(null);
   const [supportingFiles, setSupportingFiles] = useState<File[]>([]);
 
-  // Manual path state
-  const [manualScopeNode] = useState(vendor.scope_node || "");
-  const [manualInvoiceFile, setManualInvoiceFile] = useState<File | null>(null);
-  const [manualSupportingFiles, setManualSupportingFiles] = useState<File[]>([]);
   const [form, setForm] = useState<NormalizedInvoiceData>(EMPTY_FORM());
 
   const createSub = useCreateSubmission();
@@ -894,8 +925,6 @@ function SubmitInvoiceTab({ vendor }: { vendor: Vendor }) {
     setValidationErrors({});
     setInvoiceFile(null);
     setSupportingFiles([]);
-    setManualInvoiceFile(null);
-    setManualSupportingFiles([]);
     setSendToOptionId("");
     setSuccessMsg(null);
     setSubmitError(null);
@@ -1026,253 +1055,48 @@ function SubmitInvoiceTab({ vendor }: { vendor: Vendor }) {
     }
   }
 
-  // ── Manual path ──────────────────────────────────────────────────────────────
-
-  async function handleManualSubmit() {
-    if (!manualInvoiceFile || !manualScopeNode) return;
-    if (!validateForm(form)) {
-      setStep("manual_filling");
-      return;
-    }
-    if (!sendToOptionId) {
-      setSubmitError("Select a Send To option before submitting.");
-      showErrorToast("Select a Send To option before submitting.");
-      setStep("manual_filling");
-      return;
-    }
-    setStep("uploading");
-    setValidationErrors({});
-
-    try {
-      setSubmitError(null);
-      const sub = await createSub.mutateAsync({
-        scope_node: vendor.scope_node,
-        source_file: manualInvoiceFile,
-        normalized_data: form,
-      });
-      setSubmissionId(sub.id);
-
-      for (const file of manualSupportingFiles) {
-        await addDoc.mutateAsync({ id: sub.id, data: { file, document_type: "supporting_document" } });
-      }
-
-      await submitSub.mutateAsync({
-        id: sub.id,
-        data: { send_to_option_id: Number(sendToOptionId) },
-      });
-      setSuccessMsg("Invoice submitted for review.");
-      setSubmitError(null);
-      setStep("submitted");
-      setTimeout(resetAll, 3000);
-    } catch (err) {
-      const msg = extractErrorMessage(err, "Failed to submit invoice. Please try again.");
-      const fieldErrors = extractFieldErrors(err);
-      if (Object.keys(fieldErrors).length > 0) {
-        setValidationErrors(fieldErrors);
-        setSubmitError(msg);
-        showErrorToast(msg);
-      } else {
-        setSubmitError(msg);
-        showErrorToast(msg);
-      }
-      setStep("manual_filling");
-    }
-  }
-
-// ── Shared Invoice Form Fields ────────────────────────────────────────────────
-
-const _inputCls = "w-full px-3 py-2 text-sm rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary disabled:opacity-50";
-const _errCls = "border-destructive";
-const _lblCls = "block text-xs font-medium text-foreground mb-1.5";
-const _errMsgCls = "mt-1 text-xs text-destructive";
-
-function InvoiceFormFields({
-  form,
-  onChange,
-  validationErrors,
-  showPo,
-  readOnly = false,
-}: {
-  form: NormalizedInvoiceData;
-  onChange: (key: keyof NormalizedInvoiceData, value: string) => void;
-  validationErrors: Record<string, string>;
-  showPo: boolean;
-  readOnly?: boolean;
-}) {
-  const rc = readOnly ? "opacity-70 cursor-not-allowed" : "";
-  return (
-    <div className="space-y-4">
-      <div>
-        <label className={_lblCls}>Your Invoice Reference <span className="text-destructive">*</span></label>
-        {readOnly ? (
-          <p className="text-sm py-2">{form.vendor_invoice_number || "—"}</p>
-        ) : (
-          <input
-            type="text"
-            value={form.vendor_invoice_number || ""}
-            onChange={(e) => onChange("vendor_invoice_number", e.target.value)}
-            className={`${_inputCls} ${validationErrors.vendor_invoice_number ? _errCls : ""} ${rc}`}
-          />
-        )}
-        {validationErrors.vendor_invoice_number && <p className={_errMsgCls}>{validationErrors.vendor_invoice_number}</p>}
-      </div>
-      {showPo && (
-        <div>
-          <label className={_lblCls}>PO Number {showPo && <span className="text-destructive">*</span>}</label>
-          {readOnly ? (
-            <p className="text-sm py-2">{form.po_number || "—"}</p>
-          ) : (
-            <input
-              type="text"
-              value={form.po_number || ""}
-              onChange={(e) => onChange("po_number", e.target.value)}
-              placeholder="e.g. PO-2026-00123"
-              className={`${_inputCls} ${validationErrors.po_number ? _errCls : ""}`}
-            />
-          )}
-          {validationErrors.po_number && <p className={_errMsgCls}>{validationErrors.po_number}</p>}
-        </div>
-      )}
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className={_lblCls}>Invoice Date <span className="text-destructive">*</span></label>
-          {readOnly ? (
-            <p className="text-sm py-2">{form.invoice_date || "—"}</p>
-          ) : (
-            <input
-              type="date"
-              value={form.invoice_date || ""}
-              onChange={(e) => onChange("invoice_date", e.target.value)}
-              className={`${_inputCls} ${validationErrors.invoice_date ? _errCls : ""}`}
-            />
-          )}
-          {validationErrors.invoice_date && <p className={_errMsgCls}>{validationErrors.invoice_date}</p>}
-        </div>
-        <div>
-          <label className={_lblCls}>Due Date</label>
-          {readOnly ? (
-            <p className="text-sm py-2">{form.due_date || "—"}</p>
-          ) : (
-            <input type="date" value={form.due_date || ""} onChange={(e) => onChange("due_date", e.target.value)} className={_inputCls} />
-          )}
-        </div>
-      </div>
-      <div>
-        <label className={_lblCls}>Currency <span className="text-destructive">*</span></label>
-        {readOnly ? (
-          <p className="text-sm py-2">{form.currency || "—"}</p>
-        ) : (
-          <input
-            type="text"
-            value={form.currency || ""}
-            onChange={(e) => onChange("currency", e.target.value.toUpperCase())}
-            maxLength={3}
-            className={`${_inputCls} ${validationErrors.currency ? _errCls : ""}`}
-          />
-        )}
-        {validationErrors.currency && <p className={_errMsgCls}>{validationErrors.currency}</p>}
-      </div>
-      <div className="grid grid-cols-3 gap-3">
-        <div>
-          <label className={_lblCls}>Subtotal</label>
-          {readOnly ? (
-            <p className="text-sm py-2">{form.subtotal_amount || "—"}</p>
-          ) : (
-            <input type="number" min="0" step="0.01" value={form.subtotal_amount || ""} onChange={(e) => onChange("subtotal_amount", e.target.value)} className={_inputCls} />
-          )}
-        </div>
-        <div>
-          <label className={_lblCls}>Tax</label>
-          {readOnly ? (
-            <p className="text-sm py-2">{form.tax_amount || "—"}</p>
-          ) : (
-            <input type="number" min="0" step="0.01" value={form.tax_amount || ""} onChange={(e) => onChange("tax_amount", e.target.value)} className={_inputCls} />
-          )}
-        </div>
-        <div>
-          <label className={_lblCls}>Total <span className="text-destructive">*</span></label>
-          {readOnly ? (
-            <p className="text-sm py-2 font-medium">{form.total_amount || "—"}</p>
-          ) : (
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              value={form.total_amount || ""}
-              onChange={(e) => onChange("total_amount", e.target.value)}
-              className={`${_inputCls} ${validationErrors.total_amount ? _errCls : ""}`}
-            />
-          )}
-          {validationErrors.total_amount && <p className={_errMsgCls}>{validationErrors.total_amount}</p>}
-        </div>
-      </div>
-      <div>
-        <label className={_lblCls}>Description / Notes</label>
-        {readOnly ? (
-          <p className="text-sm py-2">{form.description || "—"}</p>
-        ) : (
-          <textarea rows={2} value={form.description || ""} onChange={(e) => onChange("description", e.target.value)} className={`${_inputCls} resize-none`} />
-        )}
-      </div>
-    </div>
-  );
-}
-
 // ── Step: Choose mode ────────────────────────────────────────────────────────
   if (step === "choose") {
     return (
       <div className="space-y-5">
         <div className="space-y-1">
-          <h3 className="text-sm font-semibold text-foreground">Choose Submission Method</h3>
-          <p className="text-xs text-muted-foreground">Upload a file for auto-fill, or enter all details manually.</p>
+          <h3 className="text-sm font-semibold text-foreground">Submit Invoice</h3>
+          <p className="text-xs text-muted-foreground">Upload your invoice PDF to extract the details and submit it for review.</p>
         </div>
 
-        {/* Template downloads */}
         <div className="rounded-lg border border-dashed border-border p-4 space-y-2">
-          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Template Downloads</p>
-          <div className="flex gap-3">
-            <a
-              href="/api/v1/invoices/vendor-invoice-submissions/template/excel/"
-              download
-              className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border text-sm text-foreground hover:bg-secondary transition-colors"
-            >
-              <FileSpreadsheet className="w-4 h-4 text-green-600" />
-              Download Excel Template
-            </a>
-            <a
-              href="/api/v1/invoices/vendor-invoice-submissions/template/pdf/"
-              download
-              className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border text-sm text-foreground hover:bg-secondary transition-colors"
-            >
-              <FileType className="w-4 h-4 text-red-500" />
-              Download PDF Template
-            </a>
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Template Download</p>
+          <div className="space-y-1.5">
+            <p className="text-sm text-foreground">
+              For the best extraction result, submit the invoice in this format.
+            </p>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Keep the invoice reference, PO number, invoice date, due date, currency, subtotal, tax, total, and description clearly visible in the PDF.
+              Using the template helps the system read these fields more accurately.
+            </p>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              After extraction, you can review and correct any field before final submission.
+            </p>
           </div>
-          <p className="text-xs text-muted-foreground">
-            Excel template is recommended for best auto-fill. PDF is accepted but may require manual correction.
-          </p>
+          <a
+            href="/api/v1/invoices/vendor-invoice-submissions/template/pdf/"
+            download
+            className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-border text-sm text-foreground hover:bg-secondary transition-colors"
+          >
+            <Download className="w-4 h-4 text-red-500" />
+            Download PDF Template
+          </a>
         </div>
 
-        {/* Mode cards */}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3">
           <button
             onClick={() => setStep("upload_idle")}
             className="flex flex-col items-center gap-3 p-5 rounded-xl border-2 border-primary bg-primary/5 hover:bg-primary/10 transition-colors"
           >
             <Upload className="w-8 h-8 text-primary" />
             <div className="text-center">
-              <p className="text-sm font-semibold text-foreground">Upload Invoice</p>
-              <p className="text-xs text-muted-foreground mt-1">PDF or Excel — fields auto-extracted</p>
-            </div>
-          </button>
-          <button
-            onClick={() => { setForm(EMPTY_FORM()); setStep("manual_idle"); }}
-            className="flex flex-col items-center gap-3 p-5 rounded-xl border-2 border-border hover:border-primary/50 hover:bg-secondary/20 transition-colors"
-          >
-            <Edit3 className="w-8 h-8 text-muted-foreground" />
-            <div className="text-center">
-              <p className="text-sm font-semibold text-foreground">Manual Entry</p>
-              <p className="text-xs text-muted-foreground mt-1">Fill all fields yourself</p>
+              <p className="text-sm font-semibold text-foreground">Upload Invoice PDF</p>
+              <p className="text-xs text-muted-foreground mt-1">PDF only — fields auto-extracted</p>
             </div>
           </button>
         </div>
@@ -1306,7 +1130,7 @@ function InvoiceFormFields({
         </div>
 
         <div>
-          <label className={invoiceLblCls}>Invoice File (PDF or Excel) <span className="text-destructive">*</span></label>
+          <label className={invoiceLblCls}>Invoice File (PDF) <span className="text-destructive">*</span></label>
           <div
             className={`flex items-center gap-2 rounded-lg border ${invoiceFile ? "border-border bg-secondary/20" : "border-dashed border-border"} px-3 py-2 cursor-pointer`}
             onClick={() => !busy && document.getElementById("upload-file-input")?.click()}
@@ -1321,7 +1145,7 @@ function InvoiceFormFields({
               </button>
             )}
           </div>
-          <input id="upload-file-input" type="file" accept=".pdf,.xlsx,.xls" className="hidden"
+          <input id="upload-file-input" type="file" accept=".pdf" className="hidden"
             onChange={(e) => setInvoiceFile(e.target.files?.[0] ?? null)} />
         </div>
 
@@ -1334,7 +1158,7 @@ function InvoiceFormFields({
               {supportingFiles.length === 0 ? "Click to attach files…" : `${supportingFiles.length} file(s) selected`}
             </span>
           </div>
-          <input id="upload-supporting-input" type="file" multiple accept=".pdf,.xlsx,.xls,.png,.jpg,.jpeg" className="hidden"
+          <input id="upload-supporting-input" type="file" multiple accept=".pdf" className="hidden"
             onChange={(e) => setSupportingFiles(Array.from(e.target.files ?? []))} />
           {supportingFiles.length > 0 && (
             <div className="mt-1.5 space-y-1">
@@ -1378,6 +1202,22 @@ function InvoiceFormFields({
           </div>
         )}
 
+        <SendToField
+          value={sendToOptionId}
+          onChange={(nextValue) => {
+            setSendToOptionId(nextValue);
+            setValidationErrors((current) => {
+              if (!current.send_to_option_id) return current;
+              const nextErrors = { ...current };
+              delete nextErrors.send_to_option_id;
+              return nextErrors;
+            });
+          }}
+          options={sendToOptions}
+          disabled={submitSub.isPending}
+          error={validationErrors.send_to_option_id}
+        />
+
         <InvoiceFormFields form={form} onChange={handleFieldChange} validationErrors={validationErrors} showPo={vendor.po_mandate_enabled} />
 
         {invoiceFile && (
@@ -1396,122 +1236,6 @@ function InvoiceFormFields({
             {submitSub.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />} Submit Invoice
           </button>
         </div>
-      </div>
-    );
-  }
-
-  // ── Manual path: idle (entity + file selection) ───────────────────────────────
-  if (step === "manual_idle") {
-    return (
-      <div className="space-y-5">
-        <div className="flex items-center gap-2">
-          <button onClick={resetAll} className="text-xs text-muted-foreground hover:text-foreground">← Back</button>
-          <span className="text-xs text-muted-foreground">|</span>
-          <span className="text-xs font-medium text-foreground">Manual Entry</span>
-        </div>
-
-        <div>
-          <label className={invoiceLblCls}>Bill To Entity</label>
-          {!vendor.scope_node ? (
-            <div className="flex items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">
-              <AlertCircle className="w-4 h-4 shrink-0" />
-              Vendor billing scope is not configured. Contact support.
-            </div>
-          ) : (
-            <div className="flex items-center gap-2 rounded-lg border border-border bg-secondary/20 px-3 py-2 text-sm text-foreground">
-              <span>{vendor.scope_node_name || vendor.scope_node}</span>
-            </div>
-          )}
-        </div>
-
-        <div>
-          <label className={invoiceLblCls}>Invoice File <span className="text-muted-foreground font-normal">(required before submit)</span></label>
-          <div
-            className={`flex items-center gap-2 rounded-lg border ${manualInvoiceFile ? "border-border bg-secondary/20" : "border-dashed border-border"} px-3 py-2 cursor-pointer`}
-            onClick={() => document.getElementById("manual-file-input")?.click()}
-          >
-            <Upload className="w-4 h-4 text-muted-foreground shrink-0" />
-            <span className="text-sm text-foreground truncate flex-1">
-              {manualInvoiceFile ? manualInvoiceFile.name : "Click to choose file…"}
-            </span>
-            {manualInvoiceFile && (
-              <button onClick={(e) => { e.stopPropagation(); setManualInvoiceFile(null); }} className="text-muted-foreground hover:text-foreground">
-                <X className="w-4 h-4" />
-              </button>
-            )}
-          </div>
-          <input id="manual-file-input" type="file" accept=".pdf,.xlsx,.xls" className="hidden"
-            onChange={(e) => setManualInvoiceFile(e.target.files?.[0] ?? null)} />
-        </div>
-
-        <div>
-          <label className={invoiceLblCls}>Supporting Documents <span className="text-muted-foreground font-normal">(optional)</span></label>
-          <div className="flex items-center gap-2 rounded-lg border border-dashed border-border px-3 py-2 cursor-pointer"
-            onClick={() => document.getElementById("manual-supporting-input")?.click()}>
-            <Paperclip className="w-4 h-4 text-muted-foreground shrink-0" />
-            <span className="text-sm text-muted-foreground truncate flex-1">
-              {manualSupportingFiles.length === 0 ? "Click to attach files…" : `${manualSupportingFiles.length} file(s) selected`}
-            </span>
-          </div>
-          <input id="manual-supporting-input" type="file" multiple accept=".pdf,.xlsx,.xls,.png,.jpg,.jpeg" className="hidden"
-            onChange={(e) => setManualSupportingFiles(Array.from(e.target.files ?? []))} />
-          {manualSupportingFiles.length > 0 && (
-            <div className="mt-1.5 space-y-1">
-              {manualSupportingFiles.map((f, i) => (
-                <div key={i} className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <Paperclip className="w-3 h-3" /><span>{f.name}</span>
-                  <button onClick={() => setManualSupportingFiles((fs) => fs.filter((_, j) => j !== i))} className="ml-auto"><X className="w-3 h-3" /></button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <button
-          disabled={!vendor.scope_node || isBusy}
-          onClick={() => { setForm(EMPTY_FORM()); setStep("manual_filling"); }}
-          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-primary text-primary text-sm font-medium hover:bg-primary/10 transition-colors disabled:opacity-60"
-        >
-          <Edit3 className="w-4 h-4" /> Continue to Form
-        </button>
-      </div>
-    );
-  }
-
-  // ── Manual path: filling form ─────────────────────────────────────────────────
-  if (step === "manual_filling") {
-    return (
-      <div className="space-y-4">
-        <div className="flex items-center gap-2">
-          <button onClick={() => setStep("manual_idle")} className="text-xs text-muted-foreground hover:text-foreground">← Back</button>
-          <span className="text-xs text-muted-foreground">|</span>
-          <span className="text-xs font-medium text-foreground">Manual Entry</span>
-        </div>
-
-        {Object.keys(validationErrors).length > 0 && (
-          <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3">
-            <p className="text-xs font-semibold text-destructive mb-2">Please fix the following fields:</p>
-            {Object.entries(validationErrors).map(([field, msg]) => (
-              <p key={field} className="text-xs text-destructive">• {msg}</p>
-            ))}
-          </div>
-        )}
-
-        <InvoiceFormFields form={form} onChange={handleFieldChange} validationErrors={validationErrors} showPo={vendor.po_mandate_enabled} />
-
-        {manualInvoiceFile && (
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <FileText className="w-3.5 h-3.5" /><span>{manualInvoiceFile.name}</span>
-          </div>
-        )}
-
-        <button
-          onClick={handleManualSubmit}
-          disabled={!manualInvoiceFile || !vendor.scope_node || isBusy}
-          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-60"
-        >
-          {isBusy ? <><Loader2 className="w-4 h-4 animate-spin" /> Submitting…</> : <><CheckCircle2 className="w-4 h-4" /> Submit Invoice</>}
-        </button>
       </div>
     );
   }
@@ -1636,340 +1360,110 @@ function formatProfileValue(value: unknown) {
   return String(value);
 }
 
-function parseBooleanLike(value: unknown): boolean {
-  if (typeof value === "boolean") return value;
-  if (typeof value === "string") return ["true", "1", "yes", "y"].includes(value.trim().toLowerCase());
-  return Boolean(value);
+function ProfileField({ label, value }: { label: string; value: unknown }) {
+  const display = formatProfileValue(value);
+  return (
+    <div className="space-y-1">
+      <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{label}</p>
+      <p className={`text-sm font-medium ${display === "—" ? "text-muted-foreground/50" : "text-foreground"}`}>
+        {display}
+      </p>
+    </div>
+  );
 }
 
-function statusBadgeCls(status: string) {
-  // applied — revision was applied to vendor profile
-  if (["applied"].includes(status)) return "bg-green-500/10 text-green-600 border-green-500/20";
-  // finance_approved — visible if portal polls after internal approval (before apply)
-  if (["finance_approved"].includes(status)) return "bg-purple-500/10 text-purple-600 border-purple-500/20";
-  // submitted — vendor submitted, waiting for internal review
-  if (["submitted"].includes(status)) return "bg-yellow-500/10 text-yellow-600 border-yellow-500/20";
-  // rejected outcomes
-  if (["finance_rejected", "cancelled"].includes(status)) return "bg-destructive/10 text-destructive border-destructive/20";
-  // draft/reopened — editable by vendor
-  return "bg-muted text-muted-foreground border-border";
+function ProfileSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-xl border border-border bg-card overflow-hidden">
+      <div className="px-5 py-3 border-b border-border bg-muted/40">
+        <h3 className="text-xs font-semibold text-foreground tracking-wide uppercase">{title}</h3>
+      </div>
+      <div className="p-5">{children}</div>
+    </div>
+  );
 }
 
-function MyProfileTab({ vendor }: { vendor: Vendor }) {
-  const qc = useQueryClient();
-  const [editMode, setEditMode] = useState(false);
-  const [draftFields, setDraftFields] = useState<Record<string, unknown>>({});
-  const [noteInput, setNoteInput] = useState("");
-  const [submitError, setSubmitError] = useState<string | null>(null);
-
+function MyProfileTab({ vendor: _vendor }: { vendor: Vendor }) {
   const profileQ = useQuery({
     queryKey: ["portal-profile"],
     queryFn: getPortalProfile,
   });
 
-  const revisionQ = useQuery({
-    queryKey: ["portal-profile-revision"],
-    queryFn: () => getPortalProfileRevision().catch(() => null),
-  });
-
-  const historyQ = useQuery({
-    queryKey: ["portal-revision-history"],
-    queryFn: getPortalRevisionHistory,
-  });
-
-  const saveDraftMut = useMutation({
-    mutationFn: (snap: Record<string, unknown>) => savePortalDraftRevision(snap),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["portal-profile-revision"] });
-      setEditMode(false);
-    },
-  });
-
-  const submitMut = useMutation({
-    mutationFn: submitPortalRevision,
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["portal-profile-revision"] });
-      qc.invalidateQueries({ queryKey: ["portal-revision-history"] });
-      setSubmitError(null);
-    },
-    onError: (e: unknown) => {
-      setSubmitError(e instanceof Error ? e.message : "Submission failed.");
-    },
-  });
-
   const snapshot = profileQ.data?.snapshot ?? {};
-  const revision = revisionQ.data;
-  const onHold = vendor.profile_change_pending;
-
-  function startEdit() {
-    setDraftFields(revision?.proposed_snapshot_json ?? { ...snapshot });
-    setEditMode(true);
-  }
-
-  function handleFieldChange(key: string, value: string) {
-    setDraftFields(prev => ({ ...prev, [key]: value }));
-  }
 
   if (profileQ.isLoading) {
-    return <div className="flex items-center gap-2 py-12 justify-center text-muted-foreground"><Loader2 className="w-4 h-4 animate-spin" /><span className="text-sm">Loading profile…</span></div>;
+    return (
+      <div className="flex items-center gap-2 py-12 justify-center text-muted-foreground">
+        <Loader2 className="w-4 h-4 animate-spin" />
+        <span className="text-sm">Loading profile…</span>
+      </div>
+    );
   }
 
-  const editableFields = Array.from(new Set(PROFILE_SECTIONS.flatMap((section) => section.fields)));
   const contactPersons = Array.isArray(snapshot.contact_persons_json) ? snapshot.contact_persons_json : [];
   const headOffice = (snapshot.head_office_address_json ?? {}) as Record<string, unknown>;
   const taxRegistration = (snapshot.tax_registration_details_json ?? {}) as Record<string, unknown>;
 
   return (
-    <div className="space-y-5">
-      {/* Hold banner */}
-      {onHold && (
-        <div className="flex items-start gap-3 px-4 py-3 rounded-xl bg-yellow-500/10 border border-yellow-500/20 text-yellow-700">
-          <ShieldAlert className="w-4 h-4 mt-0.5 shrink-0" />
-          <div>
-            <p className="text-sm font-medium">Profile under review</p>
-            <p className="text-xs mt-0.5 opacity-80">{vendor.profile_hold_reason || "A profile revision is pending review. New invoice submissions are paused until the revision is resolved."}</p>
-          </div>
-        </div>
-      )}
+    <div className="space-y-4">
+      {/* Notice */}
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-semibold text-foreground">Profile Details</p>
+        <p className="text-xs text-muted-foreground">
+          For updates, contact the internal support team.
+        </p>
+      </div>
 
-      {/* Active revision status */}
-      {revision && !editMode && (
-        <div className="rounded-xl border border-border bg-card p-4">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <p className="text-sm font-medium text-foreground">Revision #{revision.revision_number}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {revision.changed_fields_json.length} field{revision.changed_fields_json.length !== 1 ? "s" : ""} changed
-                {revision.submitted_at && ` · submitted ${new Date(revision.submitted_at).toLocaleDateString()}`}
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${statusBadgeCls(revision.status)}`}>
-                {PROFILE_REVISION_STATUS_LABELS[revision.status]}
-              </span>
-              {["draft", "reopened"].includes(revision.status) && (
-                <button onClick={startEdit} className="text-xs px-3 py-1 rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity">
-                  Edit
-                </button>
-              )}
-              {["draft", "reopened"].includes(revision.status) && revision.changed_fields_json.length > 0 && (
-                <button
-                  onClick={() => submitMut.mutate()}
-                  disabled={submitMut.isPending}
-                  className="text-xs px-3 py-1 rounded-lg border border-primary text-primary hover:bg-primary/5 transition-colors"
-                >
-                  {submitMut.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Submit"}
-                </button>
-              )}
-            </div>
-          </div>
-          {submitError && <p className="mt-2 text-xs text-destructive">{submitError}</p>}
-          {revision.changed_fields_json.length > 0 && (
-            <div className="mt-3 flex flex-wrap gap-1.5">
-              {revision.changed_fields_json.map(f => (
-                <span key={f} className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
-                  {FIELD_LABELS[f] ?? f}
-                </span>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Edit form */}
-      {editMode ? (
-        <div className="rounded-xl border border-border bg-card p-4 space-y-4">
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-semibold text-foreground">Edit Profile Fields</p>
-            <button onClick={() => setEditMode(false)} className="text-muted-foreground hover:text-foreground"><X className="w-4 h-4" /></button>
-          </div>
-          <div className="space-y-5">
-            {PROFILE_SECTIONS.map((section) => (
-              <div key={section.title}>
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-                  {section.title}
-                </p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {section.fields.map((key) => {
-                    const value = draftFields[key] ?? snapshot[key] ?? "";
-                    if (key === "gst_registered" || key === "msme_registered" || key === "declaration_accepted") {
-                      return (
-                        <label key={key} className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground">
-                          <input
-                            type="checkbox"
-                            checked={parseBooleanLike(value)}
-                            onChange={(e) => handleFieldChange(key, e.target.checked ? "true" : "false")}
-                            className="h-4 w-4"
-                          />
-                          <span>{FIELD_LABELS[key] ?? key}</span>
-                        </label>
-                      );
-                    }
-                    return (
-                      <div key={key}>
-                        <label className="block text-xs font-medium text-foreground mb-1">{FIELD_LABELS[key] ?? key}</label>
-                        <input
-                          type="text"
-                          value={String(value)}
-                          onChange={e => handleFieldChange(key, e.target.value)}
-                          className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                        />
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
+      {/* Standard sections */}
+      {PROFILE_SECTIONS.map((section) => (
+        <ProfileSection key={section.title} title={section.title}>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-5">
+            {section.fields.map((key) => (
+              <ProfileField key={key} label={FIELD_LABELS[key] ?? key} value={snapshot[key]} />
             ))}
-
-            <div>
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-                Contact Persons
-              </p>
-              <div className="rounded-lg border border-border bg-background/50 p-3 text-xs text-muted-foreground">
-                Contact persons remain visible in profile. Structured editing for these rows is not yet supported in the portal revision form.
-              </div>
-            </div>
-
-            <div>
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-                Head Office Address
-              </p>
-              <div className="rounded-lg border border-border bg-background/50 p-3 text-xs text-muted-foreground">
-                Head office address remains visible in profile. Structured editing for this block is not yet supported in the portal revision form.
-              </div>
-            </div>
-
-            <div>
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-                Tax Registration Details
-              </p>
-              <div className="rounded-lg border border-border bg-background/50 p-3 text-xs text-muted-foreground">
-                Tax registration details remain visible in profile. Structured editing for this block is not yet supported in the portal revision form.
-              </div>
-            </div>
           </div>
-          <div className="flex items-center gap-2 pt-2">
-            <button
-              onClick={() => saveDraftMut.mutate(draftFields)}
-              disabled={saveDraftMut.isPending}
-              className="px-4 py-2 text-sm rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-60 flex items-center gap-1.5"
-            >
-              {saveDraftMut.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
-              Save Draft
-            </button>
-            <button onClick={() => setEditMode(false)} className="px-4 py-2 text-sm rounded-lg border border-border text-foreground hover:bg-muted transition-colors">
-              Cancel
-            </button>
-          </div>
-        </div>
-      ) : (
-        /* Read-only profile view */
-        <div className="rounded-xl border border-border bg-card p-4">
-          <div className="flex items-center justify-between mb-4">
-            <p className="text-sm font-semibold text-foreground">Current Profile</p>
-            {!onHold && !["submitted", "finance_approved"].includes(revision?.status ?? "") && (
-              <button onClick={startEdit} className="text-xs px-3 py-1 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:border-primary transition-colors">
-                Request Changes
-              </button>
-            )}
-          </div>
-          <div className="space-y-5">
-            {PROFILE_SECTIONS.map((section) => (
-              <div key={section.title}>
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-                  {section.title}
-                </p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2.5">
-                  {section.fields.map((key) => (
-                    <div key={key}>
-                      <p className="text-[10px] text-muted-foreground uppercase tracking-wide">{FIELD_LABELS[key] ?? key}</p>
-                      <p className="text-sm text-foreground mt-0.5">{formatProfileValue(snapshot[key])}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
+        </ProfileSection>
+      ))}
 
-            <div>
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-                Contact Persons
-              </p>
-              {contactPersons.length > 0 ? (
-              <div>
-                <div className="space-y-3">
-                  {contactPersons.map((person, idx) => {
-                    const cp = person as Record<string, unknown>;
-                    return (
-                      <div key={idx} className="rounded-lg border border-border bg-background/50 p-3">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2.5">
-                          {["type", "name", "designation", "email", "telephone"]
-                            .map((key) => (
-                              <div key={key}>
-                                <p className="text-[10px] text-muted-foreground uppercase tracking-wide">
-                                  {FIELD_LABELS[key] ?? key}
-                                </p>
-                                <p className="text-sm text-foreground mt-0.5">{formatProfileValue(cp[key])}</p>
-                              </div>
-                            ))}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-              ) : (
-                <p className="text-sm text-muted-foreground">—</p>
-              )}
-            </div>
-
-            <div>
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-                Head Office Address
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2.5">
-                {["address_line1", "address_line2", "city", "state", "country", "pincode", "phone", "fax"].map((key) => (
-                  <div key={key}>
-                    <p className="text-[10px] text-muted-foreground uppercase tracking-wide">{FIELD_LABELS[key] ?? key}</p>
-                    <p className="text-sm text-foreground mt-0.5">{formatProfileValue(headOffice[key])}</p>
+      {/* Contact Persons */}
+      <ProfileSection title="Contact Persons">
+        {contactPersons.length > 0 ? (
+          <div className="space-y-3">
+            {contactPersons.map((person, idx) => {
+              const cp = person as Record<string, unknown>;
+              return (
+                <div key={idx} className="rounded-lg border border-border bg-muted/20 p-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-5">
+                    {["type", "name", "designation", "email", "telephone"].map((key) => (
+                      <ProfileField key={key} label={FIELD_LABELS[key] ?? key} value={cp[key]} />
+                    ))}
                   </div>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-                Tax Registration Details
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2.5">
-                {["tax_registration_nos", "tin_no", "cst_no", "lst_no", "esic_reg_no", "pan_ref_no", "ppf_no"].map((key) => (
-                  <div key={key}>
-                    <p className="text-[10px] text-muted-foreground uppercase tracking-wide">{FIELD_LABELS[key] ?? key}</p>
-                    <p className="text-sm text-foreground mt-0.5">{formatProfileValue(taxRegistration[key])}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
+                </div>
+              );
+            })}
           </div>
-        </div>
-      )}
+        ) : (
+          <p className="text-sm text-muted-foreground/50">—</p>
+        )}
+      </ProfileSection>
 
-      {/* History */}
-      {historyQ.data && historyQ.data.length > 0 && (
-        <div className="rounded-xl border border-border bg-card p-4">
-          <p className="text-sm font-semibold text-foreground mb-3">Revision History</p>
-          <div className="space-y-2">
-            {historyQ.data.slice(0, 5).map(rev => (
-              <div key={rev.id} className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Rev #{rev.revision_number}</span>
-                <span className="text-xs text-muted-foreground">{new Date(rev.created_at).toLocaleDateString()}</span>
-                <span className={`text-xs px-2 py-0.5 rounded-full border ${statusBadgeCls(rev.status)}`}>
-                  {PROFILE_REVISION_STATUS_LABELS[rev.status]}
-                </span>
-              </div>
-            ))}
-          </div>
+      {/* Head Office */}
+      <ProfileSection title="Head Office Address">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-5">
+          {["address_line1", "address_line2", "city", "state", "country", "pincode", "phone", "fax"].map((key) => (
+            <ProfileField key={key} label={FIELD_LABELS[key] ?? key} value={headOffice[key]} />
+          ))}
         </div>
-      )}
+      </ProfileSection>
+
+      {/* Tax Registration */}
+      <ProfileSection title="Tax Registration Details">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-5">
+          {["tax_registration_nos", "tin_no", "cst_no", "lst_no", "esic_reg_no", "pan_ref_no", "ppf_no"].map((key) => (
+            <ProfileField key={key} label={FIELD_LABELS[key] ?? key} value={taxRegistration[key]} />
+          ))}
+        </div>
+      </ProfileSection>
     </div>
   );
 }
@@ -1984,18 +1478,8 @@ function Portal({ vendor, userName, onLogout }: { vendor: Vendor; userName: stri
     <div className="min-h-screen bg-background">
       <PortalHeader vendorName={vendor.vendor_name} userName={userName} onLogout={onLogout} />
 
-      {/* Profile hold global banner */}
-      {vendor.profile_change_pending && (
-        <div className="bg-yellow-500/10 border-b border-yellow-500/20 px-4 py-2.5">
-          <div className="max-w-2xl mx-auto flex items-center gap-2 text-yellow-700 text-sm">
-            <ShieldAlert className="w-4 h-4 shrink-0" />
-            <span>Your profile is under review. New invoice submissions are paused. <button onClick={() => setTab("profile")} className="underline font-medium">View revision</button></span>
-          </div>
-        </div>
-      )}
-
       <div className="border-b border-border bg-card">
-        <div className="max-w-2xl mx-auto px-4 sm:px-6 flex">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 flex">
           {([
             { id: "invoices", label: "My Invoices", icon: <FileText className="w-4 h-4" /> },
             { id: "submit",   label: "Submit Invoice", icon: <Upload className="w-4 h-4" /> },
@@ -2009,14 +1493,11 @@ function Portal({ vendor, userName, onLogout }: { vendor: Vendor; userName: stri
               }`}
             >
               {icon}{label}
-              {id === "profile" && vendor.profile_change_pending && (
-                <span className="w-1.5 h-1.5 rounded-full bg-yellow-500 inline-block" />
-              )}
             </button>
           ))}
         </div>
       </div>
-      <main className="max-w-2xl mx-auto px-4 sm:px-6 py-6">
+      <main className="max-w-4xl mx-auto px-4 sm:px-6 py-6">
         {tab === "invoices" && <MyInvoicesTab />}
         {tab === "submit"   && <SubmitInvoiceTab vendor={vendor} />}
         {tab === "profile"  && <MyProfileTab vendor={vendor} />}
@@ -2029,7 +1510,7 @@ function LoadingState({ userName, onLogout }: { userName: string; onLogout: () =
   return (
     <div className="min-h-screen bg-background">
       <PortalHeader vendorName="Vendor Portal" userName={userName} onLogout={onLogout} />
-      <main className="max-w-2xl mx-auto px-4 sm:px-6 py-16 flex items-center justify-center">
+      <main className="max-w-4xl mx-auto px-4 sm:px-6 py-16 flex items-center justify-center">
         <div className="flex items-center gap-2 text-muted-foreground">
           <Loader2 className="w-5 h-5 animate-spin" /><span className="text-sm">Loading your portal…</span>
         </div>
@@ -2042,7 +1523,7 @@ function NotConfiguredState({ userName, onLogout }: { userName: string; onLogout
   return (
     <div className="min-h-screen bg-background">
       <PortalHeader vendorName="Vendor Portal" userName={userName} onLogout={onLogout} />
-      <main className="max-w-2xl mx-auto px-4 sm:px-6 py-12">
+      <main className="max-w-4xl mx-auto px-4 sm:px-6 py-12">
         <div className="flex flex-col items-center text-center gap-5">
           <div className="w-16 h-16 rounded-2xl bg-muted flex items-center justify-center">
             <AlertCircle className="w-8 h-8 text-muted-foreground/50" />
@@ -2056,7 +1537,7 @@ function NotConfiguredState({ userName, onLogout }: { userName: string; onLogout
           <div className="mt-2 p-4 rounded-xl bg-muted/40 border border-border text-left max-w-sm w-full">
             <p className="text-xs font-medium text-foreground mb-2">What your admin needs to do:</p>
             <ul className="text-xs text-muted-foreground space-y-1.5 list-disc list-inside">
-              <li>Ensure your vendor is registered in InvoFlow</li>
+              <li>Ensure your vendor is registered in VIMS</li>
               <li>Link your user account to that vendor via Django Admin</li>
               <li>Ask you to refresh this page once done</li>
             </ul>
@@ -2078,3 +1559,5 @@ export default function VendorPortalPage() {
 
   return <Portal vendor={vendor} userName={userName} onLogout={logout} />;
 }
+
+

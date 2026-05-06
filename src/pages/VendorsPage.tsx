@@ -615,9 +615,9 @@ function InvitationsTab({
   }, [orgId, organizations]);
 
   return (
-    <div className="flex flex-1 overflow-hidden">
+    <div className="flex flex-col md:flex-row flex-1 min-h-0 overflow-hidden">
       {/* List */}
-      <div className="flex w-96 flex-col border-r border-border">
+      <div className="flex w-full md:w-96 flex-col border-b border-border md:border-b-0 md:border-r max-h-[45vh] md:max-h-none">
         {/* Filters */}
         <div className="border-b border-border p-3 space-y-2">
           {orgsLoading ? (
@@ -731,9 +731,9 @@ function SubmissionsTab({
   const canReopen = selected?.status === "finance_rejected";
 
   return (
-    <div className="flex flex-1 overflow-hidden">
+    <div className="flex flex-col md:flex-row flex-1 min-h-0 overflow-hidden">
       {/* List */}
-      <div className="flex w-96 flex-col border-r border-border">
+      <div className="flex w-full md:w-96 flex-col border-b border-border md:border-b-0 md:border-r max-h-[45vh] md:max-h-none">
         <div className="border-b border-border p-3 space-y-2">
           {orgsLoading ? (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -811,7 +811,7 @@ function SubmissionsTab({
               <SubStatusBadge status={selected.status} />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {[
                 { label: "Email", value: selected.normalized_email ?? "â€”" },
                 { label: "Phone", value: selected.normalized_phone ?? "â€”" },
@@ -1086,9 +1086,9 @@ function VendorsTab({
   };
 
   return (
-    <div className="flex flex-1 overflow-hidden">
+    <div className="flex flex-col md:flex-row flex-1 min-h-0 overflow-hidden">
       {/* List */}
-      <div className="flex w-96 flex-col border-r border-border">
+      <div className="flex w-full md:w-96 flex-col border-b border-border md:border-b-0 md:border-r max-h-[45vh] md:max-h-none">
         <div className="border-b border-border p-3 space-y-2">
           {orgsLoading ? (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -1186,7 +1186,7 @@ function VendorsTab({
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {[
                 { label: "Email", value: selected.email },
                 { label: "Phone", value: selected.phone },
@@ -1307,7 +1307,7 @@ const VendorsPage = () => {
       titleIcon={<Users className="h-5 w-5 text-muted-foreground" />}
       actions={<CreateInvitationDialog orgId={orgId} />}
     >
-      <div className="flex flex-col flex-1 overflow-hidden">
+      <div className="flex flex-col flex-1 min-h-0">
         {/* Tab bar */}
         <div className="border-b border-border px-6 pt-3 bg-background">
           <div className="inline-flex items-center gap-1 rounded-lg border border-orange-200/70 bg-gradient-to-r from-orange-50/80 via-background to-background p-1">
@@ -1328,15 +1328,18 @@ const VendorsPage = () => {
         </div>
 
         {/* Tab content */}
-        <div className="flex-1 overflow-hidden">
-          {tab === "invitations" && <InvitationsTab orgId={orgId} setOrgId={setOrgId} />}
-          {tab === "submissions" && <SubmissionsTab orgId={orgId} setOrgId={setOrgId} />}
-          {tab === "vendors" && <VendorsTab orgId={orgId} setOrgId={setOrgId} />}
-        </div>
+        <ScrollArea className="flex-1 min-h-0">
+          <div className="min-h-0">
+            {tab === "invitations" && <InvitationsTab orgId={orgId} setOrgId={setOrgId} />}
+            {tab === "submissions" && <SubmissionsTab orgId={orgId} setOrgId={setOrgId} />}
+            {tab === "vendors" && <VendorsTab orgId={orgId} setOrgId={setOrgId} />}
+          </div>
+        </ScrollArea>
       </div>
     </V2Shell>
   );
 };
 
 export default VendorsPage;
+
 

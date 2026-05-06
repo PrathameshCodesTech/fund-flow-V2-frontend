@@ -328,6 +328,8 @@ export interface AllowedSplitEntity {
     scope_node_id: number | null;
     scope_node_name?: string | null;
     allocated_amount?: string;
+    reserved_amount?: string;
+    consumed_amount?: string;
     available_amount?: string;
     currency?: string;
   }>;
@@ -339,6 +341,9 @@ export interface AllowedSplitEntity {
     subcategory_id: number | null;
     subcategory_name: string | null;
     allocated_amount: string;
+    reserved_amount?: string;
+    consumed_amount?: string;
+    available_amount?: string;
   }>;
   default_category_id: number | null;
   default_category_name: string | null;

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+﻿import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { V2Shell } from "@/components/v2/V2Shell";
 import {
@@ -1095,7 +1095,7 @@ function CreateApprovalStepDialog({
                 </select>
               </FormField>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {(
                   [
                     ["require_category", "Require Category"],
@@ -1768,7 +1768,7 @@ function EditApprovalStepDialog({
                     <option value="CAN_BE_PARTIAL">Can Be Partial</option>
                   </select>
                 </FormField>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {(
                     [
                       ["require_category", "Require Category"],
@@ -2593,8 +2593,8 @@ const WorkflowConfigPage = () => {
         {viewMode === "routes" ? (
           <SendToRoutesManager orgId={selectedOrgId} nodeId={selectedNodeId} />
         ) : (
-          <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
-            <aside className="flex w-[20rem] shrink-0 flex-col border-r border-border bg-background xl:w-[22rem]">
+          <div className="flex flex-col md:flex-row min-h-0 min-w-0 flex-1 overflow-hidden">
+            <aside className="flex w-full md:w-[20rem] shrink-0 flex-col border-b border-border md:border-b-0 md:border-r bg-background max-h-[45vh] md:max-h-none xl:w-[22rem]">
               <div className="border-b border-border p-3">
                 <p className="mb-2 text-xs text-muted-foreground">
                   Define approval flows for each module and unit.
@@ -2661,8 +2661,8 @@ const WorkflowConfigPage = () => {
                   </div>
                 </div>
               ) : (
-                <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
-                  <div className="w-[16rem] shrink-0 overflow-y-auto border-r border-border bg-background p-4 xl:w-[18rem]">
+                <div className="flex flex-col md:flex-row min-h-0 min-w-0 flex-1 overflow-hidden">
+                  <div className="w-full md:w-[16rem] shrink-0 overflow-y-auto border-b border-border md:border-b-0 md:border-r bg-background p-4 max-h-[40vh] md:max-h-none xl:w-[18rem]">
                     <VersionSelector
                       templateId={selectedTemplateId}
                       versions={versions}
@@ -2871,7 +2871,7 @@ function SplitOptionForm({
 
   return (
     <div className="border border-blue-200 bg-blue-50 rounded-md p-2 space-y-2 text-xs">
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         <label className="flex flex-col gap-0.5">
           <span className="text-[10px] text-muted-foreground">Entity *</span>
           <select
@@ -3290,3 +3290,4 @@ function SendToRoutesManager({
 }
 
 export default WorkflowConfigPage;
+

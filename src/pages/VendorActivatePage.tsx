@@ -148,10 +148,10 @@ export default function VendorActivatePage() {
         </div>
         <div className="relative z-10">
           <div className="w-12 h-12 rounded-2xl bg-primary-foreground/20 flex items-center justify-center mb-8">
-            <span className="text-primary-foreground font-bold text-lg font-display">IF</span>
+            <span className="text-primary-foreground font-bold text-lg font-display">V</span>
           </div>
           <h1 className="text-4xl font-bold text-primary-foreground font-display leading-tight">
-            InvoFlow
+            VIMS
           </h1>
           <p className="mt-4 text-primary-foreground/70 text-lg max-w-md">
             Vendor self-service portal
@@ -170,7 +170,7 @@ export default function VendorActivatePage() {
         <div className="w-full max-w-md">
           <div className="lg:hidden mb-8">
             <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center mb-4">
-              <span className="text-primary-foreground font-bold text-sm font-display">IF</span>
+              <span className="text-primary-foreground font-bold text-sm font-display">V</span>
             </div>
             <h1 className="text-2xl font-bold font-display text-foreground">Set Your Password</h1>
           </div>

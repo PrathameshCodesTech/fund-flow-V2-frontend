@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+﻿import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { V2Shell } from "@/components/v2/V2Shell";
 import {
@@ -833,7 +833,7 @@ function RoleGrantsTab({ orgId }: { orgId: string | null }) {
               )}
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label>Role *</Label>
                 <Select onValueChange={(v) => setValue("role", v)}>
@@ -926,12 +926,14 @@ const AccessControlPage = () => {
     >
       <div className="flex-1 overflow-auto p-6">
         <Tabs defaultValue="roles" className="w-full">
-          <TabsList className="mb-5">
-            <TabsTrigger value="roles">Roles</TabsTrigger>
-            <TabsTrigger value="unit-access">Unit Access</TabsTrigger>
-            <TabsTrigger value="role-grants">Role Grants</TabsTrigger>
-            <TabsTrigger value="permissions">Permission Catalog</TabsTrigger>
-          </TabsList>
+          <div className="overflow-x-auto pb-px mb-5">
+            <TabsList>
+              <TabsTrigger value="roles">Roles</TabsTrigger>
+              <TabsTrigger value="unit-access">Unit Access</TabsTrigger>
+              <TabsTrigger value="role-grants">Role Grants</TabsTrigger>
+              <TabsTrigger value="permissions">Permission Catalog</TabsTrigger>
+            </TabsList>
+          </div>
 
           <TabsContent value="roles">
             <RolesTab orgId={selectedOrgId} nodes={nodes} />

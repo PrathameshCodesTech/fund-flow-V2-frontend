@@ -1,10 +1,10 @@
-import { useState, useMemo, useEffect } from "react";
+﻿import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { V2Shell } from "@/components/v2/V2Shell";
 import { ApiError } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
 import { useOrganizations, useScopeNodes } from "@/lib/hooks/useScopeNodes";
-import { useBudgets, useCategories, useSubCategories, useBudgetLines } from "@/lib/hooks/useV2Budget";
+import { useBudgets, useCategories, useSubCategories } from "@/lib/hooks/useV2Budget";
 import {
   listExpenses,
   getExpense,
@@ -44,6 +44,7 @@ import {
   Dialog,
   DialogContent,
   DialogHeader,
+  DialogDescription,
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
@@ -61,6 +62,7 @@ import {
   XCircle,
   Paperclip,
   Upload,
+  Camera,
   X,
   FileText,
   Calendar,
@@ -78,6 +80,13 @@ function formatCurrency(amount: string | number, currency = "INR"): string {
     currency,
     minimumFractionDigits: 2,
   }).format(Number(amount));
+}
+
+const UNSET_SELECT_VALUE = "__unset__";
+
+function normalizeSelectId(value: string | number | null | undefined): string | undefined {
+  if (value === null || value === undefined || value === "") return undefined;
+  return String(value);
 }
 
 function formatDate(dateStr: string): string {
@@ -226,8 +235,9 @@ export default function ManualExpensesPage() {
         {/* Filters + content */}
         <div className="flex flex-col flex-1 overflow-hidden">
           {/* Status tabs + search */}
-          <div className="flex items-center gap-4 px-6 py-3 border-b bg-muted/30">
+          <div className="flex flex-wrap items-center gap-4 px-6 py-3 border-b bg-muted/30">
             <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)}>
+              <div className="overflow-x-auto pb-px">
               <TabsList>
                 {STATUS_TABS.map((t) => (
                   <TabsTrigger key={t.value} value={t.value}>
@@ -240,6 +250,7 @@ export default function ManualExpensesPage() {
                   </TabsTrigger>
                 ))}
               </TabsList>
+              </div>
             </Tabs>
             <div className="relative flex-1 max-w-xs">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -275,6 +286,7 @@ export default function ManualExpensesPage() {
                   </p>
                 </div>
               ) : (
+                <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="sticky top-0 bg-muted/80 backdrop-blur z-10 border-b">
                     <tr>
@@ -301,6 +313,7 @@ export default function ManualExpensesPage() {
                     ))}
                   </tbody>
                 </table>
+                </div>
               )}
             </div>
           )}
@@ -422,8 +435,75 @@ function ExpenseDetailDrawer({
   settleLoading,
   cancelLoading,
 }: DetailDrawerProps) {
+  const qc = useQueryClient();
   const [cancelNote, setCancelNote] = useState("");
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [uploadingFiles, setUploadingFiles] = useState<File[]>([]);
+  const [uploadTitles, setUploadTitles] = useState<Record<number, string>>({});
+  const [attachmentBusy, setAttachmentBusy] = useState(false);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
+  const detailCameraInputId = `expense-detail-camera-${expense?.id ?? "loading"}`;
+
+  function handleAttachmentFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files || []);
+    setUploadingFiles((prev) => [...prev, ...files]);
+    const newTitles: Record<number, string> = {};
+    files.forEach((file, index) => {
+      newTitles[uploadingFiles.length + index] = file.name;
+    });
+    setUploadTitles((prev) => ({ ...prev, ...newTitles }));
+  }
+
+  function removePendingAttachment(index: number) {
+    setUploadingFiles((prev) => prev.filter((_, i) => i !== index));
+    setUploadTitles((prev) => {
+      const next: Record<number, string> = {};
+      Object.entries(prev).forEach(([key, value]) => {
+        const numericKey = Number(key);
+        if (numericKey < index) next[numericKey] = value;
+        if (numericKey > index) next[numericKey - 1] = value;
+      });
+      return next;
+    });
+  }
+
+  async function handleUploadAttachments() {
+    if (!uploadingFiles.length) return;
+    setAttachmentBusy(true);
+    setAttachmentError(null);
+    try {
+      for (const [index, file] of uploadingFiles.entries()) {
+        await uploadExpenseAttachment(
+          expense.id,
+          file,
+          uploadTitles[index] || file.name,
+          "supporting_document",
+        );
+      }
+      await qc.invalidateQueries({ queryKey: ["manual-expenses", "detail", expense.id] });
+      await qc.invalidateQueries({ queryKey: ["manual-expenses"] });
+      setUploadingFiles([]);
+      setUploadTitles({});
+    } catch (e) {
+      setAttachmentError(e instanceof ApiError ? e.message : "Failed to upload attachment.");
+    } finally {
+      setAttachmentBusy(false);
+    }
+  }
+
+  async function handleDeleteAttachment(attachmentId: string) {
+    setAttachmentBusy(true);
+    setAttachmentError(null);
+    try {
+      await deleteExpenseAttachment(attachmentId);
+      await qc.invalidateQueries({ queryKey: ["manual-expenses", "detail", expense.id] });
+      await qc.invalidateQueries({ queryKey: ["manual-expenses"] });
+    } catch (e) {
+      setAttachmentError(e instanceof ApiError ? e.message : "Failed to delete attachment.");
+    } finally {
+      setAttachmentBusy(false);
+    }
+  }
 
   if (!expense && loading) {
     return (
@@ -460,7 +540,7 @@ function ExpenseDetailDrawer({
         <ScrollArea className="flex-1">
           <div className="px-6 py-5 space-y-6">
             {/* Core info */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <InfoField label="Expense Date" value={formatDate(expense.expense_date)} icon={<Calendar className="h-4 w-4" />} />
               <InfoField label="Amount" value={formatCurrency(expense.amount, expense.currency)} highlight />
               <InfoField label="Reference" value={expense.reference_number || "—"} />
@@ -489,35 +569,122 @@ function ExpenseDetailDrawer({
 
             {/* Attachments */}
             <div>
-              <h3 className="text-sm font-medium text-muted-foreground mb-3">Attachments ({expense.attachment_count})</h3>
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <h3 className="text-sm font-medium text-muted-foreground">Attachments ({expense.attachment_count})</h3>
+              </div>
               {expense.attachments?.length ? (
                 <div className="space-y-2">
                   {expense.attachments.map((att) => (
-                    <a
+                    <div
                       key={att.id}
-                      href={att.download_url || "#"}
-                      target="_blank"
-                      rel="noopener noreferrer"
                       className="flex items-center gap-3 p-3 rounded-lg border hover:bg-muted/50 transition-colors"
                     >
-                      <FileText className="h-5 w-5 text-primary shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium truncate">{att.title}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {att.document_type} · {att.file_name}
+                      <a
+                        href={att.download_url || "#"}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-3 flex-1 min-w-0"
+                      >
+                        <FileText className="h-5 w-5 text-primary shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium truncate">{att.title}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {att.document_type} · {att.file_name}
+                          </div>
                         </div>
-                      </div>
-                    </a>
+                      </a>
+                      {(expense.status === "draft" || expense.status === "submitted") && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 px-2 text-destructive"
+                          onClick={() => handleDeleteAttachment(att.id)}
+                          disabled={attachmentBusy}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
                   ))}
                 </div>
               ) : (
                 <p className="text-sm text-muted-foreground">No attachments.</p>
               )}
+
+              {(expense.status === "draft" || expense.status === "submitted") && (
+                <div className="mt-4 space-y-3 rounded-lg border border-dashed p-4">
+                  <input
+                    type="file"
+                    multiple
+                    accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+                    onChange={handleAttachmentFileChange}
+                    className="block w-full text-sm file:mr-3 file:px-3 file:py-1.5 file:rounded file:border-0 file:text-xs file:font-medium file:bg-primary/10 file:text-primary hover:file:bg-primary/20 cursor-pointer"
+                  />
+                  <div className="sm:hidden">
+                    <input
+                      id={detailCameraInputId}
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      onChange={handleAttachmentFileChange}
+                      className="hidden"
+                    />
+                    <label
+                      htmlFor={detailCameraInputId}
+                      className="inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-input px-3 py-2 text-sm font-medium text-foreground cursor-pointer hover:bg-muted"
+                    >
+                      <Camera className="h-4 w-4" />
+                      Take Photo
+                    </label>
+                  </div>
+
+                  {uploadingFiles.length > 0 && (
+                    <div className="space-y-2">
+                      {uploadingFiles.map((file, index) => (
+                        <div key={`${file.name}-${index}`} className="flex items-center gap-3">
+                          <span className="text-sm truncate flex-1">{file.name}</span>
+                          <Input
+                            placeholder="Title"
+                            value={uploadTitles[index] || ""}
+                            onChange={(e) => setUploadTitles((prev) => ({ ...prev, [index]: e.target.value }))}
+                            className="w-40"
+                          />
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => removePendingAttachment(index)}
+                            className="h-8 px-2 text-muted-foreground hover:text-destructive"
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ))}
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={handleUploadAttachments}
+                        disabled={attachmentBusy}
+                        className="gap-1.5"
+                      >
+                        {attachmentBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                        Upload {uploadingFiles.length} file(s)
+                      </Button>
+                    </div>
+                  )}
+
+                  {attachmentError && (
+                    <p className="text-sm text-destructive">{attachmentError}</p>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Timestamps */}
             <div className="border-t pt-4">
-              <div className="grid grid-cols-2 gap-3 text-xs text-muted-foreground">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs text-muted-foreground">
                 <InfoField label="Created By" value={expense.created_by_name || "—"} />
                 <InfoField label="Created At" value={formatDateTime(expense.created_at)} />
                 {expense.submitted_at && <InfoField label="Submitted At" value={formatDateTime(expense.submitted_at)} />}
@@ -620,6 +787,7 @@ function ExpenseFormDialog({ expenseId, onClose, onSaved }: ExpenseFormProps) {
   });
   const [uploadingFiles, setUploadingFiles] = useState<File[]>([]);
   const [uploadTitles, setUploadTitles] = useState<Record<number, string>>({});
+  const dialogCameraInputId = `expense-form-camera-${expenseId ?? "new"}`;
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -628,7 +796,6 @@ function ExpenseFormDialog({ expenseId, onClose, onSaved }: ExpenseFormProps) {
   const { data: scopeNodes = [] } = useScopeNodes(selectedOrgId || undefined);
   const { data: budgets = [] } = useBudgets({
     org: selectedOrgId || undefined,
-    scope_node: form.scope_node || undefined,
     status: "active",
   });
   const { data: categories = [] } = useCategories({
@@ -639,38 +806,52 @@ function ExpenseFormDialog({ expenseId, onClose, onSaved }: ExpenseFormProps) {
     category: form.category || undefined,
     is_active: true,
   });
-  const { data: budgetLines = [] } = useBudgetLines({
-    budget: form.budget || undefined,
-    category: form.category || undefined,
-  });
-
+  const selectedOrganization = useMemo(
+    () => organizations.find((org) => String(org.id) === selectedOrgId),
+    [organizations, selectedOrgId],
+  );
+  const selectedScopeNode = useMemo(
+    () => scopeNodes.find((node) => String(node.id) === normalizeSelectId(form.scope_node)),
+    [scopeNodes, form.scope_node],
+  );
+  const selectedBudget = useMemo(
+    () => budgets.find((budget) => String(budget.id) === normalizeSelectId(form.budget)),
+    [budgets, form.budget],
+  );
+  const selectedCategory = useMemo(
+    () => categories.find((category) => String(category.id) === normalizeSelectId(form.category)),
+    [categories, form.category],
+  );
+  const selectedSubcategory = useMemo(
+    () => subcategories.find((subcategory) => String(subcategory.id) === normalizeSelectId(form.subcategory)),
+    [subcategories, form.subcategory],
+  );
   // Pre-fill for edit
   useEffect(() => {
     if (existing && !form.expense_date) {
       setForm({
-        scope_node: existing.scope_node,
+        scope_node: normalizeSelectId(existing.scope_node),
         payment_method: existing.payment_method as PaymentMethod,
         vendor_name: existing.vendor_name || undefined,
         reference_number: existing.reference_number || undefined,
         expense_date: existing.expense_date,
         amount: existing.amount,
         currency: existing.currency,
-        budget: existing.budget,
-        budget_line: existing.budget_line || undefined,
-        category: existing.category,
-        subcategory: existing.subcategory,
+        budget: normalizeSelectId(existing.budget),
+        category: normalizeSelectId(existing.category),
+        subcategory: normalizeSelectId(existing.subcategory),
         description: existing.description || undefined,
         source_note: existing.source_note || undefined,
       });
       if (existing.org) {
-        setSelectedOrgId(existing.org);
+        setSelectedOrgId(String(existing.org));
       }
     }
   }, [existing, form.expense_date]);
 
   useEffect(() => {
     if (!expenseId && organizations.length === 1 && !selectedOrgId) {
-      setSelectedOrgId(organizations[0].id);
+      setSelectedOrgId(String(organizations[0].id));
     }
   }, [expenseId, organizations, selectedOrgId]);
 
@@ -740,6 +921,9 @@ function ExpenseFormDialog({ expenseId, onClose, onSaved }: ExpenseFormProps) {
       <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>{expenseId ? "Edit Expense" : "New Expense"}</DialogTitle>
+          <DialogDescription>
+            Enter the expense details, select the budget coding, and save the record for submission or settlement.
+          </DialogDescription>
         </DialogHeader>
 
         <ScrollArea className="flex-1 pr-2">
@@ -749,7 +933,7 @@ function ExpenseFormDialog({ expenseId, onClose, onSaved }: ExpenseFormProps) {
             )}
 
             {/* Row 1: Date + Amount + Currency */}
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               <div className="space-y-1.5">
                 <Label>Expense Date *</Label>
                 <Input
@@ -782,29 +966,34 @@ function ExpenseFormDialog({ expenseId, onClose, onSaved }: ExpenseFormProps) {
             </div>
 
             {/* Row 2: Organization + Scope + Payment Method */}
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               <div className="space-y-1.5">
                 <Label>Organization *</Label>
                 <Select
-                  value={selectedOrgId}
+                  value={selectedOrgId || UNSET_SELECT_VALUE}
                   onValueChange={(value) => {
+                    if (value === UNSET_SELECT_VALUE) return;
                     setSelectedOrgId(value);
                     setForm((f) => ({
                       ...f,
                       scope_node: undefined,
                       budget: undefined,
-                      budget_line: undefined,
                       category: undefined,
                       subcategory: undefined,
                     }));
                   }}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Select organization" />
+                    <span className="block truncate">
+                      {selectedOrganization?.name || "Select organization"}
+                    </span>
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value={UNSET_SELECT_VALUE} disabled>
+                      Select organization
+                    </SelectItem>
                     {organizations.map((org) => (
-                      <SelectItem key={org.id} value={org.id}>{org.name}</SelectItem>
+                      <SelectItem key={org.id} value={String(org.id)}>{org.name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -812,22 +1001,27 @@ function ExpenseFormDialog({ expenseId, onClose, onSaved }: ExpenseFormProps) {
               <div className="space-y-1.5">
                 <Label>Scope *</Label>
                 <Select
-                  value={form.scope_node || ""}
-                  onValueChange={(value) =>
+                  value={form.scope_node || UNSET_SELECT_VALUE}
+                  onValueChange={(value) => {
+                    if (value === UNSET_SELECT_VALUE) return;
                     setForm((f) => ({
                       ...f,
                       scope_node: value,
                       budget: undefined,
-                      budget_line: undefined,
-                    }))
-                  }
+                    }));
+                  }}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Select scope node" />
+                    <span className="block truncate">
+                      {selectedScopeNode?.name || "Select scope node"}
+                    </span>
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value={UNSET_SELECT_VALUE} disabled>
+                      Select scope node
+                    </SelectItem>
                     {scopeNodes.map((node) => (
-                      <SelectItem key={node.id} value={node.id}>{node.name}</SelectItem>
+                      <SelectItem key={node.id} value={String(node.id)}>{node.name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -851,25 +1045,30 @@ function ExpenseFormDialog({ expenseId, onClose, onSaved }: ExpenseFormProps) {
             </div>
 
             {/* Row 3: Budget + Category + Subcategory */}
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               <div className="space-y-1.5">
                 <Label>Budget *</Label>
                 <Select
-                  value={form.budget || ""}
-                  onValueChange={(value) =>
+                  value={form.budget || UNSET_SELECT_VALUE}
+                  onValueChange={(value) => {
+                    if (value === UNSET_SELECT_VALUE) return;
                     setForm((f) => ({
                       ...f,
                       budget: value,
-                      budget_line: undefined,
-                    }))
-                  }
+                    }));
+                  }}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Select budget" />
+                    <span className="block truncate">
+                      {selectedBudget ? `${selectedBudget.name} (${selectedBudget.code})` : "Select budget"}
+                    </span>
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value={UNSET_SELECT_VALUE} disabled>
+                      Select budget
+                    </SelectItem>
                     {budgets.map((budget) => (
-                      <SelectItem key={budget.id} value={budget.id}>
+                      <SelectItem key={budget.id} value={String(budget.id)}>
                         {budget.name} ({budget.code})
                       </SelectItem>
                     ))}
@@ -879,22 +1078,27 @@ function ExpenseFormDialog({ expenseId, onClose, onSaved }: ExpenseFormProps) {
               <div className="space-y-1.5">
                 <Label>Category *</Label>
                 <Select
-                  value={form.category || ""}
-                  onValueChange={(value) =>
+                  value={form.category || UNSET_SELECT_VALUE}
+                  onValueChange={(value) => {
+                    if (value === UNSET_SELECT_VALUE) return;
                     setForm((f) => ({
                       ...f,
                       category: value,
                       subcategory: undefined,
-                      budget_line: undefined,
-                    }))
-                  }
+                    }));
+                  }}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Select category" />
+                    <span className="block truncate">
+                      {selectedCategory?.name || "Select category"}
+                    </span>
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value={UNSET_SELECT_VALUE} disabled>
+                      Select category
+                    </SelectItem>
                     {categories.map((category) => (
-                      <SelectItem key={category.id} value={category.id}>{category.name}</SelectItem>
+                      <SelectItem key={category.id} value={String(category.id)}>{category.name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -902,50 +1106,34 @@ function ExpenseFormDialog({ expenseId, onClose, onSaved }: ExpenseFormProps) {
               <div className="space-y-1.5">
                 <Label>Subcategory *</Label>
                 <Select
-                  value={form.subcategory || ""}
-                  onValueChange={(value) =>
+                  value={form.subcategory || UNSET_SELECT_VALUE}
+                  onValueChange={(value) => {
+                    if (value === UNSET_SELECT_VALUE) return;
                     setForm((f) => ({
                       ...f,
                       subcategory: value,
-                      budget_line: undefined,
-                    }))
-                  }
+                    }));
+                  }}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Select subcategory" />
+                    <span className="block truncate">
+                      {selectedSubcategory?.name || "Select subcategory"}
+                    </span>
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value={UNSET_SELECT_VALUE} disabled>
+                      Select subcategory
+                    </SelectItem>
                     {subcategories.map((subcategory) => (
-                      <SelectItem key={subcategory.id} value={subcategory.id}>{subcategory.name}</SelectItem>
+                      <SelectItem key={subcategory.id} value={String(subcategory.id)}>{subcategory.name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
             </div>
 
-            {/* Row 4: Budget Line + Vendor + Reference */}
-            <div className="grid grid-cols-3 gap-3">
-              <div className="space-y-1.5">
-                <Label>Budget Line</Label>
-                <Select
-                  value={form.budget_line || "__none__"}
-                  onValueChange={(value) =>
-                    setForm((f) => ({ ...f, budget_line: value === "__none__" ? undefined : value }))
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Optional budget line" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">No specific line</SelectItem>
-                    {budgetLines.map((line) => (
-                      <SelectItem key={line.id} value={line.id}>
-                        {line.category_name || "Category"} / {line.subcategory_name || "No subcategory"}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+            {/* Row 4: Vendor + Reference */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label>Vendor Name</Label>
                 <Input
@@ -965,7 +1153,7 @@ function ExpenseFormDialog({ expenseId, onClose, onSaved }: ExpenseFormProps) {
             </div>
 
             {/* Row 5: Description + Source Note */}
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label>Description</Label>
                 <Textarea
@@ -998,6 +1186,23 @@ function ExpenseFormDialog({ expenseId, onClose, onSaved }: ExpenseFormProps) {
                     onChange={handleFileChange}
                     className="block w-full text-sm file:mr-3 file:px-3 file:py-1.5 file:rounded file:border-0 file:text-xs file:font-medium file:bg-primary/10 file:text-primary hover:file:bg-primary/20 cursor-pointer"
                   />
+                  <div className="sm:hidden">
+                    <input
+                      id={dialogCameraInputId}
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      onChange={handleFileChange}
+                      className="hidden"
+                    />
+                    <label
+                      htmlFor={dialogCameraInputId}
+                      className="inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-input px-3 py-2 text-sm font-medium text-foreground cursor-pointer hover:bg-muted"
+                    >
+                      <Camera className="h-4 w-4" />
+                      Take Photo
+                    </label>
+                  </div>
                   {uploadingFiles.length > 0 && (
                     <div className="space-y-2 mt-3">
                       {uploadingFiles.map((f, i) => (

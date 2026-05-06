@@ -1,4 +1,4 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { AppLayout } from "@/components/AppLayout";
 import {
@@ -610,7 +610,7 @@ function VendorCardSkeleton() {
           <div className="h-3 bg-muted rounded w-2/5" />
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="space-y-1.5">
           <div className="h-3 bg-muted rounded w-2/3" />
           <div className="h-3.5 bg-muted rounded w-1/2" />
@@ -666,7 +666,7 @@ function VendorCard({
       </div>
 
       {/* Summary row */}
-      <div className="grid grid-cols-2 gap-3 mt-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
         <div>
           <p className="text-caption">Tax ID</p>
           <p className="text-sm font-medium text-foreground font-mono truncate">{vendor.tax_id || "—"}</p>
@@ -1107,3 +1107,5 @@ export default function PartnersPage() {
     </AppLayout>
   );
 }
+
+

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+﻿import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { useNavigate } from "react-router-dom";
 import { V2Shell } from "@/components/v2/V2Shell";
@@ -260,7 +260,7 @@ function CampaignFormDialog({
             <input type="hidden" {...register("scope_node", { required: "Required" })} value={selectedScopeNode} />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label htmlFor="name">Name *</Label>
               <Input
@@ -296,7 +296,7 @@ function CampaignFormDialog({
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label htmlFor="campaign_type">Type</Label>
               <Select
@@ -332,7 +332,7 @@ function CampaignFormDialog({
           </div>
 
           {/* Fix #1: category, subcategory, budget fields */}
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             <div className="space-y-1.5">
               <Label htmlFor="category">Category</Label>
               <Input
@@ -359,7 +359,7 @@ function CampaignFormDialog({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label htmlFor="start_date">Start Date</Label>
               <Input id="start_date" type="date" {...register("start_date")} />
@@ -836,7 +836,7 @@ function CampaignDetailPanel({
       <ScrollArea className="flex-1">
         <div className="space-y-4 p-4">
           {/* Core fields */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {[
               { label: "Requested", value: formatBudget(campaign.requested_amount, campaign.currency) },
               { label: "Approved", value: formatBudget(campaign.approved_amount, campaign.currency) },
@@ -853,7 +853,7 @@ function CampaignDetailPanel({
           </div>
 
           {/* Subcategory + Budget */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {[
               { label: "Subcategory", value: campaign.subcategory_name ?? campaign.subcategory ?? "—" },
               { label: "Budget", value: campaign.budget ?? "—" },
@@ -868,7 +868,7 @@ function CampaignDetailPanel({
           </div>
 
           {/* Dates */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {[
               { label: "Start Date", value: formatDate(campaign.start_date) },
               { label: "End Date", value: formatDate(campaign.end_date) },
@@ -1034,9 +1034,9 @@ const CampaignsPage = () => {
         />
       }
     >
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
         {/* Left panel: org selector + campaign list */}
-        <aside className="flex w-80 flex-col border-r border-border bg-background">
+        <aside className="flex w-full md:w-80 flex-col border-b border-border md:border-b-0 md:border-r bg-background max-h-[45vh] md:max-h-none">
           {/* Org selector */}
           <div className="border-b border-border p-3">
             <Label className="mb-1.5 block text-xs font-medium text-muted-foreground">
@@ -1184,3 +1184,5 @@ const CampaignsPage = () => {
 };
 
 export default CampaignsPage;
+
+

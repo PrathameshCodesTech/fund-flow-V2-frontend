@@ -1,4 +1,4 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import { useForm } from "react-hook-form";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
@@ -711,7 +711,7 @@ function CreateBudgetDialog({
         </DialogHeader>
         <form id="create-budget-form" onSubmit={handleSubmit} className="space-y-5">
           {/* Header fields */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label>Scope Node *</Label>
               <Select value={selectedScopeNodeId} onValueChange={setSelectedScopeNodeId}>
@@ -733,7 +733,7 @@ function CreateBudgetDialog({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label>Period Type</Label>
               <Select value={periodType} onValueChange={(v) => setPeriodType(v as PeriodType)}>
@@ -979,7 +979,7 @@ function EditBudgetDialog({
           <DialogTitle>Edit Budget</DialogTitle>
         </DialogHeader>
         <form id="edit-budget-form" onSubmit={handleSubmit} className="space-y-5">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label>Name *</Label>
               <Input
@@ -996,7 +996,7 @@ function EditBudgetDialog({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label>Allocated Amount</Label>
               <Input
@@ -1311,7 +1311,7 @@ function EditRuleDialog({
           <DialogTitle>Edit Budget Rule</DialogTitle>
         </DialogHeader>
         <form id="edit-rule-form" onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label>Warning %</Label>
               <Input
@@ -1335,7 +1335,7 @@ function EditRuleDialog({
               {errors.approval_threshold_percent && <FieldError message={errors.approval_threshold_percent.message} />}
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label>Hard Block %</Label>
               <Input
@@ -1722,7 +1722,7 @@ function BudgetAllocationCard({
           <p className="mt-1 text-xs text-muted-foreground">
             {budget.scope_node_name ?? budget.scope_node} &middot; FY {budget.financial_year} &middot; {categoryCount} categor{categoryCount === 1 ? "y" : "ies"} &middot; {subcategoryCount} subcategor{subcategoryCount === 1 ? "y" : "ies"}
           </p>
-          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 sm:grid-cols-4">
             <div className="rounded-lg border bg-background/70 px-3 py-2">
               <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Allocated</p>
               <p className="mt-1 text-sm font-semibold tabular-nums">{fmtCurrency(allocated)}</p>
@@ -2909,7 +2909,7 @@ function BatchDetailPanel({
       </div>
 
       {/* Row count summary */}
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:grid-cols-5">
         {[
           { label: "Total", value: batch.total_rows, color: "text-foreground" },
           { label: "Valid", value: batch.valid_rows, color: "text-blue-600 dark:text-blue-400" },
@@ -3329,7 +3329,7 @@ export default function BudgetsPage() {
       {/* Tabbed content */}
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          <div className="border-b border-border px-6 pt-3">
+          <div className="overflow-x-auto border-b border-border px-6 pt-3">
             <TabsList className="gap-1">
               <TabsTrigger value="budgets">Budgets</TabsTrigger>
               <TabsTrigger value="categories">Categories</TabsTrigger>
@@ -3421,3 +3421,4 @@ export default function BudgetsPage() {
     </V2Shell>
   );
 }
+

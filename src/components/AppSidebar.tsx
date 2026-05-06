@@ -90,8 +90,8 @@ export function AppSidebar({ mobileOpen, onMobileClose }: AppSidebarProps) {
                 exit={{ opacity: 0, width: 0 }}
                 className="ml-3 overflow-hidden whitespace-nowrap"
               >
-                <p className="text-sm font-semibold text-foreground font-display">InvoFlow</p>
-                <p className="text-caption">Fund Governance Suite</p>
+                <p className="text-sm font-semibold text-foreground font-display">VIMS</p>
+                <p className="text-caption">Vendor Invoice Management System</p>
               </motion.div>
             )}
           </AnimatePresence>

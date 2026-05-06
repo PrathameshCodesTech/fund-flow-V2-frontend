@@ -47,7 +47,7 @@ export default function BudgetConfigurationPage() {
         subtitle="Set up budget periods, versions, types, and hierarchy"
       >
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full max-w-2xl grid-cols-4">
+          <TabsList className="flex w-full max-w-2xl overflow-x-auto">{/* 4-tab list, scrolls on mobile */}
             <TabsTrigger value="periods" className="flex items-center gap-2">
               <Calendar className="w-4 h-4" />
               <span className="hidden sm:inline">Periods</span>

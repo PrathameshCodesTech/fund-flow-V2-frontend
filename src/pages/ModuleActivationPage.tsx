@@ -502,9 +502,9 @@ const ModuleActivationPage = () => {
         </div>
       }
     >
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
         {/* Left sidebar — resolve panel + create */}
-        <aside className="flex w-80 flex-col border-r border-border overflow-y-auto">
+        <aside className="flex w-full md:w-80 flex-col border-b border-border md:border-b-0 md:border-r overflow-y-auto max-h-[45vh] md:max-h-none">
           {/* Effective status */}
           <div className="border-b border-border p-4 space-y-3">
             <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">

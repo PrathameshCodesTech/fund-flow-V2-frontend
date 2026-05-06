@@ -157,6 +157,13 @@ export interface VendorOnboardingSubmission {
   submitted_at: string | null;
   created_at: string;
   updated_at: string;
+  // Supporting documents (populated for draft re-entry restoration)
+  attachments: Array<{
+    id: string;
+    title: string;
+    file_name: string;
+    document_type: string;
+  }>;
 }
 
 // JSON block shapes
@@ -367,21 +374,70 @@ export interface PublicFinanceToken {
   // Submission fields
   submission_id: number;
   submission_status: string;
+  title: string | null;
   vendor_name: string | null;
   vendor_email: string | null;
   vendor_phone: string | null;
+  fax: string | null;
   vendor_type: string | null;
+  gst_registered: boolean | null;
   gstin: string | null;
   pan: string | null;
+  region: string | null;
+  head_office_no: string | null;
   address_line1: string | null;
   address_line2: string | null;
+  address_line3: string | null;
   city: string | null;
   state: string | null;
   country: string | null;
   pincode: string | null;
+  preferred_payment_mode: string | null;
+  beneficiary_name: string | null;
   bank_name: string | null;
   account_number: string | null;
+  bank_account_type: string | null;
   ifsc: string | null;
+  micr_code: string | null;
+  neft_code: string | null;
+  bank_branch_address_line1: string | null;
+  bank_branch_address_line2: string | null;
+  bank_branch_city: string | null;
+  bank_branch_state: string | null;
+  bank_branch_country: string | null;
+  bank_branch_pincode: string | null;
+  bank_phone: string | null;
+  bank_fax: string | null;
+  msme_registered: boolean | null;
+  msme_registration_number: string | null;
+  msme_enterprise_type: string | null;
+  authorized_signatory_name: string | null;
+  contact_persons_json: Array<{
+    type?: string;
+    name?: string;
+    designation?: string;
+    email?: string;
+    telephone?: string;
+  }> | null;
+  head_office_address_json: {
+    address_line1?: string;
+    address_line2?: string;
+    city?: string;
+    state?: string;
+    country?: string;
+    pincode?: string;
+    phone?: string;
+    fax?: string;
+  } | null;
+  tax_registration_details_json: {
+    tax_registration_nos?: string;
+    tin_no?: string;
+    cst_no?: string;
+    lst_no?: string;
+    esic_reg_no?: string;
+    pan_ref_no?: string;
+    ppf_no?: string;
+  } | null;
   // Safe file flags + download URLs (no raw filesystem paths)
   has_exported_excel: boolean;
   exported_excel_download_url: string | null;

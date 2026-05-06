@@ -1,4 +1,4 @@
- import { useEffect, useMemo, useRef, useState } from "react";
+﻿ import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   AlertCircle,
@@ -540,7 +540,7 @@ function UploadInvoiceDialog({
               exit={{ opacity: 0 }}
             >
               <form onSubmit={handleSubmit} className="space-y-4 p-6">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
                       Invoice No *
@@ -676,7 +676,7 @@ function UploadInvoiceDialog({
                   </div>
                 )}
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
                       Base Amount *
@@ -714,7 +714,7 @@ function UploadInvoiceDialog({
                 </div>
 
                 {baseNum > 0 && (
-                  <div className="grid grid-cols-3 gap-3 rounded-xl bg-secondary/50 p-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 rounded-xl bg-secondary/50 p-3">
                     <div>
                       <p className="text-[11px] text-muted-foreground">Base</p>
                       <p className="text-sm font-medium text-foreground">
@@ -1875,3 +1875,5 @@ export default function VendorBillsPage() {
     </AppLayout>
   );
 }
+
+

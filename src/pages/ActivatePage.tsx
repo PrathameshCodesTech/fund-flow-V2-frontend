@@ -147,13 +147,13 @@ export default function ActivatePage() {
         </div>
         <div className="relative z-10">
           <div className="w-12 h-12 rounded-2xl bg-primary-foreground/20 flex items-center justify-center mb-8">
-            <span className="text-primary-foreground font-bold text-lg font-display">IF</span>
+            <span className="text-primary-foreground font-bold text-lg font-display">V</span>
           </div>
           <h1 className="text-4xl font-bold text-primary-foreground font-display leading-tight">
-            InvoFlow
+            VIMS
           </h1>
           <p className="mt-4 text-primary-foreground/70 text-lg max-w-md">
-            Invoice and marketing fund governance
+            Vendor Invoice Management System
           </p>
         </div>
       </div>
@@ -163,14 +163,14 @@ export default function ActivatePage() {
         <div className="w-full max-w-md">
           <div className="lg:hidden mb-8">
             <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center mb-4">
-              <span className="text-primary-foreground font-bold text-sm font-display">IF</span>
+              <span className="text-primary-foreground font-bold text-sm font-display">V</span>
             </div>
             <h1 className="text-2xl font-bold font-display text-foreground">Set Your Password</h1>
           </div>
 
           <h2 className="text-2xl font-bold font-display text-foreground">Set Your Password</h2>
           <p className="text-muted-foreground mt-1 mb-8">
-            Create a password to activate your InvoFlow account.
+            Create a password to activate your VIMS account.
           </p>
 
           <form onSubmit={handleSubmit} className="space-y-5">

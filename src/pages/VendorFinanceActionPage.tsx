@@ -1,4 +1,4 @@
-/**
+﻿/**
  * VendorFinanceActionPage — unified finance review page (token-based, public).
  *
  * Route: /vendor/finance/:token
@@ -45,11 +45,28 @@ function apiErrorMessage(err: unknown): string {
   return "An error occurred";
 }
 
+function BrandBar() {
+  return (
+    <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-orange-50 border border-orange-200 mb-5">
+      <img src="/vims-brand.png" alt="VIMS" className="h-8 w-auto" />
+      <div>
+        <p className="text-xs font-bold tracking-widest text-orange-700 uppercase leading-tight">
+          VIMS
+        </p>
+        <p className="text-xs text-orange-600/80 leading-tight">
+          Vendor Invoice Management System
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function InvalidTokenScreen({ message }: { message: string }) {
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-6">
       <Card className="max-w-sm w-full text-center">
         <CardContent className="pt-6">
+          <BrandBar />
           <XCircle className="w-14 h-14 text-destructive mx-auto mb-4" />
           <h1 className="text-xl font-bold text-foreground mb-2">Invalid Link</h1>
           <p className="text-sm text-muted-foreground">{message}</p>
@@ -74,6 +91,7 @@ function SuccessScreen({
     <div className="min-h-screen flex items-center justify-center bg-background p-6">
       <Card className="max-w-md w-full text-center">
         <CardContent className="pt-8">
+          <BrandBar />
           {kind === "approved" ? (
             <>
               <div className="w-16 h-16 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center mx-auto mb-4">
@@ -124,6 +142,24 @@ function DetailRow({ label, value }: { label: string; value: string | null | und
   );
 }
 
+function ReviewField({
+  label,
+  value,
+}: {
+  label: string;
+  value?: string | boolean | null;
+}) {
+  if (value === null || value === undefined || value === "") return null;
+  const text =
+    typeof value === "boolean" ? (value ? "Yes" : "No") : String(value);
+  return (
+    <div className="space-y-0.5 min-w-0">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="text-sm break-words">{text}</p>
+    </div>
+  );
+}
+
 function ReviewPage({
   approveToken,
   rejectToken,
@@ -151,6 +187,9 @@ function ReviewPage({
   });
 
   const vendorName = data.vendor_name ?? "Unknown Vendor";
+  const contacts = data.contact_persons_json ?? [];
+  const headOffice = data.head_office_address_json;
+  const taxReg = data.tax_registration_details_json;
 
   if (approveMutation.isSuccess) {
     return <SuccessScreen kind="approved" vendorName={vendorName} sapVendorId={sapVendorId} note={note} />;
@@ -188,6 +227,9 @@ function ReviewPage({
   return (
     <div className="min-h-screen bg-background p-6">
       <div className="max-w-2xl mx-auto space-y-5">
+        {/* VIMS brand */}
+        <BrandBar />
+
         {/* Header */}
         <div>
           <h1 className="text-2xl font-bold text-foreground">Vendor Finance Review</h1>
@@ -196,54 +238,171 @@ function ReviewPage({
           </p>
         </div>
 
-        {/* Company info */}
+        {/* Business details */}
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
               <Building2 className="w-4 h-4" /> Company Information
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-0">
-            <DetailRow label="Vendor Name" value={data.vendor_name} />
-            <DetailRow label="Vendor Type" value={data.vendor_type} />
-            <DetailRow label="Email" value={data.vendor_email} />
-            <DetailRow label="Phone" value={data.vendor_phone} />
-            <DetailRow label="GSTIN" value={data.gstin} />
-            <DetailRow label="PAN" value={data.pan} />
+          <CardContent>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+              <ReviewField label="Title" value={data.title} />
+              <ReviewField label="Vendor Name" value={data.vendor_name} />
+              <ReviewField label="Vendor Type" value={data.vendor_type} />
+              <ReviewField label="Email" value={data.vendor_email} />
+              <ReviewField label="Phone" value={data.vendor_phone} />
+              <ReviewField label="Fax" value={data.fax} />
+              <ReviewField label="GST Registered" value={data.gst_registered} />
+              <ReviewField label="GSTIN" value={data.gstin} />
+              <ReviewField label="PAN" value={data.pan} />
+              <ReviewField label="Region" value={data.region} />
+              <ReviewField label="Head Office No." value={data.head_office_no} />
+            </div>
           </CardContent>
         </Card>
 
-        {/* Address */}
-        {(data.address_line1 || data.city) && (
+        {/* Billing address */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <MapPin className="w-4 h-4" /> Billing Address
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+              <ReviewField label="Address Line 1" value={data.address_line1} />
+              <ReviewField label="Address Line 2" value={data.address_line2} />
+              <ReviewField label="Address Line 3" value={data.address_line3} />
+              <ReviewField label="City" value={data.city} />
+              <ReviewField label="State" value={data.state} />
+              <ReviewField label="Country" value={data.country} />
+              <ReviewField label="Pincode" value={data.pincode} />
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Payment details */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <CreditCard className="w-4 h-4" /> Payment Details
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+              <ReviewField label="Payment Mode" value={data.preferred_payment_mode} />
+              <ReviewField label="Beneficiary Name" value={data.beneficiary_name} />
+              <ReviewField label="Bank Name" value={data.bank_name} />
+              <ReviewField label="Account Number" value={data.account_number} />
+              <ReviewField label="Account Type" value={data.bank_account_type} />
+              <ReviewField label="IFSC Code" value={data.ifsc} />
+              <ReviewField label="MICR Code" value={data.micr_code} />
+              <ReviewField label="NEFT Code" value={data.neft_code} />
+            </div>
+            {(data.bank_branch_city || data.bank_branch_address_line1) && (
+              <>
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide pt-1">
+                  Bank Branch
+                </p>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                  <ReviewField label="Branch Address 1" value={data.bank_branch_address_line1} />
+                  <ReviewField label="Branch Address 2" value={data.bank_branch_address_line2} />
+                  <ReviewField label="Branch City" value={data.bank_branch_city} />
+                  <ReviewField label="Branch State" value={data.bank_branch_state} />
+                  <ReviewField label="Branch Country" value={data.bank_branch_country} />
+                  <ReviewField label="Branch Pincode" value={data.bank_branch_pincode} />
+                  <ReviewField label="Branch Phone" value={data.bank_phone} />
+                  <ReviewField label="Branch Fax" value={data.bank_fax} />
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Contact persons */}
+        {contacts.length > 0 && (
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <MapPin className="w-4 h-4" /> Address
-              </CardTitle>
+              <CardTitle className="text-base">Contact Persons</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-0">
-              <DetailRow label="Line 1" value={data.address_line1} />
-              <DetailRow label="Line 2" value={data.address_line2} />
-              <DetailRow label="City" value={data.city} />
-              <DetailRow label="State" value={data.state} />
-              <DetailRow label="Country" value={data.country} />
-              <DetailRow label="Pincode" value={data.pincode} />
+            <CardContent className="space-y-3">
+              {contacts.map((cp, i) => (
+                <div key={i} className="rounded-lg border border-border p-3">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
+                    Contact {i + 1}
+                    {cp.type
+                      ? ` — ${cp.type === "general_queries" ? "General Queries" : "Secondary"}`
+                      : ""}
+                  </p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    <ReviewField label="Name" value={cp.name} />
+                    <ReviewField label="Designation" value={cp.designation} />
+                    <ReviewField label="Email" value={cp.email} />
+                    <ReviewField label="Telephone" value={cp.telephone} />
+                  </div>
+                </div>
+              ))}
             </CardContent>
           </Card>
         )}
 
-        {/* Bank details */}
-        {(data.bank_name || data.account_number) && (
+        {/* Head office address */}
+        {headOffice &&
+          (headOffice.address_line1 || headOffice.city || headOffice.phone) && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">Head Office Address</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                  <ReviewField label="Address Line 1" value={headOffice.address_line1} />
+                  <ReviewField label="Address Line 2" value={headOffice.address_line2} />
+                  <ReviewField label="City" value={headOffice.city} />
+                  <ReviewField label="State" value={headOffice.state} />
+                  <ReviewField label="Country" value={headOffice.country} />
+                  <ReviewField label="Pincode" value={headOffice.pincode} />
+                  <ReviewField label="Phone" value={headOffice.phone} />
+                  <ReviewField label="Fax" value={headOffice.fax} />
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+        {/* Tax registration */}
+        {taxReg &&
+          Object.values(taxReg).some((v) => v) && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">Tax Registration Details</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                  <ReviewField label="Tax Reg. Nos." value={taxReg.tax_registration_nos} />
+                  <ReviewField label="TIN No." value={taxReg.tin_no} />
+                  <ReviewField label="CST No." value={taxReg.cst_no} />
+                  <ReviewField label="LST No." value={taxReg.lst_no} />
+                  <ReviewField label="ESIC Reg. No." value={taxReg.esic_reg_no} />
+                  <ReviewField label="PAN Ref. No." value={taxReg.pan_ref_no} />
+                  <ReviewField label="PPF No." value={taxReg.ppf_no} />
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+        {/* MSME */}
+        {(data.msme_registered || data.authorized_signatory_name) && (
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <CreditCard className="w-4 h-4" /> Bank Details
-              </CardTitle>
+              <CardTitle className="text-base">MSME Declaration</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-0">
-              <DetailRow label="Bank Name" value={data.bank_name} />
-              <DetailRow label="Account Number" value={data.account_number} />
-              <DetailRow label="IFSC Code" value={data.ifsc} />
+            <CardContent>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                <ReviewField label="MSME Registered" value={data.msme_registered} />
+                <ReviewField label="MSME Reg. Number" value={data.msme_registration_number} />
+                <ReviewField label="Enterprise Type" value={data.msme_enterprise_type} />
+                <ReviewField label="Authorized Signatory" value={data.authorized_signatory_name} />
+              </div>
             </CardContent>
           </Card>
         )}
@@ -315,7 +474,7 @@ function ReviewPage({
           <CardContent className="space-y-4">
             {/* Action selector */}
             {action === null && (
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <Button
                   variant="outline"
                   className="border-green-500/50 text-green-700 hover:bg-green-50 dark:text-green-400 dark:hover:bg-green-900/20"

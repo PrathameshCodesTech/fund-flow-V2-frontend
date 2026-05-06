@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+﻿import { useState, useEffect } from "react";
 import {
   Sheet,
   SheetContent,
@@ -55,6 +55,7 @@ import {
   IndianRupee,
   Split,
   Tag,
+  TrendingDown,
 } from "lucide-react";
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -542,7 +543,7 @@ function AllocationTab({
 
   return (
     <div className="p-4 space-y-4">
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="rounded-lg border border-border bg-muted/20 px-3 py-2.5">
           <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Invoice Total</p>
           <p className="mt-1 text-sm font-semibold">{fmtAmount(summary.invoice_amount, summary.currency)}</p>
@@ -555,12 +556,12 @@ function AllocationTab({
           </p>
         </div>
         <div className="rounded-lg border border-border bg-muted/20 px-3 py-2.5">
-          <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Split Lines</p>
+          <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Allocation Lines</p>
           <p className="mt-1 text-sm font-semibold">{summary.line_count}</p>
           <p className="text-[11px] text-muted-foreground mt-1">{summary.entity_count} entities · {summary.budget_count} budgets</p>
         </div>
         <div className="rounded-lg border border-border bg-muted/20 px-3 py-2.5">
-          <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Split By</p>
+          <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Allocated By</p>
           <p className="mt-1 text-sm font-semibold">
             {summary.splitters?.length ? summary.splitters.map((u) => u.email).join(", ") : "—"}
           </p>
@@ -571,7 +572,7 @@ function AllocationTab({
       </div>
 
       <div>
-        <SectionLabel>Current Split</SectionLabel>
+        <SectionLabel>Current Allocation</SectionLabel>
         <div className="space-y-3">
           {allocationAudit.current_allocations.map((alloc) => (
             <div key={alloc.id} className="rounded-lg border border-border bg-card p-3 space-y-3">
@@ -617,65 +618,6 @@ function AllocationTab({
                   <p className="font-medium">#{alloc.revision_number}</p>
                 </div>
               </div>
-
-              {alloc.budget_impact && (
-                <div className="rounded-md border border-blue-100 bg-blue-50/40 px-3 py-2">
-                  <p className="text-[11px] font-semibold text-blue-800 mb-2">Budget Impact</p>
-                  <div className="space-y-3 text-[11px]">
-                    <div>
-                      <p className="text-muted-foreground">Selected Path</p>
-                      <p className="font-medium">
-                        {alloc.budget_name ?? "—"}
-                        {alloc.category_name ? ` → ${alloc.category_name}` : ""}
-                        {alloc.subcategory_name ? ` → ${alloc.subcategory_name}` : ""}
-                      </p>
-                    </div>
-
-                    {alloc.budget_impact.line && (
-                      <div className="grid grid-cols-3 gap-3">
-                        <div className="rounded border border-border/60 bg-white/70 px-2.5 py-2">
-                          <p className="text-muted-foreground mb-1">Before</p>
-                          <p>Reserved: <span className="font-medium">{fmtAmount(alloc.budget_impact.line.before_reserved_amount, summary.currency)}</span></p>
-                          <p>Consumed: <span className="font-medium">{fmtAmount(alloc.budget_impact.line.before_consumed_amount, summary.currency)}</span></p>
-                          <p>Available: <span className="font-medium">{fmtAmount(alloc.budget_impact.line.before_available_amount, summary.currency)}</span></p>
-                        </div>
-                        <div className="rounded border border-blue-200 bg-blue-50 px-2.5 py-2">
-                          <p className="text-blue-800 mb-1 font-medium">This Allocation</p>
-                          <p>Amount: <span className="font-medium">{fmtAmount(alloc.amount, summary.currency)}</span></p>
-                          <p>Reserved Effect: <span className="font-medium">{fmtAmount(alloc.budget_impact.line.effect_reserved_amount, summary.currency)}</span></p>
-                          <p>Consumed Effect: <span className="font-medium">{fmtAmount(alloc.budget_impact.line.effect_consumed_amount, summary.currency)}</span></p>
-                        </div>
-                        <div className="rounded border border-border/60 bg-white/70 px-2.5 py-2">
-                          <p className="text-muted-foreground mb-1">After</p>
-                          <p>Reserved: <span className="font-medium">{fmtAmount(alloc.budget_impact.line.reserved_amount, summary.currency)}</span></p>
-                          <p>Consumed: <span className="font-medium">{fmtAmount(alloc.budget_impact.line.consumed_amount, summary.currency)}</span></p>
-                          <p>Available: <span className="font-medium">{fmtAmount(alloc.budget_impact.line.available_amount, summary.currency)}</span></p>
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="grid grid-cols-3 gap-3">
-                      <div className="rounded border border-border/40 bg-white/50 px-2.5 py-2">
-                        <p className="text-muted-foreground mb-1">Header Before</p>
-                        <p>Reserved: <span className="font-medium">{fmtAmount(alloc.budget_impact.budget.before_reserved_amount ?? "0", alloc.budget_impact.budget.currency ?? summary.currency)}</span></p>
-                        <p>Consumed: <span className="font-medium">{fmtAmount(alloc.budget_impact.budget.before_consumed_amount ?? "0", alloc.budget_impact.budget.currency ?? summary.currency)}</span></p>
-                        <p>Available: <span className="font-medium">{fmtAmount(alloc.budget_impact.budget.before_available_amount ?? "0", alloc.budget_impact.budget.currency ?? summary.currency)}</span></p>
-                      </div>
-                      <div className="rounded border border-blue-200 bg-blue-50 px-2.5 py-2">
-                        <p className="text-blue-800 mb-1 font-medium">Header Effect</p>
-                        <p>Reserved Effect: <span className="font-medium">{fmtAmount(alloc.budget_impact.budget.effect_reserved_amount ?? "0", alloc.budget_impact.budget.currency ?? summary.currency)}</span></p>
-                        <p>Consumed Effect: <span className="font-medium">{fmtAmount(alloc.budget_impact.budget.effect_consumed_amount ?? "0", alloc.budget_impact.budget.currency ?? summary.currency)}</span></p>
-                      </div>
-                      <div className="rounded border border-border/40 bg-white/50 px-2.5 py-2">
-                        <p className="text-muted-foreground mb-1">Header After</p>
-                        <p>Reserved: <span className="font-medium">{fmtAmount(alloc.budget_impact.budget.reserved_amount ?? "0", alloc.budget_impact.budget.currency ?? summary.currency)}</span></p>
-                        <p>Consumed: <span className="font-medium">{fmtAmount(alloc.budget_impact.budget.consumed_amount ?? "0", alloc.budget_impact.budget.currency ?? summary.currency)}</span></p>
-                        <p>Available: <span className="font-medium">{fmtAmount(alloc.budget_impact.budget.available_amount ?? "0", alloc.budget_impact.budget.currency ?? summary.currency)}</span></p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
 
               {(alloc.note || alloc.rejection_reason) && (
                 <div className="space-y-1">
@@ -765,7 +707,7 @@ function AllocationHistoryTab({
 
 // ── Branch allocation info ────────────────────────────────────────────────────
 
-function BranchAllocationInfo({ alloc }: { alloc: AllocationContextLine }) {
+function BranchAllocationInfo({ alloc, currency }: { alloc: AllocationContextLine; currency: string }) {
   const ALLOC_STATUS_COLORS: Record<string, string> = {
     draft: "bg-gray-100 text-gray-700 border-gray-200",
     submitted: "bg-blue-100 text-blue-800 border-blue-200",
@@ -831,6 +773,323 @@ function BranchAllocationInfo({ alloc }: { alloc: AllocationContextLine }) {
         <p className="text-[11px] italic text-muted-foreground border-l-2 border-blue-200 pl-2">{alloc.note}</p>
       )}
       <p className="text-[10px] text-muted-foreground">Revision #{alloc.revision_number}</p>
+
+      <ExistingAllocationImpactPreview alloc={alloc} currency={currency} />
+    </div>
+  );
+}
+
+function CurrentAllocationImpactSection({
+  allocations,
+  currency,
+}: {
+  allocations: AllocationContextLine[];
+  currency: string;
+}) {
+  if (allocations.length === 0) return null;
+
+  return (
+    <div className="mx-4 mt-3 mb-1 space-y-3">
+      {allocations.map((alloc) => (
+        <BranchAllocationInfo key={alloc.id} alloc={alloc} currency={currency} />
+      ))}
+    </div>
+  );
+}
+
+// ── Budget Impact Preview ─────────────────────────────────────────────────────
+
+function ImpactSection({
+  label,
+  allocated,
+  reserved,
+  consumed,
+  available,
+  splitAmount,
+  currency,
+  overdraft,
+  indent,
+}: {
+  label: string;
+  allocated: number;
+  reserved: number;
+  consumed: number;
+  available: number;
+  splitAmount: number;
+  currency: string;
+  overdraft: boolean;
+  indent?: boolean;
+}) {
+  const projReserved = reserved + splitAmount;
+  const projAvailable = available - splitAmount;
+  const fmt = (n: number) => fmtAmount(n.toFixed(2), currency);
+
+  return (
+    <div
+      className={`rounded border text-[11px] overflow-hidden ${
+        overdraft ? "border-red-200" : "border-slate-200"
+      } ${indent ? "ml-2" : ""}`}
+    >
+      {/* Section heading */}
+      <div
+        className={`px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider truncate ${
+          overdraft
+            ? "bg-red-100/70 text-red-700 border-b border-red-200"
+            : "bg-slate-100/80 text-slate-500 border-b border-slate-200"
+        }`}
+      >
+        {label}
+      </div>
+
+      {/* Current position */}
+      <div className="px-2.5 pt-1.5 pb-1 space-y-0.5 bg-background/80">
+        <div className="flex justify-between text-muted-foreground">
+          <span>Allocated</span>
+          <span>{fmt(allocated)}</span>
+        </div>
+        <div className="flex justify-between text-muted-foreground">
+          <span>Reserved</span>
+          <span>{fmt(reserved)}</span>
+        </div>
+        <div className="flex justify-between text-muted-foreground">
+          <span>Consumed</span>
+          <span>{fmt(consumed)}</span>
+        </div>
+        <div className="flex justify-between font-medium border-t border-dashed border-slate-200 pt-0.5 mt-0.5">
+          <span>Available</span>
+          <span>{fmt(available)}</span>
+        </div>
+      </div>
+
+      {/* This split */}
+      <div className="px-2.5 py-1 border-t border-slate-200 bg-blue-50/40 flex justify-between font-medium text-blue-700">
+        <span>This Split</span>
+        <span>+ {fmt(splitAmount)}</span>
+      </div>
+
+      {/* After split */}
+      <div className="px-2.5 pt-1 pb-1.5 border-t border-slate-200 space-y-0.5 bg-background/80">
+        <div className="flex justify-between text-muted-foreground">
+          <span>Reserved After Split</span>
+          <span className="font-semibold text-foreground">{fmt(projReserved)}</span>
+        </div>
+        <div className={`flex justify-between font-semibold ${overdraft ? "text-red-600" : "text-green-700"}`}>
+          <span>Available After Split</span>
+          <span>{projAvailable < 0 ? `- ${fmt(Math.abs(projAvailable))}` : fmt(projAvailable)}</span>
+        </div>
+      </div>
+
+      {/* Overdraft warning */}
+      {overdraft && (
+        <div className="px-2.5 py-1.5 border-t border-red-200 bg-red-50/60 flex items-start gap-1.5 text-[10px] text-red-700">
+          <AlertTriangle className="h-3 w-3 shrink-0 mt-px" />
+          <span>
+            This split exceeds the available balance at this level by{" "}
+            <span className="font-semibold">{fmt(splitAmount - available)}</span>.
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BudgetImpactPreview({
+  row,
+  budgets,
+  budgetLines,
+  currency,
+  categoryName,
+  subcategoryName,
+}: {
+  row: SplitRow;
+  budgets: NonNullable<AllowedSplitEntity["budgets"]>;
+  budgetLines: NonNullable<AllowedSplitEntity["budget_lines"]>;
+  currency: string;
+  categoryName: string | null;
+  subcategoryName: string | null;
+}) {
+  const amount = parseFloat(row.amount) || 0;
+  if (!amount || !row.budget_id) return null;
+
+  const budget = budgets.find((b) => b.id === row.budget_id);
+  if (!budget || budget.reserved_amount === undefined) return null;
+
+  const budgetAllocated = parseFloat(budget.allocated_amount ?? "0");
+  const budgetReserved  = parseFloat(budget.reserved_amount  ?? "0");
+  const budgetConsumed  = parseFloat(budget.consumed_amount  ?? "0");
+  const budgetAvailable = parseFloat(budget.available_amount ?? "0");
+  const budgetOverdraft = amount > budgetAvailable;
+
+  // Category level — aggregate all lines for this budget + category
+  let catAllocated = 0, catReserved = 0, catConsumed = 0, catAvailable = 0;
+  let showCat = false, catOverdraft = false;
+  if (row.category_id) {
+    const catLines = budgetLines.filter(
+      (l) => l.budget_id === row.budget_id && l.category_id === row.category_id,
+    );
+    if (catLines.length > 0 && catLines[0].reserved_amount !== undefined) {
+      catAllocated = catLines.reduce((s, l) => s + parseFloat(l.allocated_amount ?? "0"), 0);
+      catReserved  = catLines.reduce((s, l) => s + parseFloat(l.reserved_amount  ?? "0"), 0);
+      catConsumed  = catLines.reduce((s, l) => s + parseFloat(l.consumed_amount  ?? "0"), 0);
+      catAvailable = catLines.reduce((s, l) => s + parseFloat(l.available_amount ?? "0"), 0);
+      catOverdraft = amount > catAvailable;
+      showCat = true;
+    }
+  }
+
+  // Subcategory level — aggregate lines for this budget + category + subcategory
+  let subAllocated = 0, subReserved = 0, subConsumed = 0, subAvailable = 0;
+  let showSub = false, subOverdraft = false;
+  if (row.category_id && row.subcategory_id) {
+    const subLines = budgetLines.filter(
+      (l) =>
+        l.budget_id === row.budget_id &&
+        l.category_id === row.category_id &&
+        l.subcategory_id === row.subcategory_id,
+    );
+    if (subLines.length > 0 && subLines[0].reserved_amount !== undefined) {
+      subAllocated = subLines.reduce((s, l) => s + parseFloat(l.allocated_amount ?? "0"), 0);
+      subReserved  = subLines.reduce((s, l) => s + parseFloat(l.reserved_amount  ?? "0"), 0);
+      subConsumed  = subLines.reduce((s, l) => s + parseFloat(l.consumed_amount  ?? "0"), 0);
+      subAvailable = subLines.reduce((s, l) => s + parseFloat(l.available_amount ?? "0"), 0);
+      subOverdraft = amount > subAvailable;
+      showSub = true;
+    }
+  }
+
+  const hasAnyOverdraft = budgetOverdraft || catOverdraft || subOverdraft;
+
+  return (
+    <div
+      className={`rounded-md border px-2.5 py-2 space-y-2 ${
+        hasAnyOverdraft ? "border-amber-200 bg-amber-50/40" : "border-blue-100 bg-blue-50/30"
+      }`}
+    >
+      <div
+        className={`flex items-center gap-1.5 text-[11px] font-semibold ${
+          hasAnyOverdraft ? "text-amber-700" : "text-blue-700"
+        }`}
+      >
+        <TrendingDown className="h-3 w-3" />
+        Budget Impact Preview
+      </div>
+
+      <ImpactSection
+        label={`Budget: ${budget.scope_node_name ? `${budget.scope_node_name} - ` : ""}${budget.name ?? ""}`}
+        allocated={budgetAllocated}
+        reserved={budgetReserved}
+        consumed={budgetConsumed}
+        available={budgetAvailable}
+        splitAmount={amount}
+        currency={currency}
+        overdraft={budgetOverdraft}
+      />
+
+      {showCat && (
+        <ImpactSection
+          label={`Category: ${categoryName ?? row.category_id}`}
+          allocated={catAllocated}
+          reserved={catReserved}
+          consumed={catConsumed}
+          available={catAvailable}
+          splitAmount={amount}
+          currency={currency}
+          overdraft={catOverdraft}
+          indent
+        />
+      )}
+
+      {showSub && (
+        <ImpactSection
+          label={`Subcategory: ${subcategoryName ?? row.subcategory_id}`}
+          allocated={subAllocated}
+          reserved={subReserved}
+          consumed={subConsumed}
+          available={subAvailable}
+          splitAmount={amount}
+          currency={currency}
+          overdraft={subOverdraft}
+          indent
+        />
+      )}
+    </div>
+  );
+}
+
+function ExistingAllocationImpactPreview({
+  alloc,
+  currency,
+}: {
+  alloc: AllocationContextLine;
+  currency: string;
+}) {
+  if (!alloc.budget_impact) return null;
+
+  const budget = alloc.budget_impact.budget;
+  const line = alloc.budget_impact.line;
+  const splitAmount = parseFloat(alloc.amount || "0") || 0;
+  const budgetCurrency = budget.currency ?? currency;
+
+  const pathLabel = alloc.subcategory_name
+    ? `Subcategory: ${alloc.subcategory_name}`
+    : alloc.category_name
+    ? `Category: ${alloc.category_name}`
+    : "Selected Path";
+
+  const budgetBeforeAvailable = parseFloat(budget.before_available_amount ?? "0");
+  const budgetBeforeReserved = parseFloat(budget.before_reserved_amount ?? "0");
+  const budgetBeforeConsumed = parseFloat(budget.before_consumed_amount ?? "0");
+  const budgetAllocated = parseFloat(budget.allocated_amount ?? "0");
+  const budgetReservedEffect = parseFloat(budget.effect_reserved_amount ?? "0");
+  const budgetOverdraft = budgetReservedEffect > budgetBeforeAvailable;
+
+  const lineBeforeAvailable = parseFloat(line?.before_available_amount ?? "0");
+  const lineBeforeReserved = parseFloat(line?.before_reserved_amount ?? "0");
+  const lineBeforeConsumed = parseFloat(line?.before_consumed_amount ?? "0");
+  const lineAllocated = parseFloat(line?.allocated_amount ?? "0");
+  const lineReservedEffect = parseFloat(line?.effect_reserved_amount ?? alloc.amount ?? "0");
+  const lineOverdraft = lineReservedEffect > lineBeforeAvailable;
+
+  return (
+    <div className="rounded-md border border-blue-100 bg-blue-50/30 px-3 py-3 space-y-2.5">
+      <div className="flex items-center gap-1.5 text-[11px] font-semibold text-blue-700">
+        <TrendingDown className="h-3 w-3" />
+        Budget Impact Preview
+      </div>
+
+      <div className="rounded border border-slate-200 bg-white/80 px-2.5 py-2 text-[11px]">
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Selected Path</p>
+        <p className="mt-1 font-medium text-foreground">
+          {alloc.budget_name ?? "—"}
+          {alloc.category_name ? ` → ${alloc.category_name}` : ""}
+          {alloc.subcategory_name ? ` → ${alloc.subcategory_name}` : ""}
+        </p>
+      </div>
+
+      <ImpactSection
+        label={`Budget: ${alloc.budget_name ?? budget.name ?? "—"}${alloc.budget_code ? ` (${alloc.budget_code})` : ""}`}
+        allocated={budgetAllocated}
+        reserved={budgetBeforeReserved}
+        consumed={budgetBeforeConsumed}
+        available={budgetBeforeAvailable}
+        splitAmount={budgetReservedEffect}
+        currency={budgetCurrency}
+        overdraft={budgetOverdraft}
+      />
+
+      {line && (
+        <ImpactSection
+          label={pathLabel}
+          allocated={lineAllocated}
+          reserved={lineBeforeReserved}
+          consumed={lineBeforeConsumed}
+          available={lineBeforeAvailable}
+          splitAmount={lineReservedEffect || splitAmount}
+          currency={budgetCurrency}
+          overdraft={lineOverdraft}
+          indent
+        />
+      )}
     </div>
   );
 }
@@ -933,24 +1192,73 @@ function SplitAllocationPanel({
     return opt?.eligible_approvers ?? [];
   };
 
+  const getBudgetOptionsForRow = (rowIdx: number) => {
+    const entityOptions = getEntityOptions(rowIdx);
+    const seenBudgetIds = new Set<number>();
+    const budgets: NonNullable<AllowedSplitEntity["budgets"]> = [];
+    for (const entity of entityOptions) {
+      for (const budget of entity.budgets ?? []) {
+        if (seenBudgetIds.has(budget.id)) continue;
+        seenBudgetIds.add(budget.id);
+        budgets.push(budget);
+      }
+    }
+    return budgets;
+  };
+
+  const getEntityOptionsForBudget = (rowIdx: number, budgetId: number | null): AllowedSplitEntity[] => {
+    const entityOptions = getEntityOptions(rowIdx);
+    if (!budgetId) return entityOptions;
+    return entityOptions.filter((entity) => (entity.budgets ?? []).some((budget) => budget.id === budgetId));
+  };
+
   const getBusinessUnitForRow = (row: SplitRow): AllowedSplitEntity | undefined => {
     if (!row.entity_id) return undefined;
     return allowedEntities.find((e) => e.entity_id === row.entity_id);
   };
 
-  const updateBusinessUnit = (rowIdx: number, entityId: number | null) => {
+  const getAutoApprovalForEntity = (entityId: number | null) => {
     const opt = allowedEntities.find((e) => e.entity_id === entityId);
-    const autoApproved =
+    return (
       !!entityId &&
       (config?.branch_approval_policy === "SKIP_ALL" ||
-        (config?.branch_approval_policy === "OPTIONAL_WHEN_CONFIGURED" && !opt?.approval_required));
+        (config?.branch_approval_policy === "OPTIONAL_WHEN_CONFIGURED" && !opt?.approval_required))
+    );
+  };
+
+  const updateBusinessUnit = (rowIdx: number, entityId: number | null) => {
+    const opt = allowedEntities.find((e) => e.entity_id === entityId);
+    const autoApproved = getAutoApprovalForEntity(entityId);
     updateRow(rowIdx, {
       entity_id: entityId,
-      category_id: opt?.default_category_id ?? null,
-      subcategory_id: opt?.default_subcategory_id ?? null,
-      campaign_id: opt?.default_campaign_id ?? null,
-      budget_id: opt?.default_budget_id ?? null,
+      category_id: null,
+      subcategory_id: null,
+      campaign_id: null,
       approver_id: autoApproved ? null : (opt?.eligible_approvers.length === 1 ? opt.eligible_approvers[0].id : null),
+      auto_approved: autoApproved,
+    });
+  };
+
+  const updateBudget = (rowIdx: number, budgetId: number | null) => {
+    const row = rows[rowIdx];
+    const eligibleEntities = getEntityOptionsForBudget(rowIdx, budgetId);
+    const currentEntityStillValid = row.entity_id != null && eligibleEntities.some((entity) => entity.entity_id === row.entity_id);
+    const nextEntityId =
+      currentEntityStillValid
+        ? row.entity_id
+        : eligibleEntities.length === 1
+        ? eligibleEntities[0].entity_id
+        : null;
+    const nextEntity = eligibleEntities.find((entity) => entity.entity_id === nextEntityId);
+    const autoApproved = getAutoApprovalForEntity(nextEntityId);
+
+    updateRow(rowIdx, {
+      budget_id: budgetId,
+      entity_id: nextEntityId,
+      category_id: null,
+      subcategory_id: null,
+      campaign_id: null,
+      approver_id: autoApproved ? null : (nextEntity?.eligible_approvers.length === 1 ? nextEntity.eligible_approvers[0].id : null),
       auto_approved: autoApproved,
     });
   };
@@ -1111,36 +1419,34 @@ function SplitAllocationPanel({
       <div className="space-y-3">
         <SectionLabel>Allocation Lines</SectionLabel>
         {rows.map((row, idx) => {
-          const entityOptions = getEntityOptions(idx);
+          const budgetOptions = getBudgetOptionsForRow(idx);
+          const entityOptions = getEntityOptionsForBudget(idx, row.budget_id);
           const approverOptions = getApproversForRow(row);
           const businessUnit = getBusinessUnitForRow(row);
-          const categories = businessUnit?.categories ?? [];
+          const scopedBudgetLines = (businessUnit?.budget_lines ?? []).filter(
+            (line) => !row.budget_id || line.budget_id === row.budget_id,
+          );
+          const validCategoryIds = new Set(scopedBudgetLines.map((line) => line.category_id));
+          const categories = (businessUnit?.categories ?? []).filter((category) => validCategoryIds.has(category.id));
+          const validSubcategoryIds = new Set(
+            scopedBudgetLines
+              .filter((line) => !row.category_id || line.category_id === row.category_id)
+              .map((line) => line.subcategory_id)
+              .filter((subcategoryId): subcategoryId is number => subcategoryId != null),
+          );
           const subcategories = (businessUnit?.subcategories ?? []).filter(
-            (s) => !row.category_id || s.category_id === row.category_id,
+            (subcategory) =>
+              (!row.category_id || subcategory.category_id === row.category_id) &&
+              validSubcategoryIds.has(subcategory.id),
           );
           const campaigns = (businessUnit?.campaigns ?? []).filter(
             (c) =>
+              (!row.budget_id || c.budget_id === row.budget_id) &&
               (!row.category_id || c.category_id === row.category_id) &&
               (!row.subcategory_id || c.subcategory_id === row.subcategory_id),
           );
           const selectedCampaign = (businessUnit?.campaigns ?? []).find(
             (c) => c.id === row.campaign_id,
-          );
-          // Derive valid budget_ids from budget_lines (which carry category/subcategory),
-          // then filter budget headers — budget objects don't have category/subcategory fields.
-          const validBudgetIds = new Set(
-            (businessUnit?.budget_lines ?? [])
-              .filter(
-                (bl) =>
-                  (!row.category_id || bl.category_id === row.category_id) &&
-                  (!row.subcategory_id || bl.subcategory_id === row.subcategory_id),
-              )
-              .map((bl) => bl.budget_id),
-          );
-          const budgets = (businessUnit?.budgets ?? []).filter(
-            (b) =>
-              (!selectedCampaign?.budget_id || b.id === selectedCampaign.budget_id) &&
-              (validBudgetIds.size === 0 || validBudgetIds.has(b.id)),
           );
 
           return (
@@ -1154,27 +1460,53 @@ function SplitAllocationPanel({
                 )}
               </div>
 
-              {/* Business Unit select — hidden when only one entity (auto-selected in freeform mode) */}
-              {!singleEntity && (
+              <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
                 <div className="space-y-1">
-                  <Label className="text-[11px]">Business Unit *</Label>
+                  <Label className="text-[11px]">Budget {config?.require_budget ? "*" : ""}</Label>
                   <select
                     className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
-                    value={row.entity_id ?? ""}
+                    value={row.budget_id ?? ""}
                     onChange={(e) => {
-                      const eid = e.target.value ? Number(e.target.value) : null;
-                      updateBusinessUnit(idx, eid);
+                      const budgetId = e.target.value ? Number(e.target.value) : null;
+                      updateBudget(idx, budgetId);
                     }}
                   >
-                    <option value="">Select business unit...</option>
-                    {entityOptions.map((e) => (
-                      <option key={e.entity_id} value={e.entity_id}>
-                        {e.business_unit_name ?? e.entity_name}
+                    <option value="">Select budget...</option>
+                    {budgetOptions.map((budget) => (
+                      <option key={budget.id} value={budget.id}>
+                        {budget.scope_node_name ? `${budget.scope_node_name} - ` : ""}
+                        {budget.name}
+                        {budget.available_amount ? ` | Available ${fmtAmount(budget.available_amount, budget.currency ?? invoiceCurrency)}` : ""}
                       </option>
                     ))}
                   </select>
                 </div>
-              )}
+
+                {/* Business Unit select — hidden when only one entity (auto-selected in freeform mode) */}
+                {!singleEntity && (
+                  <div className="space-y-1">
+                    <Label className="text-[11px]">Business Unit *</Label>
+                    <select
+                      className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+                      value={row.entity_id ?? ""}
+                      onChange={(e) => {
+                        const eid = e.target.value ? Number(e.target.value) : null;
+                        updateBusinessUnit(idx, eid);
+                      }}
+                      disabled={!row.budget_id}
+                    >
+                      <option value="">
+                        {!row.budget_id ? "Select budget first" : "Select business unit..."}
+                      </option>
+                      {entityOptions.map((e) => (
+                        <option key={e.entity_id} value={e.entity_id}>
+                          {e.business_unit_name ?? e.entity_name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
 
               {row.entity_id && (
                 <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
@@ -1188,7 +1520,6 @@ function SplitAllocationPanel({
                           category_id: e.target.value ? Number(e.target.value) : null,
                           subcategory_id: null,
                           campaign_id: null,
-                          budget_id: null,
                         })
                       }
                     >
@@ -1210,7 +1541,6 @@ function SplitAllocationPanel({
                         updateRow(idx, {
                           subcategory_id: e.target.value ? Number(e.target.value) : null,
                           campaign_id: null,
-                          budget_id: null,
                         })
                       }
                     >
@@ -1248,31 +1578,6 @@ function SplitAllocationPanel({
                     </select>
                   </div>
 
-                  <div className="space-y-1">
-                    <Label className="text-[11px]">Budget {config?.require_budget ? "*" : ""}</Label>
-                    <select
-                      className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
-                      value={row.budget_id ?? ""}
-                      onChange={(e) => {
-                        const budgetId = e.target.value ? Number(e.target.value) : null;
-                        const budget = budgets.find((b) => b.id === budgetId);
-                        updateRow(idx, {
-                          budget_id: budgetId,
-                          category_id: budget?.category_id ?? row.category_id,
-                          subcategory_id: budget?.subcategory_id ?? row.subcategory_id,
-                        });
-                      }}
-                    >
-                      <option value="">Select budget...</option>
-                      {budgets.map((b) => (
-                        <option key={b.id} value={b.id}>
-                          {b.scope_node_name ? `${b.scope_node_name} - ` : ""}
-                          {b.name}
-                          {b.available_amount ? ` | Available ${fmtAmount(b.available_amount, b.currency ?? invoiceCurrency)}` : ""}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
                 </div>
               )}
 
@@ -1292,6 +1597,16 @@ function SplitAllocationPanel({
                   />
                 </div>
               </div>
+
+              {/* Budget impact preview */}
+              <BudgetImpactPreview
+                row={row}
+                budgets={businessUnit?.budgets ?? []}
+                budgetLines={businessUnit?.budget_lines ?? []}
+                currency={invoiceCurrency}
+                categoryName={categories.find((c) => c.id === row.category_id)?.name ?? null}
+                subcategoryName={subcategories.find((s) => s.id === row.subcategory_id)?.name ?? null}
+              />
 
               {/* Approver */}
               {row.auto_approved ? (
@@ -1357,13 +1672,13 @@ function SplitAllocationPanel({
         </Button>
       </div>
 
-      {/* Split note */}
+      {/* Allocation note */}
       <div className="space-y-1">
-        <Label className="text-xs">Split Note (optional)</Label>
+        <Label className="text-xs">Allocation Note (optional)</Label>
         <Textarea
           rows={2}
           className="text-xs resize-none"
-          placeholder="Describe the rationale for this split..."
+          placeholder="Describe the rationale for this allocation..."
           value={splitNote}
           onChange={(e) => setSplitNote(e.target.value)}
         />
@@ -2026,7 +2341,7 @@ export function ApprovalReviewDrawer({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="right"
-        className="flex flex-col p-0 w-full sm:max-w-2xl overflow-hidden"
+        className="h-[100dvh] max-h-[100dvh] overflow-y-auto p-0 w-full sm:max-w-2xl"
       >
         {/* Header */}
         <SheetHeader className="shrink-0 border-b border-border px-5 py-4">
@@ -2115,14 +2430,19 @@ export function ApprovalReviewDrawer({
           </div>
         )}
 
-        {/* Branch allocation info banner (for runtime split branches) */}
-        {data?.branch_allocation && (
-          <BranchAllocationInfo alloc={data.branch_allocation} />
-        )}
+        {/* Current allocation impact — visible for both branch tasks and combined post-split review */}
+        {data?.branch_allocation ? (
+          <BranchAllocationInfo alloc={data.branch_allocation} currency={invoice?.currency ?? "INR"} />
+        ) : allocationAudit?.current_allocations?.length ? (
+          <CurrentAllocationImpactSection
+            allocations={allocationAudit.current_allocations}
+            currency={invoice?.currency ?? "INR"}
+          />
+        ) : null}
 
         {/* Tabs content */}
         {!isError && (
-          <div className="flex-1 overflow-y-auto">
+          <div>
             {isLoading ? (
               <ReviewSkeleton />
             ) : data ? (() => {
@@ -2144,7 +2464,7 @@ export function ApprovalReviewDrawer({
                 : "overview";
 
               return (
-                <Tabs defaultValue={defaultTab} className="flex flex-col h-full">
+                <Tabs defaultValue={defaultTab} className="flex flex-col">
                   <div className="shrink-0 border-b border-border">
                     <TabsList className="h-auto w-full rounded-none bg-transparent px-4 gap-0 justify-start">
                       {tabs.map((tab) => (
@@ -2154,7 +2474,7 @@ export function ApprovalReviewDrawer({
                           className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none capitalize text-xs py-2.5 px-3"
                         >
                           {tab === "split"
-                            ? <span className="flex items-center gap-1"><Split className="h-3 w-3" />Split</span>
+                            ? <span className="flex items-center gap-1"><Split className="h-3 w-3" />Allocation</span>
                             : tab === "allocation-entry"
                             ? <span className="flex items-center gap-1"><Tag className="h-3 w-3" />Allocation</span>
                             : tab === "allocation"
@@ -2170,7 +2490,7 @@ export function ApprovalReviewDrawer({
                       ))}
                     </TabsList>
                   </div>
-                  <div className="flex-1 overflow-y-auto">
+                  <div>
                     {isRuntimeSplit && data.task.instance_step_id && invoice && (
                       <TabsContent value="split" className="m-0">
                         <SplitAllocationPanel
