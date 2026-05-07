@@ -91,6 +91,7 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -141,6 +142,11 @@ const BUDGET_STATUS_COLORS: Record<BudgetStatus, string> = {
   frozen: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
   closed: "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200",
 };
+
+function normalizeBudgetSelectId(value: string | number | null | undefined): string {
+  if (value === null || value === undefined) return "";
+  return String(value);
+}
 
 function BudgetStatusBadge({ status }: { status: BudgetStatus }) {
   return (
@@ -765,7 +771,7 @@ function CreateBudgetDialog({
                 <div className="flex-1 space-y-1">
                   <Label className="text-xs">Category *</Label>
                   <Select
-                    value={line.category}
+                    value={normalizeBudgetSelectId(line.category)}
                     onValueChange={(v) => updateLine(index, "category", v)}
                   >
                     <SelectTrigger>
@@ -773,7 +779,7 @@ function CreateBudgetDialog({
                     </SelectTrigger>
                     <SelectContent>
                       {categories.map((c) => (
-                        <SelectItem key={c.id} value={c.id}>{c.name} ({c.code})</SelectItem>
+                        <SelectItem key={c.id} value={normalizeBudgetSelectId(c.id)}>{c.name} ({c.code})</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -781,7 +787,7 @@ function CreateBudgetDialog({
                 <div className="flex-1 space-y-1">
                   <Label className="text-xs">Subcategory</Label>
                   <Select
-                    value={line.subcategory ?? ""}
+                    value={normalizeBudgetSelectId(line.subcategory)}
                     onValueChange={(v) => updateLine(index, "subcategory", v || null)}
                     disabled={!line.category}
                   >
@@ -792,7 +798,7 @@ function CreateBudgetDialog({
                       {line.category && subcategories
                         .filter((sc) => sc.category === line.category)
                         .map((sc) => (
-                          <SelectItem key={sc.id} value={sc.id}>{sc.name} ({sc.code})</SelectItem>
+                          <SelectItem key={sc.id} value={normalizeBudgetSelectId(sc.id)}>{sc.name} ({sc.code})</SelectItem>
                         ))}
                     </SelectContent>
                   </Select>
@@ -857,15 +863,35 @@ function EditBudgetDialog({
   budget: Budget;
   onSuccess?: () => void;
 }) {
+  type EditableBudgetLine = BudgetLine & { _deleted?: boolean; _isNew?: boolean };
+
   const [open, setOpen] = useState(false);
   const update = useUpdateBudget();
 
   const { data: categories = [] } = useCategories(budget.org ? { org: budget.org } : undefined);
   const { data: subcategories = [] } = useSubCategories();
 
-  // Line editor state
-  const [lines, setLines] = useState<(BudgetLine & { _deleted?: boolean })[]>([]);
+  const [name, setName] = useState(budget.name);
+  const [code, setCode] = useState(budget.code);
   const [currency, setCurrency] = useState(budget.currency || "INR");
+  const [lines, setLines] = useState<EditableBudgetLine[]>([]);
+  const [clientError, setClientError] = useState<string | null>(null);
+
+  const resetForm = () => {
+    setName(budget.name);
+    setCode(budget.code);
+    setCurrency(budget.currency || "INR");
+    setClientError(null);
+    setLines(
+      (budget.lines || []).map((line) => ({
+        ...line,
+        category: normalizeBudgetSelectId(line.category),
+        subcategory: line.subcategory ? normalizeBudgetSelectId(line.subcategory) : null,
+        _deleted: false,
+        _isNew: false,
+      })),
+    );
+  };
 
   const isLineLocked = (line: BudgetLine) => {
     const allocated = parseFloat(line.allocated_amount || "0") || 0;
@@ -874,9 +900,21 @@ function EditBudgetDialog({
     return allocated > 0 && reserved + consumed >= allocated;
   };
 
-  const linesTotal = lines
-    .filter((l) => !l._deleted)
+  const getLineMinimumAmount = (line: BudgetLine) => {
+    const reserved = parseFloat(line.reserved_amount || "0") || 0;
+    const consumed = parseFloat(line.consumed_amount || "0") || 0;
+    return reserved + consumed;
+  };
+
+  const activeLines = lines.filter((line) => !line._deleted);
+  const linesTotal = activeLines
     .reduce((sum, l) => sum + (parseFloat(l.allocated_amount) || 0), 0);
+  const originalTotal = parseFloat(budget.allocated_amount || "0") || 0;
+  const totalDelta = linesTotal - originalTotal;
+  const activeLineCount = activeLines.length;
+  const lockedLineCount = activeLines.filter((line) => isLineLocked(line)).length;
+  const increasedBy = totalDelta > 0 ? totalDelta : 0;
+  const decreasedBy = totalDelta < 0 ? Math.abs(totalDelta) : 0;
 
   const addLine = () => {
     setLines((prev) => [
@@ -889,53 +927,103 @@ function EditBudgetDialog({
         allocated_amount: "",
         reserved_amount: "0",
         consumed_amount: "0",
+        available_amount: "0",
+        utilization_percent: 0,
+        category_name: "",
+        subcategory_name: "",
+        created_at: "",
+        updated_at: "",
         _deleted: false,
-      } as BudgetLine & { _deleted?: boolean },
+        _isNew: true,
+      },
     ]);
   };
 
-  const removeLine = (index: number) => {
+  const removeLine = (lineId: string) => {
     setLines((prev) =>
-      prev.map((l, i) => (i === index ? { ...l, _deleted: true } : l))
+      prev.map((line) => (line.id === lineId ? { ...line, _deleted: true } : line))
     );
   };
 
-  const updateLine = (
-    index: number,
-    field: keyof BudgetLine,
-    value: string | null,
-  ) => {
+  const updateLine = (lineId: string, patch: Partial<EditableBudgetLine>) => {
     setLines((prev) =>
-      prev.map((l, i) => (i === index ? { ...l, [field]: value } : l))
+      prev.map((line) => {
+        if (line.id !== lineId) return line;
+
+        const next = { ...line, ...patch };
+
+        if ("category" in patch) {
+          const nextCategory = patch.category ?? "";
+          if (!nextCategory) {
+            next.subcategory = null;
+          } else if (
+            next.subcategory &&
+            !subcategories.some(
+              (subcategory) =>
+                normalizeBudgetSelectId(subcategory.id) === next.subcategory &&
+                normalizeBudgetSelectId(subcategory.category) === nextCategory,
+            )
+          ) {
+            next.subcategory = null;
+          }
+        }
+
+        return next;
+      }),
     );
   };
 
   // Populate lines from budget when dialog opens
   const handleOpenChange = (o: boolean) => {
     if (o) {
-      setLines(
-        (budget.lines || []).map((l) => ({ ...l, _deleted: false })),
-      );
+      resetForm();
     }
     setOpen(o);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Filter out deleted lines and new lines that have no category/amount
-    const payload_lines = lines
-      .filter((l) => !l._deleted)
-      .filter((l) => l.category && l.allocated_amount)
+    setClientError(null);
+
+    const originalLineMap = new Map(
+      (budget.lines || []).map((line) => [String(line.id), line]),
+    );
+
+    for (const line of activeLines) {
+      const parsedAmount = parseFloat(line.allocated_amount || "0");
+      const originalLine = originalLineMap.get(String(line.id));
+      const originalAmount = originalLine ? parseFloat(originalLine.allocated_amount || "0") : null;
+      const amountChanged = originalAmount === null || parsedAmount !== originalAmount;
+      if (!line.category || !line.allocated_amount) {
+        setClientError("Every active budget line must have a category and amount before saving.");
+        return;
+      }
+      if ((!Number.isFinite(parsedAmount) || parsedAmount < 0.01) && amountChanged) {
+        setClientError("Budget line amount must be greater than 0.01.");
+        return;
+      }
+      const minAmount = getLineMinimumAmount(line);
+      if (isLineLocked(line) && amountChanged && parsedAmount < minAmount) {
+        setClientError(
+          `Line ${line.category_name || line.category}: amount cannot be reduced below ${currency} ${minAmount.toLocaleString(undefined, {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          })} because that much is already reserved or consumed.`,
+        );
+        return;
+      }
+    }
+
+    const payload_lines = activeLines
+      .filter((line) => line.category && line.allocated_amount)
       .map((l) => {
         if (String(l.id ?? "").startsWith("new-")) {
-          // New line — no id field
           return {
             category: l.category,
             subcategory: l.subcategory || null,
             allocated_amount: l.allocated_amount,
           };
         }
-        // Existing line — include id for update
         return {
           id: String(l.id ?? ""),
           category: l.category,
@@ -948,8 +1036,8 @@ function EditBudgetDialog({
       await update.mutateAsync({
         id: budget.id,
         data: {
-          name: (document.getElementById("edit-name") as HTMLInputElement)?.value ?? budget.name,
-          code: (document.getElementById("edit-code") as HTMLInputElement)?.value ?? budget.code,
+          name: name.trim() || budget.name,
+          code: code.trim() || budget.code,
           allocated_amount: String(linesTotal),
           currency,
           lines: payload_lines,
@@ -974,48 +1062,74 @@ function EditBudgetDialog({
           <Pencil className="h-3.5 w-3.5" />
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto" aria-describedby={undefined}>
+      <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Edit Budget</DialogTitle>
+          <DialogDescription>
+            Update budget details, adjust budget lines, and review the impact before saving.
+          </DialogDescription>
         </DialogHeader>
         <form id="edit-budget-form" onSubmit={handleSubmit} className="space-y-5">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label>Name *</Label>
               <Input
-                id="edit-name"
-                defaultValue={budget.name}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
               />
             </div>
             <div className="space-y-1.5">
               <Label>Code *</Label>
               <Input
-                id="edit-code"
-                defaultValue={budget.code}
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
               />
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="space-y-1.5">
-              <Label>Allocated Amount</Label>
+              <Label>Currency</Label>
               <Input
                 value={currency}
                 onChange={(e) => setCurrency(e.target.value)}
                 placeholder="INR"
               />
             </div>
-            <div className="flex items-end">
-              <p className="text-sm">
-                <span className="text-muted-foreground">Running total: </span>
-                <span className="font-medium">
-                  {currency}{" "}
-                  {linesTotal.toLocaleString(undefined, {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2,
-                  })}
-                </span>
+            <div className="rounded-lg border border-border bg-muted/20 px-3 py-2">
+              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Current Allocated</p>
+              <p className="text-base font-semibold">
+                {currency} {originalTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </p>
+            </div>
+            <div className="rounded-lg border border-border bg-muted/20 px-3 py-2">
+              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Edited Allocated</p>
+              <p className="text-base font-semibold">
+                {currency} {linesTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
+            <div className="rounded-lg border border-border bg-background px-3 py-2">
+              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Delta</p>
+              <p className={cn("text-sm font-semibold", totalDelta > 0 ? "text-emerald-700" : totalDelta < 0 ? "text-rose-700" : "text-foreground")}>
+                {totalDelta > 0 ? "+" : totalDelta < 0 ? "-" : ""}{currency} {Math.abs(totalDelta).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </p>
+            </div>
+            <div className="rounded-lg border border-border bg-background px-3 py-2">
+              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Active Lines</p>
+              <p className="text-sm font-semibold">{activeLineCount}</p>
+            </div>
+            <div className="rounded-lg border border-border bg-background px-3 py-2">
+              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Increase</p>
+              <p className="text-sm font-semibold text-emerald-700">
+                {currency} {increasedBy.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </p>
+            </div>
+            <div className="rounded-lg border border-border bg-background px-3 py-2">
+              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Locked Lines</p>
+              <p className="text-sm font-semibold">{lockedLineCount}</p>
             </div>
           </div>
 
@@ -1028,97 +1142,106 @@ function EditBudgetDialog({
               </Button>
             </div>
 
-            {lines
-              .filter((l) => !l._deleted)
-              .map((line, index) => {
+            {activeLines.map((line) => {
                 const locked = isLineLocked(line);
+                const minAmount = getLineMinimumAmount(line);
                 return (
-                <div key={line.id} className="flex gap-2 items-end">
-                  <div className="flex-1 space-y-1">
-                    <Label className="text-xs">Category *</Label>
-                    <Select
-                      value={line.category}
-                      onValueChange={(v) => updateLine(index, "category", v)}
-                      disabled={locked}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select category..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {categories.map((c) => (
-                          <SelectItem key={c.id} value={c.id}>
-                            {c.name} ({c.code})
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="flex-1 space-y-1">
-                    <Label className="text-xs">Subcategory</Label>
-                    <Select
-                      value={line.subcategory ?? ""}
-                      onValueChange={(v) =>
-                        updateLine(index, "subcategory", v || null)
-                      }
-                      disabled={!line.category || locked}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Optional..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {line.category &&
-                          subcategories
-                            .filter((sc) => sc.category === line.category)
-                            .map((sc) => (
-                              <SelectItem key={sc.id} value={sc.id}>
-                                {sc.name} ({sc.code})
+                  <div key={line.id} className="rounded-xl border border-border bg-background p-3 space-y-3">
+                    <div className="grid gap-3 md:grid-cols-[1.2fr_1.2fr_0.8fr_auto] md:items-end">
+                      <div className="space-y-1">
+                        <Label className="text-xs">Category *</Label>
+                          <Select
+                          value={normalizeBudgetSelectId(line.category)}
+                          onValueChange={(v) => updateLine(line.id, { category: v })}
+                          disabled={locked}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select category..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {categories.map((c) => (
+                              <SelectItem key={c.id} value={normalizeBudgetSelectId(c.id)}>
+                                {c.name} ({c.code})
                               </SelectItem>
                             ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="w-36 space-y-1">
-                    <Label className="text-xs">Amount *</Label>
-                    <Input
-                      value={line.allocated_amount}
-                      onChange={(e) =>
-                        updateLine(index, "allocated_amount", e.target.value)
-                      }
-                      disabled={locked}
-                      type="number"
-                      step="0.01"
-                      min="0.01"
-                      placeholder="0.00"
-                    />
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Subcategory</Label>
+                        <Select
+                          value={normalizeBudgetSelectId(line.subcategory)}
+                          onValueChange={(v) => updateLine(line.id, { subcategory: v || null })}
+                          disabled={!line.category || locked}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder={!line.category ? "Select category first" : "Optional..."} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {line.category &&
+                              subcategories
+                                .filter((sc) => normalizeBudgetSelectId(sc.category) === normalizeBudgetSelectId(line.category))
+                                .map((sc) => (
+                                  <SelectItem key={sc.id} value={normalizeBudgetSelectId(sc.id)}>
+                                    {sc.name} ({sc.code})
+                                  </SelectItem>
+                                ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Amount *</Label>
+                        <Input
+                          value={line.allocated_amount}
+                          onChange={(e) => updateLine(line.id, { allocated_amount: e.target.value })}
+                          type="number"
+                          step="0.01"
+                          placeholder="0.00"
+                        />
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => removeLine(line.id)}
+                        disabled={locked}
+                        className="shrink-0 text-destructive"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+
+                    <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-3">
+                      <div className="rounded-md bg-muted/30 px-2.5 py-2">
+                        Reserved: <span className="font-medium text-foreground">{currency} {parseFloat(line.reserved_amount || "0").toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                      </div>
+                      <div className="rounded-md bg-muted/30 px-2.5 py-2">
+                        Consumed: <span className="font-medium text-foreground">{currency} {parseFloat(line.consumed_amount || "0").toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                      </div>
+                      <div className="rounded-md bg-muted/30 px-2.5 py-2">
+                        Available: <span className="font-medium text-foreground">{currency} {parseFloat(line.available_amount || "0").toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                      </div>
+                    </div>
+
                     {locked && (
                       <p className="text-[11px] text-muted-foreground">
-                        Locked: fully reserved/consumed.
+                        This line has live usage. Category mapping cannot be changed, but amount can still be increased or reduced only down to {currency} {minAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}.
                       </p>
                     )}
                   </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => removeLine(index)}
-                    disabled={locked}
-                    className="shrink-0 text-destructive"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              )})}
+                );
+              })}
 
-            {lines.filter((l) => !l._deleted).length === 0 && (
+            {activeLineCount === 0 && (
               <p className="text-sm text-muted-foreground py-2">
                 No lines yet. Add one above.
               </p>
             )}
           </div>
 
-          {submitError && (
+          {(clientError || submitError) && (
             <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              {submitError}
+              {clientError || submitError}
             </p>
           )}
         </form>
@@ -1127,7 +1250,7 @@ function EditBudgetDialog({
           <Button
             type="submit"
             form="edit-budget-form"
-            disabled={update.isPending}
+            disabled={update.isPending || !name.trim() || !code.trim() || activeLineCount === 0}
           >
             {update.isPending ? (
               <><Loader2 className="mr-1.5 h-4 w-4 animate-spin" />Saving...</>
@@ -3421,4 +3544,3 @@ export default function BudgetsPage() {
     </V2Shell>
   );
 }
-

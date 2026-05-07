@@ -19,6 +19,7 @@ import {
   useTaskReview,
   useApproveStep,
   useRejectStep,
+  useReturnStepToVendor,
   useReassignStep,
   useApproveBranch,
   useRejectBranch,
@@ -1112,15 +1113,18 @@ function SplitAllocationPanel({
   instanceStepId,
   invoiceAmount,
   invoiceCurrency,
+  canReturnToVendor,
   onSuccess,
 }: {
   instanceStepId: string;
   invoiceAmount: string;
   invoiceCurrency: string;
+  canReturnToVendor: boolean;
   onSuccess: () => void;
 }) {
   const { data: splitOpts, isLoading: optsLoading, isError: optsError } = useSplitOptions(instanceStepId);
   const submitSplitMutation = useSubmitSplit();
+  const returnToVendorMutation = useReturnStepToVendor();
 
   const [rows, setRows] = useState<SplitRow[]>([{ entity_id: null, category_id: null, subcategory_id: null, campaign_id: null, budget_id: null, amount: "", approver_id: null, note: "", auto_approved: false }]);
   const [splitNote, setSplitNote] = useState("");
@@ -1354,7 +1358,28 @@ function SplitAllocationPanel({
       ? submitSplitMutation.error.message
       : submitSplitMutation.isError
       ? "Failed to submit split."
+      : returnToVendorMutation.isError && returnToVendorMutation.error instanceof ApiError
+      ? returnToVendorMutation.error.message
+      : returnToVendorMutation.isError
+      ? "Failed to return invoice to vendor."
       : null;
+
+  const handleReturnToVendor = async () => {
+    setValidationError(null);
+    if (!splitNote.trim()) {
+      setValidationError("A reason is required when returning this invoice to the vendor.");
+      return;
+    }
+    try {
+      await returnToVendorMutation.mutateAsync({
+        id: instanceStepId,
+        data: { note: splitNote.trim() },
+      });
+      onSuccess();
+    } catch {
+      // error shown by submitError
+    }
+  };
 
   return (
     <div className="p-4 space-y-4">
@@ -1698,19 +1723,35 @@ function SplitAllocationPanel({
         </div>
       )}
 
-      <Button
-        size="sm"
-        className="w-full gap-1.5 bg-blue-600 hover:bg-blue-700 text-white"
-        onClick={handleSubmit}
-        disabled={submitSplitMutation.isPending || (mustBalanceTotal && !isBalanced) || rows.some((r) => !r.entity_id || !r.amount || (getApprovalRequired(r) && !r.approver_id))}
-      >
-        {submitSplitMutation.isPending ? (
-          <><Loader2 className="h-3.5 w-3.5 animate-spin" />Submitting...</>
-        ) : (
-          <><Split className="h-3.5 w-3.5" />Submit Allocation</>
-
+      <div className={`grid gap-2 ${canReturnToVendor ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1"}`}>
+        <Button
+          size="sm"
+          className="w-full gap-1.5 bg-blue-600 hover:bg-blue-700 text-white"
+          onClick={handleSubmit}
+          disabled={submitSplitMutation.isPending || returnToVendorMutation.isPending || (mustBalanceTotal && !isBalanced) || rows.some((r) => !r.entity_id || !r.amount || (getApprovalRequired(r) && !r.approver_id))}
+        >
+          {submitSplitMutation.isPending ? (
+            <><Loader2 className="h-3.5 w-3.5 animate-spin" />Submitting...</>
+          ) : (
+            <><Split className="h-3.5 w-3.5" />Submit Allocation</>
+          )}
+        </Button>
+        {canReturnToVendor && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="w-full gap-1.5 border-orange-300 text-orange-700 hover:bg-orange-50"
+            onClick={handleReturnToVendor}
+            disabled={submitSplitMutation.isPending || returnToVendorMutation.isPending || !splitNote.trim()}
+          >
+            {returnToVendorMutation.isPending ? (
+              <><Loader2 className="h-3.5 w-3.5 animate-spin" />Returning...</>
+            ) : (
+              <><AlertTriangle className="h-3.5 w-3.5" />Return to Vendor</>
+            )}
+          </Button>
         )}
-      </Button>
+      </div>
     </div>
   );
 }
@@ -1730,15 +1771,18 @@ function SingleAllocationPanel({
   instanceStepId,
   invoiceAmount,
   invoiceCurrency,
+  canReturnToVendor,
   onSuccess,
 }: {
   instanceStepId: string;
   invoiceAmount: string;
   invoiceCurrency: string;
+  canReturnToVendor: boolean;
   onSuccess: () => void;
 }) {
   const { data: opts, isLoading, isError } = useSingleAllocationOptions(instanceStepId);
   const submitMutation = useSubmitSingleAllocation();
+  const returnToVendorMutation = useReturnStepToVendor();
 
   const config = opts?.step_config;
 
@@ -1747,6 +1791,7 @@ function SingleAllocationPanel({
     campaign_id: null, budget_id: null, note: "",
   });
   const [hydrated, setHydrated] = useState(false);
+  const [returnReasonError, setReturnReasonError] = useState<string | null>(null);
 
   // Hydrate form from existing allocation once opts arrives. Guard keeps user edits
   // on subsequent opts changes (e.g. query refresh) from being clobbered.
@@ -1831,6 +1876,23 @@ function SingleAllocationPanel({
 
       return next;
     });
+
+  const handleReturnToVendor = async () => {
+    setReturnReasonError(null);
+    if (!form.note.trim()) {
+      setReturnReasonError("A reason is required when returning this invoice to the vendor.");
+      return;
+    }
+    try {
+      await returnToVendorMutation.mutateAsync({
+        id: instanceStepId,
+        data: { note: form.note.trim() },
+      });
+      onSuccess();
+    } catch {
+      // error shown by mutation state
+    }
+  };
 
   const validationError = (() => {
     if (!form.entity_id) return "Business unit is required.";
@@ -2040,25 +2102,42 @@ function SingleAllocationPanel({
         />
       </div>
 
-      {(validationError || submitError) && (
+      {(validationError || submitError || returnReasonError) && (
         <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive flex items-start gap-2">
           <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
-          {validationError || submitError}
+          {validationError || submitError || returnReasonError}
         </div>
       )}
 
-      <Button
-        size="sm"
-        className="w-full gap-1.5 bg-blue-600 hover:bg-blue-700 text-white"
-        onClick={handleSubmit}
-        disabled={!!validationError || submitMutation.isPending}
-      >
-        {submitMutation.isPending ? (
-          <><Loader2 className="h-3.5 w-3.5 animate-spin" />Saving Allocation...</>
-        ) : (
-          <><CheckCircle2 className="h-3.5 w-3.5" />Save Allocation</>
+      <div className={`grid gap-2 ${canReturnToVendor ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1"}`}>
+        <Button
+          size="sm"
+          className="w-full gap-1.5 bg-blue-600 hover:bg-blue-700 text-white"
+          onClick={handleSubmit}
+          disabled={!!validationError || submitMutation.isPending || returnToVendorMutation.isPending}
+        >
+          {submitMutation.isPending ? (
+            <><Loader2 className="h-3.5 w-3.5 animate-spin" />Saving Allocation...</>
+          ) : (
+            <><CheckCircle2 className="h-3.5 w-3.5" />Save Allocation</>
+          )}
+        </Button>
+        {canReturnToVendor && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="w-full gap-1.5 border-orange-300 text-orange-700 hover:bg-orange-50"
+            onClick={handleReturnToVendor}
+            disabled={submitMutation.isPending || returnToVendorMutation.isPending || !form.note.trim()}
+          >
+            {returnToVendorMutation.isPending ? (
+              <><Loader2 className="h-3.5 w-3.5 animate-spin" />Returning...</>
+            ) : (
+              <><AlertTriangle className="h-3.5 w-3.5" />Return to Vendor</>
+            )}
+          </Button>
         )}
-      </Button>
+      </div>
     </div>
   );
 }
@@ -2070,10 +2149,12 @@ type ActionMode = "reassign" | null;
 function DecisionPanel({
   taskKind,
   taskId,
+  canReturnToVendor,
   onSuccess,
 }: {
   taskKind: "step" | "branch";
   taskId: string;
+  canReturnToVendor: boolean;
   onSuccess: () => void;
 }) {
   const [mode, setMode] = useState<ActionMode>(null);
@@ -2082,6 +2163,7 @@ function DecisionPanel({
 
   const approveStep = useApproveStep();
   const rejectStep = useRejectStep();
+  const returnToVendorStep = useReturnStepToVendor();
   const reassignStep = useReassignStep();
   const approveBranch = useApproveBranch();
   const rejectBranch = useRejectBranch();
@@ -2095,11 +2177,16 @@ function DecisionPanel({
       : taskKind === "step" ? reassignStep : reassignBranch;
 
   const isPending = mutation.isPending;
+  const isReturningToVendor = returnToVendorStep.isPending;
   const errorMsg =
     mutation.isError && mutation.error instanceof ApiError
       ? mutation.error.message
       : mutation.isError
       ? "Action failed. Please try again."
+      : returnToVendorStep.isError && returnToVendorStep.error instanceof ApiError
+      ? returnToVendorStep.error.message
+      : returnToVendorStep.isError
+      ? "Return to vendor failed. Please try again."
       : null;
 
   const handleApprove = async () => {
@@ -2168,11 +2255,27 @@ function DecisionPanel({
     }
   };
 
+  const handleReturnToVendor = async () => {
+    if (taskKind !== "step" || !note.trim()) return;
+    try {
+      await returnToVendorStep.mutateAsync({
+        id: taskId,
+        data: { note: note.trim() },
+      });
+      setNote("");
+      setSelectedUserId("");
+      onSuccess();
+    } catch {
+      // error shown via errorMsg
+    }
+  };
+
   const cancel = () => {
     setMode(null);
     setNote("");
     setSelectedUserId("");
     mutation.reset();
+    returnToVendorStep.reset();
   };
 
   return (
@@ -2180,11 +2283,13 @@ function DecisionPanel({
       {mode === null ? (
         <div className="space-y-3">
           <div className="space-y-1">
-            <Label className="text-xs">Note (optional)</Label>
+            <Label className="text-xs">
+              Note {canReturnToVendor ? "(required for Reject / Return to Vendor)" : "(optional)"}
+            </Label>
             <Textarea
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              placeholder="Add a note..."
+              placeholder={canReturnToVendor ? "Explain the rejection or what the vendor must correct..." : "Add a note..."}
               rows={3}
               className="text-sm resize-none"
             />
@@ -2201,7 +2306,7 @@ function DecisionPanel({
               size="sm"
               className="flex-1 bg-green-600 hover:bg-green-700 text-white gap-1.5"
               onClick={handleApprove}
-              disabled={isPending}
+              disabled={isPending || isReturningToVendor}
             >
               {isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
               Approve
@@ -2211,17 +2316,33 @@ function DecisionPanel({
               variant="destructive"
               className="flex-1 gap-1.5"
               onClick={handleReject}
-              disabled={isPending || !note.trim()}
+              disabled={isPending || isReturningToVendor || !note.trim()}
             >
               {isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <XCircle className="h-3.5 w-3.5" />}
               Reject
             </Button>
+            {canReturnToVendor && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="flex-1 gap-1.5 border-orange-300 text-orange-700 hover:bg-orange-50"
+                onClick={handleReturnToVendor}
+                disabled={isPending || isReturningToVendor || !note.trim()}
+              >
+                {isReturningToVendor ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <AlertTriangle className="h-3.5 w-3.5" />
+                )}
+                Return to Vendor
+              </Button>
+            )}
             <Button
               size="sm"
               variant="outline"
               className="flex-1 gap-1.5"
               onClick={() => setMode("reassign")}
-              disabled={isPending}
+              disabled={isPending || isReturningToVendor}
             >
               <RefreshCw className="h-3.5 w-3.5" />
               Reassign
@@ -2497,6 +2618,7 @@ export function ApprovalReviewDrawer({
                           instanceStepId={data.task.instance_step_id}
                           invoiceAmount={invoice.amount}
                           invoiceCurrency={invoice.currency}
+                          canReturnToVendor={!!data.task.can_return_to_vendor}
                           onSuccess={handleActionSuccess}
                         />
                       </TabsContent>
@@ -2507,6 +2629,7 @@ export function ApprovalReviewDrawer({
                           instanceStepId={data.task.instance_step_id}
                           invoiceAmount={invoice.amount}
                           invoiceCurrency={invoice.currency}
+                          canReturnToVendor={!!data.task.can_return_to_vendor}
                           onSuccess={handleActionSuccess}
                         />
                       </TabsContent>
@@ -2547,6 +2670,7 @@ export function ApprovalReviewDrawer({
           <DecisionPanel
             taskKind={taskKind}
             taskId={taskId}
+            canReturnToVendor={!!data.task.can_return_to_vendor}
             onSuccess={handleActionSuccess}
           />
         )}

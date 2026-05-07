@@ -38,12 +38,14 @@ import {
   Dialog,
   DialogContent,
   DialogHeader,
+  DialogDescription,
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
+import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import {
   Loader2,
@@ -572,7 +574,15 @@ function SubmitDraftButton({
 
 // ── Record Payment Button & Form ───────────────────────────────────────────────
 
-function RecordPaymentButton({ invoiceId }: { invoiceId: string }) {
+function RecordPaymentButton({
+  invoiceId,
+  className,
+  fullWidth = true,
+}: {
+  invoiceId: string;
+  className?: string;
+  fullWidth?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const { data: payment, isLoading } = useInvoicePayment(invoiceId);
   const recordMutation = useRecordInvoicePayment();
@@ -629,7 +639,7 @@ function RecordPaymentButton({ invoiceId }: { invoiceId: string }) {
     <>
       <Button
         size="sm"
-        className="w-full gap-1.5"
+        className={cn(fullWidth ? "w-full gap-1.5" : "gap-1.5", className)}
         onClick={() => setOpen(true)}
       >
         <FileText className="h-3.5 w-3.5" />
@@ -640,6 +650,9 @@ function RecordPaymentButton({ invoiceId }: { invoiceId: string }) {
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Record Payment</DialogTitle>
+            <DialogDescription>
+              Create or update the payment record for this finance-approved invoice.
+            </DialogDescription>
           </DialogHeader>
 
           {isLoading ? (
@@ -1486,6 +1499,13 @@ const InvoicesPage = () => {
                   <span className="hidden sm:inline">View Approval Tasks</span>
                   <span className="sm:hidden">Tasks</span>
                 </Button>
+                {selectedInvoice.status === "finance_approved" && !!selectedInvoice.can_record_payment && (
+                  <RecordPaymentButton
+                    invoiceId={selectedInvoice.id}
+                    fullWidth={false}
+                    className="shrink-0 text-xs"
+                  />
+                )}
               </div>
               {/* Embedded control tower */}
               <ScrollArea className="flex-1">
@@ -1528,4 +1548,3 @@ const InvoicesPage = () => {
 };
 
 export default InvoicesPage;
-

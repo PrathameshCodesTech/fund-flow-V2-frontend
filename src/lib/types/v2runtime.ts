@@ -158,6 +158,7 @@ export interface ReviewTaskMeta {
   target_scope_node_id?: string | null;
   target_scope_node_name?: string | null;
   status: string;
+  can_return_to_vendor?: boolean;
   assigned_user: ReviewUser | null;
   reassigned_from_user: ReviewUser | null;
   reassigned_by: ReviewUser | null;
@@ -676,6 +677,10 @@ export interface ApproveStepRequest {
 
 export interface RejectStepRequest {
   note?: string;
+}
+
+export interface ReturnToVendorStepRequest {
+  note: string;
 }
 
 export interface ReassignStepRequest {

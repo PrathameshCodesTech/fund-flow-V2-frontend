@@ -5,6 +5,7 @@ import type {
   CreateFromInvoiceRequest,
   ApproveStepRequest,
   RejectStepRequest,
+  ReturnToVendorStepRequest,
   ReassignStepRequest,
   ApproveBranchRequest,
   RejectBranchRequest,
@@ -91,6 +92,16 @@ export function reassignStep(
 ): Promise<unknown> {
   return apiClient.post<unknown>(
     `/api/v1/workflow/instance-steps/${id}/reassign/`,
+    data,
+  );
+}
+
+export function returnStepToVendor(
+  id: string,
+  data: ReturnToVendorStepRequest,
+): Promise<unknown> {
+  return apiClient.post<unknown>(
+    `/api/v1/workflow/instance-steps/${id}/return-to-vendor/`,
     data,
   );
 }

@@ -6,6 +6,7 @@ import {
   activateInstance,
   approveStep,
   rejectStep,
+  returnStepToVendor,
   reassignStep,
   approveBranch,
   rejectBranch,
@@ -27,6 +28,7 @@ import type {
   CreateFromInvoiceRequest,
   ApproveStepRequest,
   RejectStepRequest,
+  ReturnToVendorStepRequest,
   ReassignStepRequest,
   ApproveBranchRequest,
   RejectBranchRequest,
@@ -113,6 +115,23 @@ export function useRejectStep() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["v2", "tasks"] });
       queryClient.invalidateQueries({ queryKey: ["v2", "instances"] });
+    },
+  });
+}
+
+export function useReturnStepToVendor() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      data,
+    }: { id: string; data: ReturnToVendorStepRequest }) => returnStepToVendor(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["v2", "tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["v2", "instances"] });
+      queryClient.invalidateQueries({ queryKey: ["v2", "taskReview"] });
+      queryClient.invalidateQueries({ queryKey: ["v2", "submissions"] });
+      queryClient.invalidateQueries({ queryKey: ["v2", "vendor-portal"] });
     },
   });
 }

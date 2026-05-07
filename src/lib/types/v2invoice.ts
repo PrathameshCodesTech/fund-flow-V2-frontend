@@ -111,6 +111,8 @@ export interface VendorInvoiceSubmission {
   correction_requested_by_name: string;
   correction_requested_at: string | null;
   correction_note: string;
+  send_to_route_id?: number | null;
+  send_to_route_label?: string | null;
   scope_node: string;
   scope_node_name: string;
   status: SubmissionStatus;

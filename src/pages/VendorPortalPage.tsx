@@ -650,6 +650,16 @@ function SubmissionDetailPanel({
   const discardSub = useDiscardSubmission();
   const [sendToOptionId, setSendToOptionId] = useState<string>("");
 
+  useEffect(() => {
+    setForm({ ...(submission.normalized_data || {}) });
+    setValidationErrors({});
+    setSubmitError(null);
+    setSuccessMsg(null);
+    setSendToOptionId(
+      submission.send_to_route_id != null ? String(submission.send_to_route_id) : ""
+    );
+  }, [submission]);
+
   const isBusy =
     updateSub.isPending ||
     extractSub.isPending ||
