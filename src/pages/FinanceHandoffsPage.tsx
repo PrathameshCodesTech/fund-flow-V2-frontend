@@ -290,42 +290,73 @@ const FinanceHandoffsPage = () => {
             <p>No finance handoffs found.</p>
           </div>
         ) : (
-          <div className="space-y-2 p-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-4">
             {handoffs.map((handoff) => (
               <div
                 key={handoff.id}
-                className="flex items-center justify-between rounded-lg border border-border bg-background px-4 py-3 cursor-pointer hover:bg-accent/50 transition-colors"
+                className="group relative rounded-xl border border-border bg-card hover:bg-accent/30 hover:border-primary/30 transition-all cursor-pointer overflow-hidden shadow-sm hover:shadow-md"
                 onClick={() => setSelectedHandoffId(handoff.id)}
               >
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                {/* Status indicator bar */}
+                <div className={`absolute top-0 left-0 right-0 h-1 ${
+                  handoff.status === 'finance_approved' ? 'bg-green-500' :
+                  handoff.status === 'finance_rejected' ? 'bg-red-500' :
+                  handoff.status === 'sent' ? 'bg-blue-500' :
+                  handoff.status === 'pending' ? 'bg-yellow-500' :
+                  'bg-gray-400'
+                }`} />
+
+                <div className="p-4 pt-5">
+                  {/* Header */}
+                  <div className="flex items-start justify-between gap-2 mb-3">
+                    <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-primary/10 text-primary rounded">
                       {handoff.module}
                     </span>
                     <HandoffStatusBadge status={handoff.status} />
                   </div>
-                  <p className="text-sm font-medium truncate">
+
+                  {/* Title */}
+                  <h3 className="text-sm font-semibold text-foreground mb-3 line-clamp-2 group-hover:text-primary transition-colors">
                     {handoff.subject_name}
-                  </p>
-                  <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
-                    {handoff.finance_reference_id && (
-                      <span>Ref: <span className="font-mono">{handoff.finance_reference_id}</span></span>
+                  </h3>
+
+                  {/* Reference ID */}
+                  {handoff.finance_reference_id && (
+                    <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-muted/50 rounded-md mb-3">
+                      <span className="text-[10px] text-muted-foreground">REF:</span>
+                      <span className="text-[11px] font-mono font-medium text-foreground">{handoff.finance_reference_id}</span>
+                    </div>
+                  )}
+
+                  {/* Dates */}
+                  <div className="space-y-1.5 text-[11px] text-muted-foreground">
+                    {handoff.sent_at ? (
+                      <div className="flex items-center gap-1.5">
+                        <CheckCircle2 className="h-3 w-3 text-green-600 shrink-0" />
+                        <span>Sent {new Date(handoff.sent_at).toLocaleDateString("en-IN", {
+                          day: "numeric",
+                          month: "short"
+                        })}</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1.5">
+                        <Clock className="h-3 w-3 text-yellow-600 shrink-0" />
+                        <span>Awaiting send</span>
+                      </div>
                     )}
-                    {handoff.sent_at && (
-                      <span className="flex items-center gap-1">
-                        <CheckCircle2 className="h-2.5 w-2.5 text-green-600" />
-                        Sent {new Date(handoff.sent_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
-                      </span>
-                    )}
-                    {!handoff.sent_at && (
-                      <span className="flex items-center gap-1">
-                        <Clock className="h-2.5 w-2.5" />
-                        Pending
-                      </span>
-                    )}
-                    <span>Created {new Date(handoff.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}</span>
+                    <div className="flex items-center gap-1.5 text-muted-foreground/70">
+                      <div className="w-3 h-3 shrink-0" />
+                      <span>Created {new Date(handoff.created_at).toLocaleDateString("en-IN", {
+                        day: "numeric",
+                        month: "short",
+                        year: "numeric"
+                      })}</span>
+                    </div>
                   </div>
                 </div>
+
+                {/* Hover indicator */}
+                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary/0 group-hover:bg-primary/50 transition-all" />
               </div>
             ))}
           </div>

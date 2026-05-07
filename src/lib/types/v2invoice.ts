@@ -118,6 +118,7 @@ export interface VendorInvoiceSubmission {
   source_file_type: "pdf" | "xlsx" | "xls";
   confidence_score: number | null;
   confidence_percent: number | null;
+  extraction_method?: "azure_document_intelligence" | "ocr" | "template" | "regex" | null;
   normalized_data: NormalizedInvoiceData;
   validation_errors: ValidationError[];
   final_invoice: string | null;

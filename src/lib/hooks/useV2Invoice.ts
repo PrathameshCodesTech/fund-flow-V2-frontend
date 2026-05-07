@@ -13,6 +13,7 @@ import {
   submitSubmission,
   listVendorSendToOptions,
   cancelSubmission,
+  discardSubmission,
   addSubmissionDocument,
   listEligibleWorkflows,
   attachWorkflow,
@@ -168,6 +169,17 @@ export function useCancelSubmission() {
     onSuccess: (_data, id) => {
       queryClient.invalidateQueries({ queryKey: ["v2", "submissions"] });
       queryClient.invalidateQueries({ queryKey: ["v2", "submission", id] });
+    },
+  });
+}
+
+export function useDiscardSubmission() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => discardSubmission(id),
+    onSuccess: (_data, id) => {
+      queryClient.invalidateQueries({ queryKey: ["v2", "submissions"] });
+      queryClient.removeQueries({ queryKey: ["v2", "submission", id] });
     },
   });
 }

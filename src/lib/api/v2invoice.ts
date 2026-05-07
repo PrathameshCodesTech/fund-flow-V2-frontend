@@ -137,6 +137,13 @@ export function cancelSubmission(
   );
 }
 
+export function discardSubmission(id: string): Promise<void> {
+  return apiClient.post<void>(
+    `/api/v1/invoices/vendor-invoice-submissions/${id}/discard/`,
+    {},
+  );
+}
+
 export function addSubmissionDocument(
   submissionId: string,
   data: InvoiceDocumentCreateRequest,

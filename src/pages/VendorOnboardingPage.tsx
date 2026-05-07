@@ -147,6 +147,8 @@ interface ManualFormState {
 
 type SectionKey = keyof ManualFormState;
 
+const EDITABLE_SUBMISSION_STATUSES = new Set(["draft", "reopened"]);
+
 const emptyContactPerson = (): ContactPersonEntry => ({
   type: "general_queries",
   name: "",
@@ -1912,7 +1914,7 @@ export default function VendorOnboardingPage() {
     useState<VendorOnboardingSubmission | null>(null);
   const [lastSaved, setLastSaved] = useState<string | null>(null);
 
-  // After invitation loads: check for existing draft, decide starting mode.
+  // After invitation loads: resume only editable submissions.
   useEffect(() => {
     if (!invitation || modeReady || isLoading) return;
 
@@ -1936,6 +1938,10 @@ export default function VendorOnboardingPage() {
               document_type: a.document_type,
             }))
           );
+        }
+        if (!EDITABLE_SUBMISSION_STATUSES.has(s.status)) {
+          setMode("submitted");
+          return;
         }
         setMode(s.submission_mode === "excel" ? "review_details" : "manual_details");
       })

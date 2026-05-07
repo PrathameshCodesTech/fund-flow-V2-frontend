@@ -19,6 +19,7 @@ import {
   useSubmitSubmission,
   useVendorSendToOptions,
   useCancelSubmission,
+  useDiscardSubmission,
   useAddSubmissionDocument,
   useInvoicePayment,
 } from "@/lib/hooks/useV2Invoice";
@@ -58,6 +59,7 @@ import {
   RefreshCw,
   Download,
   Ban,
+  Trash2,
   Eye,
   User,
 } from "lucide-react";
@@ -325,6 +327,21 @@ function fmtDate(dateStr: string | null | undefined) {
   catch { return dateStr; }
 }
 
+function extractionMethodLabel(method: VendorInvoiceSubmission["extraction_method"]): string | null {
+  switch (method) {
+    case "azure_document_intelligence":
+      return "Azure Document Intelligence";
+    case "ocr":
+      return "OCR";
+    case "template":
+      return "Template Parser";
+    case "regex":
+      return "Text/Regex Parser";
+    default:
+      return null;
+  }
+}
+
 function extractFieldErrors(err: unknown): Record<string, string> {
   const apiErr = (err as { errors?: unknown })?.errors;
   const fieldErrors: Record<string, string> = {};
@@ -573,6 +590,11 @@ function InvoiceRow({ invoice }: { invoice: Invoice }) {
 function SubmissionRow({ submission, onClick }: { submission: VendorInvoiceSubmission; onClick: () => void }) {
   const nd = submission.normalized_data || {};
   const isActionable = submission.status === "needs_correction" || submission.status === "ready";
+  const isDiscardable =
+    submission.status === "uploaded" ||
+    submission.status === "needs_correction" ||
+    submission.status === "ready" ||
+    submission.status === "cancelled";
   return (
     <div className="rounded-xl border bg-card overflow-hidden border-border">
       <button
@@ -596,7 +618,7 @@ function SubmissionRow({ submission, onClick }: { submission: VendorInvoiceSubmi
           {submission.confidence_percent != null && (
             <span className="text-xs text-muted-foreground">{submission.confidence_percent}%</span>
           )}
-          {isActionable && <ChevronRight className="w-4 h-4 text-muted-foreground" />}
+          {(isActionable || isDiscardable) && <ChevronRight className="w-4 h-4 text-muted-foreground" />}
         </div>
       </button>
     </div>
@@ -625,9 +647,15 @@ function SubmissionDetailPanel({
   const submitSub = useSubmitSubmission();
   const { data: sendToOptions = [] } = useVendorSendToOptions();
   const cancelSub = useCancelSubmission();
+  const discardSub = useDiscardSubmission();
   const [sendToOptionId, setSendToOptionId] = useState<string>("");
 
-  const isBusy = updateSub.isPending || extractSub.isPending || submitSub.isPending || cancelSub.isPending;
+  const isBusy =
+    updateSub.isPending ||
+    extractSub.isPending ||
+    submitSub.isPending ||
+    cancelSub.isPending ||
+    discardSub.isPending;
 
   function handleFieldChange(key: keyof NormalizedInvoiceData, value: string) {
     setForm((f) => {
@@ -707,10 +735,26 @@ function SubmissionDetailPanel({
     }
   }
 
+  async function handleDiscard() {
+    if (!confirm("Delete this unfinished submission? This will permanently remove the uploaded file and any attached documents.")) return;
+    try {
+      await discardSub.mutateAsync(submission.id);
+      onUpdated();
+      onClose();
+    } catch (err) {
+      showErrorToast(extractErrorMessage(err, "Failed to delete submission."));
+    }
+  }
+
   const status = submission.status;
   const isReadOnly = status === "submitted" || status === "cancelled";
   const isNeedsCorrection = status === "needs_correction";
   const isReady = status === "ready";
+  const isDiscardable =
+    status === "uploaded" ||
+    status === "needs_correction" ||
+    status === "ready" ||
+    status === "cancelled";
   const workflowValidationMessage =
     submission.validation_errors?.find((e) => e.field === "_workflow")?.message || "";
   const correctionReason = submission.correction_note || workflowValidationMessage || validationErrors._workflow || "";
@@ -780,6 +824,12 @@ function SubmissionDetailPanel({
               <span>Extraction confidence: <strong>{submission.confidence_percent}%</strong></span>
             </div>
           )}
+          {extractionMethodLabel(submission.extraction_method) && (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Eye className="w-3.5 h-3.5" />
+              <span>Extraction source: <strong>{extractionMethodLabel(submission.extraction_method)}</strong></span>
+            </div>
+          )}
 
           {/* Documents */}
           {submission.documents && submission.documents.length > 0 && (
@@ -846,6 +896,15 @@ function SubmissionDetailPanel({
             >
               <Ban className="w-4 h-4" /> Cancel
             </button>
+            {isDiscardable && (
+              <button
+                onClick={handleDiscard}
+                disabled={isBusy}
+                className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-destructive/40 text-destructive text-sm font-medium hover:bg-destructive/10 transition-colors disabled:opacity-60"
+              >
+                <Trash2 className="w-4 h-4" /> Delete Draft
+              </button>
+            )}
             {(isNeedsCorrection || isReady) && (
               <button
                 onClick={handleSaveAndSubmit}
@@ -861,12 +920,23 @@ function SubmissionDetailPanel({
 
         {isReadOnly && (
           <div className="sticky bottom-0 bg-card border-t border-border px-5 py-4 rounded-b-2xl">
-            <button
-              onClick={onClose}
-              className="w-full px-4 py-2.5 rounded-xl border border-border text-sm font-medium text-foreground hover:bg-secondary transition-colors"
-            >
-              Close
-            </button>
+            <div className="flex gap-3">
+              {isDiscardable && (
+                <button
+                  onClick={handleDiscard}
+                  disabled={isBusy}
+                  className="flex-1 px-4 py-2.5 rounded-xl border border-destructive/40 text-sm font-medium text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-60"
+                >
+                  Delete Draft
+                </button>
+              )}
+              <button
+                onClick={onClose}
+                className="flex-1 px-4 py-2.5 rounded-xl border border-border text-sm font-medium text-foreground hover:bg-secondary transition-colors"
+              >
+                Close
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -882,6 +952,7 @@ function SubmitInvoiceTab({ vendor }: { vendor: Vendor }) {
   const [step, setStep] = useState<Step>("choose");
   const [submissionId, setSubmissionId] = useState<string | null>(null);
   const [extractedData, setExtractedData] = useState<NormalizedInvoiceData>({});
+  const [extractionMethod, setExtractionMethod] = useState<VendorInvoiceSubmission["extraction_method"]>(null);
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -921,6 +992,7 @@ function SubmitInvoiceTab({ vendor }: { vendor: Vendor }) {
     setStep("choose");
     setSubmissionId(null);
     setExtractedData({});
+    setExtractionMethod(null);
     setForm(EMPTY_FORM());
     setValidationErrors({});
     setInvoiceFile(null);
@@ -980,6 +1052,7 @@ function SubmitInvoiceTab({ vendor }: { vendor: Vendor }) {
       setStep("extracting");
       const result = await extractSub.mutateAsync(sub.id);
       setExtractedData(result.normalized_data);
+      setExtractionMethod(result.extraction_method ?? null);
       setForm(result.normalized_data);
 
       const fieldErrors: Record<string, string> = {};
@@ -1000,6 +1073,7 @@ function SubmitInvoiceTab({ vendor }: { vendor: Vendor }) {
     try {
       const result = await extractSub.mutateAsync(submissionId);
       setExtractedData(result.normalized_data);
+      setExtractionMethod(result.extraction_method ?? null);
       setForm(result.normalized_data);
       const fieldErrors: Record<string, string> = {};
       for (const err of result.validation_errors || []) fieldErrors[err.field] = err.message;
@@ -1061,21 +1135,21 @@ function SubmitInvoiceTab({ vendor }: { vendor: Vendor }) {
       <div className="space-y-5">
         <div className="space-y-1">
           <h3 className="text-sm font-semibold text-foreground">Submit Invoice</h3>
-          <p className="text-xs text-muted-foreground">Upload your invoice PDF to extract the details and submit it for review.</p>
+          <p className="text-xs text-muted-foreground">Upload your invoice PDF in any format. You'll review and correct extracted fields before final submission.</p>
         </div>
 
         <div className="rounded-lg border border-dashed border-border p-4 space-y-2">
-          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Template Download</p>
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Recommended Template</p>
           <div className="space-y-1.5">
             <p className="text-sm text-foreground">
-              For the best extraction result, submit the invoice in this format.
+              For better extraction accuracy, use this template format.
             </p>
             <p className="text-xs text-muted-foreground leading-relaxed">
-              Keep the invoice reference, PO number, invoice date, due date, currency, subtotal, tax, total, and description clearly visible in the PDF.
-              Using the template helps the system read these fields more accurately.
+              You can upload invoices in your own format. The system will extract fields best-effort,
+              and you'll review and correct them before submission.
             </p>
             <p className="text-xs text-muted-foreground leading-relaxed">
-              After extraction, you can review and correct any field before final submission.
+              Using the template improves automatic extraction accuracy, reducing manual corrections needed.
             </p>
           </div>
           <a
@@ -1096,7 +1170,7 @@ function SubmitInvoiceTab({ vendor }: { vendor: Vendor }) {
             <Upload className="w-8 h-8 text-primary" />
             <div className="text-center">
               <p className="text-sm font-semibold text-foreground">Upload Invoice PDF</p>
-              <p className="text-xs text-muted-foreground mt-1">PDF only — fields auto-extracted</p>
+              <p className="text-xs text-muted-foreground mt-1">Any format accepted — review before submit</p>
             </div>
           </button>
         </div>
@@ -1223,6 +1297,12 @@ function SubmitInvoiceTab({ vendor }: { vendor: Vendor }) {
         {invoiceFile && (
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <FileText className="w-3.5 h-3.5" /><span>{invoiceFile.name}</span>
+          </div>
+        )}
+        {extractionMethodLabel(extractionMethod) && (
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Eye className="w-3.5 h-3.5" />
+            <span>Extraction source: <strong>{extractionMethodLabel(extractionMethod)}</strong></span>
           </div>
         )}
 
@@ -1559,5 +1639,3 @@ export default function VendorPortalPage() {
 
   return <Portal vendor={vendor} userName={userName} onLogout={logout} />;
 }
-
-

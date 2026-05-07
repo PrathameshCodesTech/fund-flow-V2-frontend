@@ -72,15 +72,55 @@ export default function LoginPage() {
               <h1 className="text-4xl font-extrabold text-primary tracking-tight">VIMS</h1>
             </div>
           </div>
-          <div className="flex flex-1 items-center justify-center px-6 pb-6">
-            <video
-              src="/logovideo.mp4"
-              autoPlay
-              loop
-              muted
-              playsInline
-              className="w-full object-contain"
-            />
+          <div className="flex flex-1 items-center justify-center px-10 pb-10">
+            <div className="max-w-xl space-y-8">
+              <div className="space-y-4">
+                <h2 className="text-5xl font-extrabold text-primary leading-tight tracking-tight">
+                  Streamline Your Invoice Management
+                </h2>
+                <p className="text-lg text-gray-700 leading-relaxed font-medium">
+                  Submit invoices, track approvals, and manage your vendor account — all in one intuitive platform.
+                </p>
+              </div>
+
+              <div className="space-y-6 pt-4">
+                <div className="flex items-start gap-4">
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10">
+                    <svg className="h-6 w-6 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-gray-900 mb-1">Automated Extraction</h3>
+                    <p className="text-sm text-gray-600">Upload any invoice format — our smart system extracts details automatically for your review.</p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-4">
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10">
+                    <svg className="h-6 w-6 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-gray-900 mb-1">Real-Time Tracking</h3>
+                    <p className="text-sm text-gray-600">Monitor approval status and receive instant notifications at every workflow stage.</p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-4">
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10">
+                    <svg className="h-6 w-6 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-gray-900 mb-1">Secure & Compliant</h3>
+                    <p className="text-sm text-gray-600">Enterprise-grade security ensures your financial data stays protected and audit-ready.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
