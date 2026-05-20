@@ -8,7 +8,6 @@ import {
   updateCampaign,
   deleteCampaign,
   submitBudget,
-  reviewBudgetVariance,
   cancelCampaign,
   listCampaignDocuments,
   createCampaignDocument,
@@ -19,7 +18,6 @@ import type {
   CreateCampaignRequest,
   UpdateCampaignRequest,
   CreateCampaignDocumentRequest,
-  ReviewBudgetVarianceRequest,
   CancelCampaignRequest,
   CreateWorkflowFromCampaignRequest,
 } from "../types/v2campaign";
@@ -88,20 +86,6 @@ export function useSubmitBudget() {
   return useMutation({
     mutationFn: (id: string) => submitBudget(id),
     onSuccess: (_data, id) => {
-      queryClient.invalidateQueries({ queryKey: ["v2", "campaigns"] });
-      queryClient.invalidateQueries({ queryKey: ["v2", "campaign", id] });
-    },
-  });
-}
-
-// ── Review budget variance ─────────────────────────────────────────────────────
-
-export function useReviewBudgetVariance() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: ReviewBudgetVarianceRequest }) =>
-      reviewBudgetVariance(id, data),
-    onSuccess: (_data, { id }) => {
       queryClient.invalidateQueries({ queryKey: ["v2", "campaigns"] });
       queryClient.invalidateQueries({ queryKey: ["v2", "campaign", id] });
     },

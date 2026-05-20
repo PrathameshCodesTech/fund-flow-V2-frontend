@@ -1,9 +1,11 @@
 ﻿import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { V2Shell } from "@/components/v2/V2Shell";
+import { useWorkingScope } from "@/contexts/WorkingScopeContext";
 import { ApiError } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
 import { useOrganizations, useScopeNodes } from "@/lib/hooks/useScopeNodes";
+import { findPreferredOperationalNode, findPreferredOperationalOrg } from "@/lib/working-scope";
 import { useBudgets, useCategories, useSubCategories } from "@/lib/hooks/useV2Budget";
 import {
   listExpenses,
@@ -128,7 +130,7 @@ const STATUS_TABS = [
 
 const PAYMENT_METHOD_OPTIONS: Array<{ value: PaymentMethod; label: string }> = [
   { value: "petty_cash", label: "Petty Cash" },
-  { value: "reimbursement", label: "Reimbursement" },
+  { value: "reimbursement", label: "Corporate CC" },
 ];
 
 const ATTACHMENT_DOC_TYPES = [
@@ -792,7 +794,13 @@ function ExpenseFormDialog({ expenseId, onClose, onSaved }: ExpenseFormProps) {
   const [error, setError] = useState<string | null>(null);
 
   const { data: organizations = [] } = useOrganizations();
-  const [selectedOrgId, setSelectedOrgId] = useState<string>("");
+  const {
+    orgId: selectedOrgIdRaw,
+    nodeId: selectedNodeId,
+    setOrgId: setSelectedOrgId,
+    setNodeId: setSelectedNodeId,
+  } = useWorkingScope();
+  const selectedOrgId = selectedOrgIdRaw ?? "";
   const { data: scopeNodes = [] } = useScopeNodes(selectedOrgId || undefined);
   const { data: budgets = [] } = useBudgets({
     org: selectedOrgId || undefined,
@@ -826,6 +834,24 @@ function ExpenseFormDialog({ expenseId, onClose, onSaved }: ExpenseFormProps) {
     () => subcategories.find((subcategory) => String(subcategory.id) === normalizeSelectId(form.subcategory)),
     [subcategories, form.subcategory],
   );
+
+  useEffect(() => {
+    const preferredOrg = findPreferredOperationalOrg(organizations);
+    if (preferredOrg && selectedOrgId !== String(preferredOrg.id)) {
+      setSelectedOrgId(String(preferredOrg.id));
+    }
+  }, [organizations, selectedOrgId, setSelectedOrgId]);
+
+  useEffect(() => {
+    if (!selectedOrgId) return;
+    const preferredNode = findPreferredOperationalNode(scopeNodes);
+    const targetNodeId = selectedNodeId ?? preferredNode?.id ?? null;
+    if (targetNodeId && normalizeSelectId(form.scope_node) !== String(targetNodeId)) {
+      setSelectedNodeId(String(targetNodeId));
+      setForm((f) => ({ ...f, scope_node: String(targetNodeId) }));
+    }
+  }, [form.scope_node, scopeNodes, selectedNodeId, selectedOrgId, setSelectedNodeId]);
+
   // Pre-fill for edit
   useEffect(() => {
     if (existing && !form.expense_date) {
@@ -846,14 +872,11 @@ function ExpenseFormDialog({ expenseId, onClose, onSaved }: ExpenseFormProps) {
       if (existing.org) {
         setSelectedOrgId(String(existing.org));
       }
+      if (existing.scope_node) {
+        setSelectedNodeId(String(existing.scope_node));
+      }
     }
-  }, [existing, form.expense_date]);
-
-  useEffect(() => {
-    if (!expenseId && organizations.length === 1 && !selectedOrgId) {
-      setSelectedOrgId(String(organizations[0].id));
-    }
-  }, [expenseId, organizations, selectedOrgId]);
+  }, [existing, form.expense_date, setSelectedNodeId, setSelectedOrgId]);
 
   const createMut = useMutation({
     mutationFn: createExpense,
@@ -965,66 +988,19 @@ function ExpenseFormDialog({ expenseId, onClose, onSaved }: ExpenseFormProps) {
               </div>
             </div>
 
-            {/* Row 2: Organization + Scope + Payment Method */}
+            {/* Row 2: Fixed operational context + Payment Method */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               <div className="space-y-1.5">
-                <Label>Organization *</Label>
-                <Select
-                  value={selectedOrgId || UNSET_SELECT_VALUE}
-                  onValueChange={(value) => {
-                    if (value === UNSET_SELECT_VALUE) return;
-                    setSelectedOrgId(value);
-                    setForm((f) => ({
-                      ...f,
-                      scope_node: undefined,
-                      budget: undefined,
-                      category: undefined,
-                      subcategory: undefined,
-                    }));
-                  }}
-                >
-                  <SelectTrigger>
-                    <span className="block truncate">
-                      {selectedOrganization?.name || "Select organization"}
-                    </span>
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={UNSET_SELECT_VALUE} disabled>
-                      Select organization
-                    </SelectItem>
-                    {organizations.map((org) => (
-                      <SelectItem key={org.id} value={String(org.id)}>{org.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <span className="text-[10px] font-bold tracking-widest uppercase text-muted-foreground/50">Context</span>
+                <div className="text-sm font-bold tracking-wide text-muted-foreground">
+                  {selectedOrganization?.name ?? "Horizon"} / {selectedScopeNode?.name ?? "Marketing"}
+                </div>
               </div>
               <div className="space-y-1.5">
-                <Label>Scope *</Label>
-                <Select
-                  value={form.scope_node || UNSET_SELECT_VALUE}
-                  onValueChange={(value) => {
-                    if (value === UNSET_SELECT_VALUE) return;
-                    setForm((f) => ({
-                      ...f,
-                      scope_node: value,
-                      budget: undefined,
-                    }));
-                  }}
-                >
-                  <SelectTrigger>
-                    <span className="block truncate">
-                      {selectedScopeNode?.name || "Select scope node"}
-                    </span>
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={UNSET_SELECT_VALUE} disabled>
-                      Select scope node
-                    </SelectItem>
-                    {scopeNodes.map((node) => (
-                      <SelectItem key={node.id} value={String(node.id)}>{node.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <span className="text-[10px] font-bold tracking-widest uppercase text-muted-foreground/50">Scope</span>
+                <div className="text-sm font-bold tracking-wide text-muted-foreground">
+                  {selectedScopeNode?.name ?? "Marketing"}
+                </div>
               </div>
               <div className="space-y-1.5">
                 <Label>Payment Method *</Label>

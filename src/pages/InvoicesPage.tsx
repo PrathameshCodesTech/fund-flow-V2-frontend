@@ -1,8 +1,9 @@
-﻿import { useState } from "react";
+﻿import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { InvoiceControlTowerContent } from "./InvoiceControlTowerPage";
 import { useForm } from "react-hook-form";
 import { V2Shell } from "@/components/v2/V2Shell";
+import { useWorkingScope } from "@/contexts/WorkingScopeContext";
 import {
   useInvoices,
   useCreateInvoice,
@@ -13,6 +14,7 @@ import {
   useRecordInvoicePayment,
 } from "@/lib/hooks/useV2Invoice";
 import { useOrganizations, useScopeNodes } from "@/lib/hooks/useScopeNodes";
+import { findPreferredOperationalNode, findPreferredOperationalOrg } from "@/lib/working-scope";
 import { ApiError } from "@/lib/api/client";
 import type { CreateInvoiceRequest, InvoiceStatus, Invoice } from "@/lib/types/v2invoice";
 import { INVOICE_STATUS_LABELS } from "@/lib/types/v2invoice";
@@ -195,6 +197,7 @@ function CreateInvoiceDialog({
   onOpenChange: (v: boolean) => void;
 }) {
   const { data: nodes = [] } = useScopeNodes(orgId ?? undefined);
+  const { nodeId: workingNodeId } = useWorkingScope();
 
   const {
     register,
@@ -205,6 +208,12 @@ function CreateInvoiceDialog({
   } = useForm<CreateInvoiceRequest & { scope_node_id: string }>();
 
   const createInvoice = useCreateInvoice();
+
+  useEffect(() => {
+    if (open && workingNodeId && nodes.some((node) => node.id === workingNodeId)) {
+      setValue("scope_node", workingNodeId);
+    }
+  }, [nodes, open, setValue, workingNodeId]);
 
   const onSubmit = async (data: CreateInvoiceRequest) => {
     try {
@@ -1138,7 +1147,7 @@ function InvoiceDetailPanel({
                 </p>
               </div>
               <p className="text-xs text-blue-700 dark:text-blue-300">
-                This invoice is going through the internal approval workflow. Check Approval Tasks for the current stage.
+                This invoice is going through the internal approval workflow. Check Invoice Pending for Approval for the current stage.
               </p>
             </div>
           )}
@@ -1239,17 +1248,7 @@ function InvoiceDetailPanel({
                 onClick={() => navigate("/tasks")}
               >
                 <Inbox className="h-3.5 w-3.5" />
-                View Approval Tasks
-              </Button>
-            )}
-            {isFinanceState && (
-              <Button
-                size="sm"
-                variant="outline"
-                className="w-full gap-1.5"
-                onClick={() => navigate("/finance-handoffs")}
-              >
-                View Finance Handoffs
+                Invoice Pending for Approval
               </Button>
             )}
             {invoice.status === "finance_approved" && (invoice as Invoice & { can_record_payment?: boolean }).can_record_payment && (
@@ -1281,8 +1280,12 @@ function InvoiceDetailPanel({
 
 const InvoicesPage = () => {
   const navigate = useNavigate();
-  const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const {
+    orgId: selectedOrgId,
+    nodeId: selectedNodeId,
+    setOrgId: setSelectedOrgId,
+    setNodeId: setSelectedNodeId,
+  } = useWorkingScope();
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [quickFilter, setQuickFilter] = useState<QuickFilter>("all");
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null);
@@ -1293,6 +1296,25 @@ const InvoicesPage = () => {
   const { data: nodes = [], isLoading: nodesLoading } = useScopeNodes(
     selectedOrgId ?? undefined,
   );
+  const selectedOrg = organizations.find((org) => org.id === selectedOrgId) ?? null;
+  const selectedNode = nodes.find((node) => node.id === selectedNodeId) ?? null;
+
+  useEffect(() => {
+    const preferredOrg = findPreferredOperationalOrg(organizations);
+    if (preferredOrg && selectedOrgId !== preferredOrg.id) {
+      setSelectedOrgId(preferredOrg.id);
+    }
+  }, [organizations, selectedOrgId, setSelectedOrgId]);
+
+  useEffect(() => {
+    if (!selectedOrgId) {
+      return;
+    }
+    const preferredNode = findPreferredOperationalNode(nodes);
+    if (preferredNode && selectedNodeId !== preferredNode.id) {
+      setSelectedNodeId(preferredNode.id);
+    }
+  }, [nodes, selectedNodeId, selectedOrgId, setSelectedNodeId]);
 
   const params = {
     ...(selectedNodeId && selectedNodeId !== "__all__" ? { scope_node: selectedNodeId } : {}),
@@ -1306,8 +1328,6 @@ const InvoicesPage = () => {
   const { data: allNodes = [] } = useScopeNodes();
   const nodeMap: Record<string, string> = {};
   allNodes.forEach((n) => { nodeMap[n.id] = n.name; });
-
-  // Quick-filter the list client-side for quick filter presets
   const displayedInvoices =
     quickFilter === "all"
       ? invoices
@@ -1322,65 +1342,17 @@ const InvoicesPage = () => {
       orgSelector={
         orgsLoading ? (
           <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-        ) : (
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground">Org</span>
-            <Select
-              value={selectedOrgId ?? ""}
-              onValueChange={(v) => {
-                setSelectedOrgId(v);
-                setSelectedNodeId(null);
-                setSelectedInvoiceId(null);
-              }}
-            >
-              <SelectTrigger className="w-44">
-                <SelectValue placeholder="All organizations" />
-              </SelectTrigger>
-              <SelectContent>
-                {organizations.map((org) => (
-                  <SelectItem key={org.id} value={org.id}>
-                    {org.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+        ) : selectedOrg ? (
+          <div className="flex items-center gap-3">
+            <span className="text-[10px] font-bold tracking-widest uppercase text-muted-foreground/50">Context</span>
+            <span className="text-sm font-bold tracking-wide text-muted-foreground">
+              {selectedOrg.name}{selectedNode ? ` / ${selectedNode.name}` : ""}
+            </span>
           </div>
-        )
+        ) : null
       }
-      unitSelector={
-        nodesLoading ? (
-          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-        ) : (
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground">Unit</span>
-            <Select
-              value={selectedNodeId ?? ""}
-              onValueChange={(v) => {
-                setSelectedNodeId(v);
-                setSelectedInvoiceId(null);
-              }}
-            >
-              <SelectTrigger className="w-44">
-                <SelectValue placeholder="All units" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__all__">All units</SelectItem>
-                {nodes.map((n) => (
-                  <SelectItem key={n.id} value={n.id}>
-                    {n.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        )
-      }
-      actions={
-          <Button size="sm" className="gap-1.5" onClick={() => setCreateOpen(true)} disabled={!selectedOrgId}>
-            <Plus className="h-3.5 w-3.5" />
-            New Invoice
-          </Button>
-      }
+      unitSelector={null}
+      actions={null}
     >
       <div className="flex flex-col md:flex-row min-h-0 min-w-0 flex-1 overflow-hidden">
         {/* Left: list panel — hidden on mobile when an invoice is open */}

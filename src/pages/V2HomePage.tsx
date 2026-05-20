@@ -173,20 +173,12 @@ const V2HomePage = () => {
         {/* ── KPI Strip ───────────────────────────────────────────────────── */}
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-7">
           <KpiCard
-            label="Pending Tasks"
+            label="Invoice Pending for Approval"
             value={kpis?.pending_task_count}
             sub="approval steps for you"
             icon={CheckCircle2}
             to="/tasks"
             urgency={kpis && kpis.pending_task_count > 0 ? "warn" : "ok"}
-          />
-          <KpiCard
-            label="Awaiting Workflow"
-            value={kpis?.pending_workflow_invoices}
-            sub="need workflow attached"
-            icon={GitBranch}
-            to="/invoices"
-            urgency={kpis && kpis.pending_workflow_invoices > 0 ? "warn" : "ok"}
           />
           <KpiCard
             label="In Review"
@@ -205,28 +197,12 @@ const V2HomePage = () => {
             urgency={kpis && kpis.finance_pending_invoices > 0 ? "warn" : "ok"}
           />
           <KpiCard
-            label="Finance Handoffs"
-            value={kpis?.unresolved_finance_handoffs}
-            sub="pending or sent"
-            icon={Landmark}
-            to="/finance-handoffs"
-            urgency={kpis && kpis.unresolved_finance_handoffs > 0 ? "warn" : "ok"}
-          />
-          <KpiCard
             label="Vendor Submissions"
             value={kpis?.vendor_submissions_pending}
             sub="awaiting marketing approval"
             icon={Users}
             to="/vendors"
             urgency={kpis && kpis.vendor_submissions_pending > 0 ? "warn" : "ok"}
-          />
-          <KpiCard
-            label="Blocked Drafts"
-            value={kpis?.blocked_draft_instances_count}
-            sub="workflow drafts blocked"
-            icon={AlertTriangle}
-            to="/tasks"
-            urgency={kpis && kpis.blocked_draft_instances_count > 0 ? "warn" : "ok"}
           />
         </div>
 
@@ -347,12 +323,12 @@ const V2HomePage = () => {
           {/* ── Right column ───────────────────────────────────────────────── */}
           <div className="space-y-4 min-w-0">
 
-            {/* My Pending Tasks */}
+            {/* Invoice Pending for Approval */}
             <div className="min-w-0 rounded-xl border border-border bg-card">
               <SectionHeader
-                title="My Tasks"
+                title="Invoice Pending for Approval"
                 icon={CheckCircle2}
-                action={{ label: "All tasks", to: "/tasks" }}
+                action={{ label: "View all", to: "/tasks" }}
               />
               <div className="divide-y divide-border">
                 {isLoading ? (
@@ -380,50 +356,6 @@ const V2HomePage = () => {
                           {task.group_name} · {task.subject_scope_node}
                         </p>
                       </div>
-                    </button>
-                  ))
-                )}
-              </div>
-            </div>
-
-            {/* Recent Finance Handoffs */}
-            <div className="min-w-0 rounded-xl border border-border bg-card">
-              <SectionHeader
-                title="Recent Handoffs"
-                icon={Landmark}
-                action={{ label: "All handoffs", to: "/finance-handoffs" }}
-              />
-              <div className="divide-y divide-border">
-                {isLoading ? (
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground p-4">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Loading…
-                  </div>
-                ) : !recent?.finance_handoffs?.length ? (
-                  <div className="p-4 text-sm text-muted-foreground text-center">
-                    No finance handoffs yet.
-                  </div>
-                ) : (
-                  recent.finance_handoffs.slice(0, 6).map((h) => (
-                    <button
-                      key={h.id}
-                      onClick={() => navigate("/finance-handoffs")}
-                      className="flex w-full items-start gap-3 px-4 py-2.5 text-left text-sm hover:bg-accent transition-colors"
-                    >
-                      <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-50 dark:bg-blue-950">
-                        <Landmark className="h-3 w-3 text-blue-500" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium truncate">
-                          {h.subject_type} #{h.subject_id}
-                        </p>
-                        <p className="text-xs text-muted-foreground flex items-center gap-1">
-                          <StatusBadge status={h.status} />
-                        </p>
-                      </div>
-                      <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-                        {formatDate(h.created_at)}
-                      </span>
                     </button>
                   ))
                 )}

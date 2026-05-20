@@ -1,6 +1,6 @@
 // ── V2 Budget Hooks ─────────────────────────────────────────────────────────────────
 
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueries, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   listCategories,
   getCategory,
@@ -123,6 +123,28 @@ export function useSubCategories(params?: { category?: string; is_active?: boole
       return res.results;
     },
   });
+}
+
+export function useSubCategoriesByCategories(categoryIds: string[]) {
+  const normalized = Array.from(new Set(categoryIds.filter(Boolean))).sort();
+  const queries = useQueries({
+    queries: normalized.map((categoryId) => ({
+      queryKey: ["v2", "budget", "subcategories", { category: categoryId }],
+      queryFn: async () => {
+        const res = await listSubCategories({ category: categoryId });
+        return res.results;
+      },
+      enabled: !!categoryId,
+    })),
+  });
+
+  return normalized.reduce<Record<string, ReturnType<typeof queries[number]["data"]> extends never ? never[] : unknown[]>>(
+    (acc, categoryId, index) => {
+      acc[categoryId] = (queries[index]?.data as unknown[]) ?? [];
+      return acc;
+    },
+    {},
+  ) as Record<string, Awaited<ReturnType<typeof listSubCategories>>["results"]>;
 }
 
 export function useSubCategory(id: string | null) {

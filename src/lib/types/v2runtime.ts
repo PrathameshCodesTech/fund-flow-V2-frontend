@@ -132,6 +132,11 @@ export interface WorkflowTask {
   assigned_user_id: string;
   status: TaskStatus;
   created_at: string;
+  vendor_name?: string | null;
+  vendor_invoice_number?: string | null;
+  previous_actor_name?: string | null;
+  previous_actor_role?: string | null;
+  previous_actor_action?: "approved" | "rejected" | null;
   // Branch-specific fields
   target_scope_node?: string;
   target_scope_node_name?: string;

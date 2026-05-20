@@ -24,7 +24,7 @@ export type PaymentMethod = "petty_cash" | "reimbursement";
 
 export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   petty_cash: "Petty Cash",
-  reimbursement: "Reimbursement",
+  reimbursement: "Corporate CC",
 };
 
 // ── Models ──────────────────────────────────────────────────────────────────

@@ -9,7 +9,6 @@ import type {
   UpdateCampaignRequest,
   CreateCampaignDocumentRequest,
   SubmitBudgetResponse,
-  ReviewBudgetVarianceRequest,
   CancelCampaignRequest,
   CreateWorkflowFromCampaignRequest,
   CampaignListResponse,
@@ -57,16 +56,6 @@ export async function submitBudget(
   id: string,
 ): Promise<SubmitBudgetResponse> {
   return apiClient.post(`/api/v1/campaigns/${id}/submit-budget/`);
-}
-
-export async function reviewBudgetVariance(
-  id: string,
-  data: ReviewBudgetVarianceRequest,
-): Promise<Campaign> {
-  return apiClient.post(
-    `/api/v1/campaigns/${id}/review-budget-variance/`,
-    data,
-  );
 }
 
 export async function cancelCampaign(

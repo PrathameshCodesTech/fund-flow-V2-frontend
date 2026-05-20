@@ -28,7 +28,7 @@ export function ShellContextBar({
       <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3">
         {titleIcon ? <span className="shrink-0">{titleIcon}</span> : null}
         <div className="flex min-w-0 items-center gap-2">
-          <h1 className="text-base font-semibold truncate">{title}</h1>
+          <h1 className="text-sm font-bold tracking-widest text-muted-foreground uppercase truncate">{title}</h1>
           {breadcrumbs && breadcrumbs.length > 0 && (
             <>
               <span className="shrink-0 text-muted-foreground">/</span>

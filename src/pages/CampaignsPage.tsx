@@ -2,13 +2,13 @@
 import { useForm } from "react-hook-form";
 import { useNavigate } from "react-router-dom";
 import { V2Shell } from "@/components/v2/V2Shell";
+import { useWorkingScope } from "@/contexts/WorkingScopeContext";
 import {
   useCampaigns,
   useCreateCampaign,
   useUpdateCampaign,
   useDeleteCampaign,
   useSubmitBudget,
-  useReviewBudgetVariance,
   useCancelCampaign,
   useCampaignDocuments,
   useCreateCampaignDocument,
@@ -16,6 +16,8 @@ import {
   useCreateWorkflowFromCampaign,
 } from "@/lib/hooks/useV2Campaign";
 import { useOrganizations, useScopeNodes } from "@/lib/hooks/useScopeNodes";
+import { findPreferredOperationalNode, findPreferredOperationalOrg } from "@/lib/working-scope";
+import { useBudget, useBudgets, useCategories, useSubCategoriesByCategories } from "@/lib/hooks/useV2Budget";
 import type {
   Campaign,
   CampaignStatus,
@@ -125,6 +127,11 @@ function generalApiError(err: unknown): string | null {
   return null;
 }
 
+function normalizeCampaignSelectId(value: string | number | null | undefined): string | undefined {
+  if (value === null || value === undefined || value === "") return undefined;
+  return String(value);
+}
+
 // ── Campaign Form Dialog ───────────────────────────────────────────────────────
 
 interface CampaignFormProps {
@@ -154,8 +161,36 @@ function CampaignFormDialog({
   const [selectedScopeNode, setSelectedScopeNode] = useState<string>("");
   const [selectedCategory, setSelectedCategory] = useState<string>("");
   const [selectedSubcategory, setSelectedSubcategory] = useState<string>("");
+  const [selectedBudget, setSelectedBudget] = useState<string>("");
+  const [selectedCampaignType, setSelectedCampaignType] = useState<string>("");
+  const [selectedCurrency, setSelectedCurrency] = useState<string>("INR");
 
   const { data: scopeNodes = [] } = useScopeNodes(orgId ?? undefined);
+  const { data: categories = [] } = useCategories(orgId ? { org: orgId } : undefined);
+  const subcategoriesByCategory = useSubCategoriesByCategories(
+    selectedCategory ? [selectedCategory] : [],
+  );
+  const { data: budgets = [] } = useBudgets(
+    selectedScopeNode
+      ? {
+          org: orgId ?? undefined,
+          scope_node: selectedScopeNode,
+          status: "active",
+        }
+      : undefined,
+  );
+  const { data: selectedBudgetDetail } = useBudget(selectedBudget || null);
+  const budgetLines = selectedBudgetDetail?.lines ?? [];
+  const budgetCategoryIds = Array.from(
+    new Set(
+      budgetLines
+        .map((line) => normalizeCampaignSelectId(line.category))
+        .filter((value): value is string => Boolean(value)),
+    ),
+  );
+  const availableCategories = selectedBudget
+    ? categories.filter((category) => budgetCategoryIds.includes(String(category.id)))
+    : [];
 
   const {
     register,
@@ -187,13 +222,21 @@ function CampaignFormDialog({
   const handleOpenChange = (v: boolean) => {
     if (!v) { setOpen(false); onCancel(); }
     else {
-      setSelectedScopeNode(initial?.scope_node ?? scopeNodeId ?? "");
-      setSelectedCategory(initial?.category ?? "");
-      setSelectedSubcategory(initial?.subcategory ?? "");
+      const preferredScopeNodeId =
+        initial?.scope_node ??
+        scopeNodeId ??
+        findPreferredOperationalNode(scopeNodes)?.id ??
+        "";
+      setSelectedScopeNode(preferredScopeNodeId);
+      setSelectedCategory(normalizeCampaignSelectId(initial?.category) ?? "");
+      setSelectedSubcategory(normalizeCampaignSelectId(initial?.subcategory) ?? "");
+      setSelectedBudget(normalizeCampaignSelectId(initial?.budget) ?? "");
+      setSelectedCampaignType(initial?.campaign_type ?? "");
+      setSelectedCurrency(initial?.currency ?? "INR");
       reset({
         ...(initial ?? {}),
         org: orgId ?? "",
-        scope_node: initial?.scope_node ?? scopeNodeId ?? "",
+        scope_node: preferredScopeNodeId,
         category: initial?.category ?? "",
         subcategory: initial?.subcategory ?? "",
         budget: initial?.budget ?? "",
@@ -206,6 +249,72 @@ function CampaignFormDialog({
   useEffect(() => {
     setValue("scope_node", selectedScopeNode);
   }, [selectedScopeNode, setValue]);
+
+  useEffect(() => {
+    if (!selectedBudget) {
+      if (selectedCategory) setSelectedCategory("");
+      if (selectedSubcategory) setSelectedSubcategory("");
+      setValue("category", undefined);
+      setValue("subcategory", undefined);
+      return;
+    }
+
+    if (
+      selectedCategory &&
+      !budgetLines.some(
+        (line) =>
+          normalizeCampaignSelectId(line.category) === selectedCategory,
+      )
+    ) {
+      setSelectedCategory("");
+      setSelectedSubcategory("");
+      setValue("category", undefined);
+      setValue("subcategory", undefined);
+    }
+  }, [selectedBudget, selectedCategory, selectedSubcategory, budgetLines, setValue]);
+
+  useEffect(() => {
+    setValue("category", selectedCategory || undefined);
+    if (!selectedCategory) {
+      setSelectedSubcategory("");
+      setValue("subcategory", undefined);
+    }
+  }, [selectedCategory, setValue]);
+
+  useEffect(() => {
+    const allowedSubcategoryIds = new Set(
+      budgetLines
+        .filter((line) => normalizeCampaignSelectId(line.category) === selectedCategory)
+        .map((line) => normalizeCampaignSelectId(line.subcategory))
+        .filter((value): value is string => Boolean(value)),
+    );
+    const availableSubcategories = (subcategoriesByCategory[selectedCategory] ?? []).filter(
+      (subcategory) => allowedSubcategoryIds.has(String(subcategory.id)),
+    );
+    if (
+      selectedSubcategory &&
+      !availableSubcategories.some(
+        (subcategory) => normalizeCampaignSelectId(subcategory.id) === selectedSubcategory,
+      )
+    ) {
+      setSelectedSubcategory("");
+      setValue("subcategory", undefined);
+    } else {
+      setValue("subcategory", selectedSubcategory || undefined);
+    }
+  }, [selectedCategory, selectedSubcategory, setValue, subcategoriesByCategory, budgetLines]);
+
+  useEffect(() => {
+    setValue("budget", selectedBudget || undefined);
+  }, [selectedBudget, setValue]);
+
+  useEffect(() => {
+    setValue("campaign_type", selectedCampaignType || undefined);
+  }, [selectedCampaignType, setValue]);
+
+  useEffect(() => {
+    setValue("currency", selectedCurrency);
+  }, [selectedCurrency, setValue]);
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -232,27 +341,19 @@ function CampaignFormDialog({
           onSubmit={handleSubmit(onSubmit as (data: CreateCampaignRequest) => Promise<void>)}
           className="space-y-4"
         >
-          {/* Scope node — selector (Fix #5) */}
+          <input type="hidden" {...register("org")} value={orgId ?? ""} />
+          <input type="hidden" {...register("scope_node", { required: "Context is required" })} />
+          <input type="hidden" {...register("category")} value={selectedCategory} />
+          <input type="hidden" {...register("subcategory")} value={selectedSubcategory} />
+          <input type="hidden" {...register("budget")} value={selectedBudget} />
+          <input type="hidden" {...register("campaign_type")} value={selectedCampaignType} />
+          <input type="hidden" {...register("currency")} value={selectedCurrency} />
+
           <div className="space-y-1.5">
-            <Label>Scope Node *</Label>
-            <Select
-                value={selectedScopeNode || undefined}
-                onValueChange={setSelectedScopeNode}
-              >
-                <SelectTrigger className={errors.scope_node ? "border-destructive" : ""}>
-                  <SelectValue placeholder="Select scope node" />
-                </SelectTrigger>
-                <SelectContent>
-                  {scopeNodes.length === 0 && (
-                    <SelectItem value="no-nodes" disabled>No nodes available</SelectItem>
-                  )}
-                  {scopeNodes.map((node) => (
-                    <SelectItem key={node.id} value={node.id}>
-                      {node.name} ({node.code})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <span className="text-[10px] font-bold tracking-widest uppercase text-muted-foreground/50">Context</span>
+            <div className="text-sm font-bold tracking-wide text-muted-foreground">
+              Horizon / {scopeNodes.find((node) => node.id === selectedScopeNode)?.name ?? "Marketing"}
+            </div>
             {errors.scope_node && (
               <p className="text-xs text-destructive">{String(errors.scope_node.message)}</p>
             )}
@@ -300,8 +401,8 @@ function CampaignFormDialog({
             <div className="space-y-1.5">
               <Label htmlFor="campaign_type">Type</Label>
               <Select
-                value={initial?.campaign_type ?? undefined}
-                onValueChange={(v) => setValue("campaign_type", v)}
+                value={selectedCampaignType || undefined}
+                onValueChange={setSelectedCampaignType}
               >
                 <SelectTrigger id="campaign_type">
                   <SelectValue placeholder="Select type" />
@@ -316,8 +417,8 @@ function CampaignFormDialog({
             <div className="space-y-1.5">
               <Label htmlFor="currency">Currency</Label>
               <Select
-                value={initial?.currency ?? undefined}
-                onValueChange={(v) => setValue("currency", v)}
+                value={selectedCurrency}
+                onValueChange={setSelectedCurrency}
               >
                 <SelectTrigger id="currency">
                   <SelectValue />
@@ -331,31 +432,73 @@ function CampaignFormDialog({
             </div>
           </div>
 
-          {/* Fix #1: category, subcategory, budget fields */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             <div className="space-y-1.5">
+              <Label htmlFor="budget">Budget</Label>
+              <Select
+                id="budget"
+                value={normalizeCampaignSelectId(selectedBudget)}
+                onValueChange={(value) => setSelectedBudget(value)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select budget" />
+                </SelectTrigger>
+                <SelectContent>
+                  {budgets.map((budget) => (
+                    <SelectItem key={budget.id} value={String(budget.id)}>
+                      {budget.name} ({budget.code})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
               <Label htmlFor="category">Category</Label>
-              <Input
+              <Select
                 id="category"
-                {...register("category")}
-                placeholder="category id"
-              />
+                value={normalizeCampaignSelectId(selectedCategory)}
+                onValueChange={(value) => setSelectedCategory(value)}
+                disabled={!selectedBudget}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={!selectedBudget ? "Select budget first" : "Select category"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableCategories.map((category) => (
+                    <SelectItem key={category.id} value={String(category.id)}>
+                      {category.name} ({category.code})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="subcategory">Subcategory</Label>
-              <Input
+              <Select
                 id="subcategory"
-                {...register("subcategory")}
-                placeholder="subcategory id"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="budget">Budget</Label>
-              <Input
-                id="budget"
-                {...register("budget")}
-                placeholder="budget id"
-              />
+                value={normalizeCampaignSelectId(selectedSubcategory)}
+                onValueChange={(value) => setSelectedSubcategory(value)}
+                disabled={!selectedBudget || !selectedCategory}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={!selectedBudget ? "Select budget first" : !selectedCategory ? "Select category first" : "Select subcategory"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {(subcategoriesByCategory[selectedCategory] ?? [])
+                    .filter((subcategory) =>
+                      budgetLines.some(
+                        (line) =>
+                          normalizeCampaignSelectId(line.category) === selectedCategory &&
+                          normalizeCampaignSelectId(line.subcategory) === String(subcategory.id),
+                      ),
+                    )
+                    .map((subcategory) => (
+                    <SelectItem key={subcategory.id} value={String(subcategory.id)}>
+                      {subcategory.name} ({subcategory.code})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
@@ -475,15 +618,15 @@ function SubmitBudgetDialog({ campaign }: { campaign: Campaign }) {
       <DialogTrigger asChild>
         <Button size="sm" variant="outline" className="gap-1.5">
           <Send className="h-4 w-4" />
-          Submit Budget
+          Reserve Budget
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Submit Budget for Review</DialogTitle>
+          <DialogTitle>Reserve Budget</DialogTitle>
         </DialogHeader>
         <p className="text-sm text-muted-foreground">
-          Submit <strong>{campaign.name}</strong> for budget review? The backend will evaluate the campaign budget and transition the status accordingly.
+          Reserve the selected budget for <strong>{campaign.name}</strong> and move it to the workflow stage.
         </p>
         {submitBudget.isError && (
           <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -497,82 +640,10 @@ function SubmitBudgetDialog({ campaign }: { campaign: Campaign }) {
             disabled={submitBudget.isPending}
           >
             {submitBudget.isPending ? (
-              <><Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> Submitting...</>
+              <><Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> Reserving...</>
             ) : (
-              <><Send className="mr-1.5 h-4 w-4" /> Submit</>
+              <><Send className="mr-1.5 h-4 w-4" /> Reserve</>
             )}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-// ── Review Variance Dialog ─────────────────────────────────────────────────────
-
-function ReviewVarianceDialog({ campaign }: { campaign: Campaign }) {
-  const [open, setOpen] = useState(false);
-  const [decision, setDecision] = useState<"approved" | "rejected">("approved");
-  const [note, setNote] = useState("");
-  const reviewVariance = useReviewBudgetVariance();
-
-  const handleSubmit = async () => {
-    await reviewVariance.mutateAsync({
-      id: campaign.id,
-      data: { decision, review_note: note || undefined },
-    });
-    setOpen(false);
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={(v) => { if (!v) setOpen(false); }}>
-      <DialogTrigger asChild>
-        <Button size="sm" variant="outline" className="gap-1.5">
-          <CheckCircle className="h-4 w-4" />
-          Review Variance
-        </Button>
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Review Budget Variance</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-4">
-          <p className="text-sm text-muted-foreground">
-            Review variance for <strong>{campaign.name}</strong>. Approved amounts will be updated.
-          </p>
-          <div className="space-y-1.5">
-            <Label>Decision *</Label>
-            <Select value={decision} onValueChange={(v) => setDecision(v as "approved" | "rejected")}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="approved">Approve</SelectItem>
-                <SelectItem value="rejected">Reject</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="review_note">Review Note</Label>
-            <Input
-              id="review_note"
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              placeholder="Optional review note..."
-            />
-          </div>
-          {reviewVariance.isError && (
-            <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              {reviewVariance.error instanceof ApiError ? reviewVariance.error.message : "Failed to review"}
-            </p>
-          )}
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-          <Button onClick={handleSubmit} disabled={reviewVariance.isPending}>
-            {reviewVariance.isPending ? (
-              <><Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> Submitting...</>
-            ) : "Submit Review"}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -807,7 +878,6 @@ function CampaignDetailPanel({
 
   const status = campaign.status;
   const canSubmitBudget = status === "draft";
-  const canReviewVariance = status === "budget_variance_pending";
   // Fix #2: workflow start only from pending_workflow
   const canStartWorkflow = status === "pending_workflow";
   const canCancel = !["cancelled", "rejected", "internally_approved", "finance_pending", "finance_approved", "finance_rejected"].includes(status);
@@ -902,7 +972,6 @@ function CampaignDetailPanel({
             </h3>
             <div className="flex flex-wrap gap-2">
               {canSubmitBudget && <SubmitBudgetDialog campaign={campaign} />}
-              {canReviewVariance && <ReviewVarianceDialog campaign={campaign} />}
               {canStartWorkflow && <StartWorkflowDialog campaign={campaign} />}
               <CampaignFormDialog
                 mode="edit"
@@ -982,12 +1051,17 @@ function CampaignDetailPanel({
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 const CampaignsPage = () => {
-  const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
+  const {
+    orgId: selectedOrgId,
+    nodeId: selectedNodeId,
+    setOrgId: setSelectedOrgId,
+  } = useWorkingScope();
   const [selectedCampaignId, setSelectedCampaignId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [page, setPage] = useState(1);
 
   const { data: organizations = [], isLoading: orgsLoading } = useOrganizations();
+  const selectedOrg = organizations.find((org) => org.id === selectedOrgId) ?? null;
   const { data: campaignResponse, isLoading: campaignsLoading } = useCampaigns(
     {
       org: selectedOrgId ?? undefined,
@@ -1004,10 +1078,11 @@ const CampaignsPage = () => {
 
   // Fix #4: use useEffect for auto-select, not render-time side effect
   useEffect(() => {
-    if (!selectedOrgId && organizations.length === 1 && organizations[0]) {
-      setSelectedOrgId(organizations[0].id);
+    const preferredOrg = findPreferredOperationalOrg(organizations);
+    if (preferredOrg && selectedOrgId !== preferredOrg.id) {
+      setSelectedOrgId(preferredOrg.id);
     }
-  }, [selectedOrgId, organizations]);
+  }, [selectedOrgId, organizations, setSelectedOrgId]);
 
   useEffect(() => {
     if (selectedCampaignId && !campaignsLoading && !selectedCampaign) {
@@ -1023,7 +1098,7 @@ const CampaignsPage = () => {
         <CampaignFormDialog
           mode="create"
           orgId={selectedOrgId}
-          scopeNodeId={null}
+          scopeNodeId={selectedNodeId}
           onSubmit={async (data) => {
             await createCampaign.mutateAsync(data as CreateCampaignRequest);
           }}
@@ -1037,37 +1112,21 @@ const CampaignsPage = () => {
       <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
         {/* Left panel: org selector + campaign list */}
         <aside className="flex w-full md:w-80 flex-col border-b border-border md:border-b-0 md:border-r bg-background max-h-[45vh] md:max-h-none">
-          {/* Org selector */}
+          {/* Fixed operational context */}
           <div className="border-b border-border p-3">
-            <Label className="mb-1.5 block text-xs font-medium text-muted-foreground">
-              Organization
-            </Label>
             {orgsLoading ? (
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 Loading...
               </div>
-            ) : (
-              <Select
-                value={selectedOrgId ?? ""}
-                onValueChange={(v) => {
-                  setSelectedOrgId(v);
-                  setSelectedCampaignId(null);
-                  setPage(1);
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select organization" />
-                </SelectTrigger>
-                <SelectContent>
-                  {organizations.map((org) => (
-                    <SelectItem key={org.id} value={org.id}>
-                      {org.name} ({org.code})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
+            ) : selectedOrg ? (
+              <div className="flex items-center gap-3">
+                <span className="text-[10px] font-bold tracking-widest uppercase text-muted-foreground/50">Context</span>
+                <span className="text-sm font-bold tracking-wide text-muted-foreground">
+                  {selectedOrg.name} ({selectedOrg.code})
+                </span>
+              </div>
+            ) : null}
           </div>
 
           {/* Status filter */}
@@ -1184,5 +1243,3 @@ const CampaignsPage = () => {
 };
 
 export default CampaignsPage;
-
-

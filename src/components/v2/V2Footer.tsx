@@ -8,9 +8,9 @@ export function V2Footer() {
         {/* Brand */}
         <div className="flex items-center gap-2.5">
           <img src="/vims-brand.png" alt="VIMS" className="h-8 w-auto object-contain" />
-          <div className="flex flex-col gap-0">
-            <span className="text-[12px] font-black tracking-tight text-primary leading-none">VIMS</span>
-            <span className="text-[9px] text-muted-foreground/50 leading-none mt-0.5 tracking-wide uppercase">Vendor Invoice Management System</span>
+          <div className="border-l border-border pl-2.5">
+            <p className="text-sm font-bold tracking-tight text-foreground leading-none">HORIZON</p>
+            <p className="text-[10px] text-muted-foreground leading-none mt-0.5">INDUSTRIAL PARKS</p>
           </div>
         </div>
 
@@ -29,7 +29,7 @@ export function V2Footer() {
         {/* Right: copyright */}
         <div className="flex items-center gap-2 text-[10px] text-muted-foreground/40">
           <span className="w-1 h-1 rounded-full bg-primary/40 inline-block" />
-          <span>&copy; {currentYear} VIMS. All rights reserved.</span>
+          <span>&copy; {currentYear} Horizon Industrial Parks. All rights reserved.</span>
         </div>
 
       </div>

@@ -1,20 +1,23 @@
-﻿import { useState } from "react";
+﻿import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, Cell,
 } from "recharts";
 import { V2Shell } from "@/components/v2/V2Shell";
+import { useWorkingScope } from "@/contexts/WorkingScopeContext";
 import { ApiError } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
 import {
   useOrganizations,
   useScopeNodes,
 } from "@/lib/hooks/useScopeNodes";
+import { findPreferredOperationalNode, findPreferredOperationalOrg } from "@/lib/working-scope";
 import type { ScopeNode } from "@/lib/types/core";
 import {
   useCategories,
   useSubCategories,
+  useSubCategoriesByCategories,
   useBudgets,
   useRules,
   useConsumptions,
@@ -636,17 +639,29 @@ function CreateBudgetDialog({
   const create = useCreateBudget();
 
   const { data: categories = [] } = useCategories(orgId ? { org: orgId } : undefined);
-  const { data: subcategories = [] } = useSubCategories();
   const { data: nodes = [] } = useScopeNodes(orgId ?? undefined);
 
   // Dynamic line builder state
   const [lines, setLines] = useState<CreateBudgetLineRequest[]>([
     { category: "", subcategory: null, allocated_amount: "" },
   ]);
+  const selectedCategoryIds = Array.from(
+    new Set(lines.map((line) => normalizeBudgetSelectId(line.category)).filter(Boolean)),
+  );
+  const subcategoriesByCategory = useSubCategoriesByCategories(selectedCategoryIds);
   const [selectedScopeNodeId, setSelectedScopeNodeId] = useState<string>(scopeNodeId ?? "");
+  const [budgetName, setBudgetName] = useState("FY27 Marketing Budget");
+  const [budgetCode, setBudgetCode] = useState("FY27-MKT");
   const [financialYear, setFinancialYear] = useState("2026-27");
   const [periodType, setPeriodType] = useState<PeriodType>("yearly");
   const [currency, setCurrency] = useState("INR");
+  const selectedScopeNode = nodes.find((node) => node.id === selectedScopeNodeId) ?? null;
+
+  useEffect(() => {
+    if (scopeNodeId && selectedScopeNodeId !== scopeNodeId) {
+      setSelectedScopeNodeId(scopeNodeId);
+    }
+  }, [scopeNodeId, selectedScopeNodeId]);
 
   const linesTotal = lines.reduce(
     (sum, l) => sum + (parseFloat(l.allocated_amount) || 0),
@@ -664,32 +679,49 @@ function CreateBudgetDialog({
   const updateLine = (index: number, field: keyof CreateBudgetLineRequest, value: string) => {
     setLines((prev) =>
       prev.map((line, i) =>
-        i === index ? { ...line, [field]: value } : line,
+        i === index
+          ? field === "category"
+            ? { ...line, category: value, subcategory: null }
+            : { ...line, [field]: value }
+          : line,
       ),
     );
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!scopeNodeId) return;
+    if (!selectedScopeNodeId) return;
     if (lines.length === 0) return;
-    if (lines.some((l) => !l.category || !l.allocated_amount)) return;
+    if (!budgetName.trim() || !budgetCode.trim() || !financialYear.trim()) return;
+    if (
+      lines.some(
+        (l) =>
+          !l.category ||
+          !l.allocated_amount ||
+          Number.isNaN(parseFloat(l.allocated_amount)) ||
+          parseFloat(l.allocated_amount) <= 0,
+      )
+    ) {
+      return;
+    }
 
     try {
       await create.mutateAsync({
         scope_node: selectedScopeNodeId,
-        name: `FY${financialYear.replace("-", "")} Budget`,
-        code: `FY${financialYear.replace("-", "")}-${scopeNodeId.slice(-4).toUpperCase()}`,
-        financial_year: financialYear,
+        name: budgetName.trim(),
+        code: budgetCode.trim(),
+        financial_year: financialYear.trim(),
         period_type: periodType,
         allocated_amount: String(linesTotal),
         currency,
-        status: "draft",
+        status: "active",
         lines,
       });
       setOpen(false);
       setLines([{ category: "", subcategory: null, allocated_amount: "" }]);
-      setSelectedScopeNodeId("");
+      setSelectedScopeNodeId(scopeNodeId ?? "");
+      setBudgetName("FY27 Marketing Budget");
+      setBudgetCode("FY27-MKT");
       setFinancialYear("2026-27");
       setCurrency("INR");
       onSuccess?.();
@@ -719,15 +751,29 @@ function CreateBudgetDialog({
           {/* Header fields */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <Label>Scope Node *</Label>
-              <Select value={selectedScopeNodeId} onValueChange={setSelectedScopeNodeId}>
-                <SelectTrigger><SelectValue placeholder="Select scope node..." /></SelectTrigger>
-                <SelectContent>
-                  {nodes.map((n) => (
-                    <SelectItem key={n.id} value={n.id}>{n.name} ({n.code})</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label>Budget Name *</Label>
+              <Input
+                value={budgetName}
+                onChange={(e) => setBudgetName(e.target.value)}
+                placeholder="e.g. FY27 Marketing Budget"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Budget Code *</Label>
+              <Input
+                value={budgetCode}
+                onChange={(e) => setBudgetCode(e.target.value)}
+                placeholder="e.g. FY27-MKT"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <span className="text-[10px] font-bold tracking-widest uppercase text-muted-foreground/50">Context</span>
+              <div className="text-sm font-bold tracking-wide text-muted-foreground">
+                Horizon / {selectedScopeNode?.name ?? "Marketing"}
+              </div>
             </div>
             <div className="space-y-1.5">
               <Label>Financial Year *</Label>
@@ -795,8 +841,7 @@ function CreateBudgetDialog({
                       <SelectValue placeholder="Optional..." />
                     </SelectTrigger>
                     <SelectContent>
-                      {line.category && subcategories
-                        .filter((sc) => sc.category === line.category)
+                      {line.category && (subcategoriesByCategory[normalizeBudgetSelectId(line.category)] ?? [])
                         .map((sc) => (
                           <SelectItem key={sc.id} value={normalizeBudgetSelectId(sc.id)}>{sc.name} ({sc.code})</SelectItem>
                         ))}
@@ -844,7 +889,14 @@ function CreateBudgetDialog({
           <Button
             type="submit"
             form="create-budget-form"
-            disabled={create.isPending || !selectedScopeNodeId || lines.length === 0}
+            disabled={
+              create.isPending ||
+              !selectedScopeNodeId ||
+              !budgetName.trim() ||
+              !budgetCode.trim() ||
+              !financialYear.trim() ||
+              lines.length === 0
+            }
           >
             {create.isPending ? <><Loader2 className="mr-1.5 h-4 w-4 animate-spin" />Creating...</> : "Create Budget"}
           </Button>
@@ -869,18 +921,23 @@ function EditBudgetDialog({
   const update = useUpdateBudget();
 
   const { data: categories = [] } = useCategories(budget.org ? { org: budget.org } : undefined);
-  const { data: subcategories = [] } = useSubCategories();
 
   const [name, setName] = useState(budget.name);
   const [code, setCode] = useState(budget.code);
   const [currency, setCurrency] = useState(budget.currency || "INR");
+  const [status, setStatus] = useState<BudgetStatus>(budget.status);
   const [lines, setLines] = useState<EditableBudgetLine[]>([]);
   const [clientError, setClientError] = useState<string | null>(null);
+  const selectedCategoryIds = Array.from(
+    new Set(lines.map((line) => normalizeBudgetSelectId(line.category)).filter(Boolean)),
+  );
+  const subcategoriesByCategory = useSubCategoriesByCategories(selectedCategoryIds);
 
   const resetForm = () => {
     setName(budget.name);
     setCode(budget.code);
     setCurrency(budget.currency || "INR");
+    setStatus(budget.status);
     setClientError(null);
     setLines(
       (budget.lines || []).map((line) => ({
@@ -958,7 +1015,7 @@ function EditBudgetDialog({
             next.subcategory = null;
           } else if (
             next.subcategory &&
-            !subcategories.some(
+            !(subcategoriesByCategory[nextCategory] ?? []).some(
               (subcategory) =>
                 normalizeBudgetSelectId(subcategory.id) === next.subcategory &&
                 normalizeBudgetSelectId(subcategory.category) === nextCategory,
@@ -1040,6 +1097,7 @@ function EditBudgetDialog({
           code: code.trim() || budget.code,
           allocated_amount: String(linesTotal),
           currency,
+          status,
           lines: payload_lines,
         },
       });
@@ -1087,7 +1145,7 @@ function EditBudgetDialog({
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
             <div className="space-y-1.5">
               <Label>Currency</Label>
               <Input
@@ -1095,6 +1153,21 @@ function EditBudgetDialog({
                 onChange={(e) => setCurrency(e.target.value)}
                 placeholder="INR"
               />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Status</Label>
+              <Select value={status} onValueChange={(value) => setStatus(value as BudgetStatus)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {(["draft", "active", "frozen", "closed", "exhausted"] as BudgetStatus[]).map((budgetStatus) => (
+                    <SelectItem key={budgetStatus} value={budgetStatus}>
+                      {BUDGET_STATUS_LABELS[budgetStatus]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="rounded-lg border border-border bg-muted/20 px-3 py-2">
               <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Current Allocated</p>
@@ -1179,9 +1252,7 @@ function EditBudgetDialog({
                           </SelectTrigger>
                           <SelectContent>
                             {line.category &&
-                              subcategories
-                                .filter((sc) => normalizeBudgetSelectId(sc.category) === normalizeBudgetSelectId(line.category))
-                                .map((sc) => (
+                              (subcategoriesByCategory[normalizeBudgetSelectId(line.category)] ?? []).map((sc) => (
                                   <SelectItem key={sc.id} value={normalizeBudgetSelectId(sc.id)}>
                                     {sc.name} ({sc.code})
                                   </SelectItem>
@@ -3182,16 +3253,18 @@ function BudgetImportPanel({ orgId }: { orgId: string | null }) {
 }
 
 export default function BudgetsPage() {
-  const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const {
+    orgId: selectedOrgId,
+    nodeId: selectedNodeId,
+    setOrgId: setSelectedOrgId,
+    setNodeId: setSelectedNodeId,
+  } = useWorkingScope();
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
-  const [selectedBudgetId, setSelectedBudgetId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("budgets");
   const [budgetViewMode, setBudgetViewMode] = useState<"dashboard" | "list">("dashboard");
 
   // Filter states per tab
   const [budgetStatusFilter, setBudgetStatusFilter] = useState<string>("all");
-  const [varianceStatusFilter, setVarianceStatusFilter] = useState<string>("all");
   const [consumptionFilters, setConsumptionFilters] = useState<{
     source_type?: string;
     consumption_type?: string;
@@ -3200,6 +3273,8 @@ export default function BudgetsPage() {
   // List data
   const { data: organizations = [], isLoading: orgsLoading } = useOrganizations();
   const { data: nodes = [], isLoading: nodesLoading } = useScopeNodes(selectedOrgId ?? undefined);
+  const selectedOrg = organizations.find((org) => org.id === selectedOrgId) ?? null;
+  const selectedNode = nodes.find((node) => node.id === selectedNodeId) ?? null;
   const { data: categories = [], isLoading: catsLoading } = useCategories(
     selectedOrgId ? { org: selectedOrgId } : undefined,
   );
@@ -3213,19 +3288,26 @@ export default function BudgetsPage() {
       ? { scope_node: selectedNodeId, status: budgetStatusFilter !== "all" ? budgetStatusFilter : undefined }
       : { status: budgetStatusFilter !== "all" ? budgetStatusFilter : undefined },
   );
-  const { data: rules = [], isLoading: rulesLoading } = useRules(
-    selectedBudgetId ? { budget: selectedBudgetId } : undefined,
-  );
   const { data: consumptions = [], isLoading: consumptionsLoading } = useConsumptions(
-    selectedBudgetId
-      ? { budget: selectedBudgetId, ...consumptionFilters }
-      : consumptionFilters,
+    consumptionFilters,
   );
-  const { data: varianceRequests = [], isLoading: varianceLoading } = useVarianceRequests(
-    selectedBudgetId
-      ? { budget: selectedBudgetId, status: varianceStatusFilter !== "all" ? varianceStatusFilter : undefined }
-      : { status: varianceStatusFilter !== "all" ? varianceStatusFilter : undefined },
-  );
+
+  useEffect(() => {
+    const preferredOrg = findPreferredOperationalOrg(organizations);
+    if (preferredOrg && selectedOrgId !== preferredOrg.id) {
+      setSelectedOrgId(preferredOrg.id);
+    }
+  }, [organizations, selectedOrgId, setSelectedOrgId]);
+
+  useEffect(() => {
+    if (!selectedOrgId) {
+      return;
+    }
+    const preferredNode = findPreferredOperationalNode(nodes);
+    if (preferredNode && selectedNodeId !== preferredNode.id) {
+      setSelectedNodeId(preferredNode.id);
+    }
+  }, [nodes, selectedNodeId, selectedOrgId, setSelectedNodeId]);
 
   const renderTabToolbar = (): { left: React.ReactNode; right?: React.ReactNode } => {
     switch (activeTab) {
@@ -3281,13 +3363,13 @@ export default function BudgetsPage() {
                 )}
               </div>
             ),
-            right: budgetViewMode === "list" ? (
+            right: (
               <CreateBudgetDialog
                 orgId={selectedOrgId}
                 scopeNodeId={selectedNodeId}
                 onSuccess={() => refetchBudgets()}
               />
-            ) : null,
+            ),
           }
         );
       case "categories":
@@ -3332,41 +3414,6 @@ export default function BudgetsPage() {
             ),
           }
         );
-      case "rules":
-        return (
-          {
-            left: (
-              <div className="flex min-h-11 items-center">
-                <p className="text-sm text-muted-foreground">
-                  Select a budget to filter rules, or create a new one.
-                </p>
-              </div>
-            ),
-            right: <CreateRuleDialog budgetId={selectedBudgetId} />,
-          }
-        );
-      case "variance-requests":
-        return (
-          {
-            left: (
-              <div className="flex min-h-11 items-center gap-2">
-                <Label className="text-xs text-muted-foreground">Status</Label>
-                <Select value={varianceStatusFilter} onValueChange={setVarianceStatusFilter}>
-                  <SelectTrigger className="w-32">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All</SelectItem>
-                    <SelectItem value="pending">Pending</SelectItem>
-                    <SelectItem value="approved">Approved</SelectItem>
-                    <SelectItem value="rejected">Rejected</SelectItem>
-                    <SelectItem value="cancelled">Cancelled</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            ),
-          }
-        );
       case "consumptions":
         return (
           {
@@ -3404,48 +3451,22 @@ export default function BudgetsPage() {
       titleIcon={<Wallet className="h-5 w-5 text-muted-foreground" />}
       actions={
         <div className="flex items-center gap-2">
-          <Label className="text-xs text-muted-foreground">Org</Label>
           {orgsLoading ? (
             <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-          ) : (
-            <Select
-              value={selectedOrgId ?? ""}
-              onValueChange={(v) => {
-                setSelectedOrgId(v);
-                setSelectedNodeId(null);
-                setSelectedCategoryId(null);
-              }}
-            >
-              <SelectTrigger className="w-48">
-                <SelectValue placeholder="Select organization" />
-              </SelectTrigger>
-              <SelectContent>
-                {organizations.map((org) => (
-                  <SelectItem key={org.id} value={org.id}>{org.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-
-          <Label className="text-xs text-muted-foreground ml-2">Node</Label>
-          {nodesLoading ? (
+          ) : selectedOrg ? (
+            <div className="flex items-center gap-3">
+              <span className="text-[10px] font-bold tracking-widest uppercase text-muted-foreground/50">Context</span>
+              <span className="text-sm font-bold tracking-wide text-muted-foreground">
+                {selectedOrg.name}{selectedNode ? ` / ${selectedNode.name}` : ""}
+              </span>
+            </div>
+          ) : nodesLoading ? (
             <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-          ) : (
-            <Select
-              value={selectedNodeId ?? ""}
-              onValueChange={(v) => setSelectedNodeId(v)}
-            >
-              <SelectTrigger className="w-48">
-                <SelectValue placeholder="All nodes" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__all__">All nodes</SelectItem>
-                {nodes.map((n) => (
-                  <SelectItem key={n.id} value={n.id}>{n.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
+          ) : selectedNode ? (
+            <div className="rounded-md border border-border bg-secondary/20 px-3 py-2 text-sm">
+              {selectedNode.name}
+            </div>
+          ) : null}
         </div>
       }
     >
@@ -3457,15 +3478,6 @@ export default function BudgetsPage() {
               <TabsTrigger value="budgets">Budgets</TabsTrigger>
               <TabsTrigger value="categories">Categories</TabsTrigger>
               <TabsTrigger value="subcategories">Subcategories</TabsTrigger>
-              <TabsTrigger value="rules">Rules</TabsTrigger>
-              <TabsTrigger value="variance-requests">
-                Variance Requests
-                {varianceRequests.filter((v) => v.status === "pending").length > 0 && (
-                  <Badge variant="destructive" className="ml-1.5 text-xs">
-                    {varianceRequests.filter((v) => v.status === "pending").length}
-                  </Badge>
-                )}
-              </TabsTrigger>
               <TabsTrigger value="consumptions">Consumptions</TabsTrigger>
               <TabsTrigger value="imports">
                 <FileSpreadsheet className="mr-1 h-3.5 w-3.5" />
@@ -3505,23 +3517,6 @@ export default function BudgetsPage() {
               <SubCategoryList
                 subcategories={subcategories}
                 isLoading={subsLoading}
-              />
-            </ScrollArea>
-          </TabsContent>
-
-          {/* RULES TAB */}
-          <TabsContent value="rules" className="m-0 data-[state=inactive]:hidden flex min-h-0 flex-1 flex-col overflow-hidden">
-            <ScrollArea className="flex-1">
-              <RuleList rules={rules} isLoading={rulesLoading} />
-            </ScrollArea>
-          </TabsContent>
-
-          {/* VARIANCE REQUESTS TAB */}
-          <TabsContent value="variance-requests" className="m-0 data-[state=inactive]:hidden flex min-h-0 flex-1 flex-col overflow-hidden">
-            <ScrollArea className="flex-1">
-              <VarianceRequestList
-                varianceRequests={varianceRequests}
-                isLoading={varianceLoading}
               />
             </ScrollArea>
           </TabsContent>

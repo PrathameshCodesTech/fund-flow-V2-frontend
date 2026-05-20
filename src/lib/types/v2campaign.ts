@@ -115,11 +115,6 @@ export interface SubmitBudgetResponse {
   campaign: Campaign;
 }
 
-export interface ReviewBudgetVarianceRequest {
-  decision: "approved" | "rejected";
-  review_note?: string;
-}
-
 export interface CancelCampaignRequest {
   note?: string;
 }

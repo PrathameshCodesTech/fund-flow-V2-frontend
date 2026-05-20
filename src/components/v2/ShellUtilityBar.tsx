@@ -15,7 +15,7 @@ export function ShellUtilityBar({ onSearchClick, onMenuClick }: ShellUtilityBarP
   const { mode, colorTheme, toggleMode, setColorTheme } = useTheme();
 
   return (
-    <header className="flex items-center justify-between border-b border-border px-3 sm:px-5 py-2.5 gap-2 sm:gap-4">
+    <header className="flex items-center justify-between border-b border-border px-3 sm:px-5 py-2.5 gap-3 sm:gap-6">
 
       {/* Mobile hamburger */}
       <button
@@ -26,31 +26,37 @@ export function ShellUtilityBar({ onSearchClick, onMenuClick }: ShellUtilityBarP
         <Menu className="h-5 w-5" />
       </button>
 
-      {/* Left: VIMS brand — hidden on mobile (hamburger replaces it) */}
-      <div className="hidden lg:flex shrink-0 items-center gap-2">
-        <img src="/vims-brand.png" alt="VIMS" className="h-9 w-auto object-contain" />
-        <div>
-          <p className="text-xl font-black tracking-tight text-primary leading-none">VIMS</p>
-          <p className="text-[10px] text-muted-foreground/70 leading-none mt-0.5">
-            Vendor Invoice Management System
+      {/* Left: Organization brand — hidden on mobile */}
+      <div className="hidden lg:flex shrink-0 items-center gap-2.5">
+        <img src="/vims-brand.png" alt="VIMS" className="h-8 w-auto object-contain" />
+        <div className="border-l border-border pl-2.5">
+          <p className="text-sm font-bold tracking-tight text-foreground leading-none">HORIZON</p>
+          <p className="text-[10px] text-muted-foreground leading-none mt-0.5">
+            INDUSTRIAL PARKS
           </p>
         </div>
       </div>
 
-      {/* Center: search */}
-      <button
-        onClick={onSearchClick}
-        className="flex items-center gap-2.5 px-3 sm:px-4 py-2 rounded-xl border border-border/70 bg-secondary/50 hover:bg-secondary text-sm text-muted-foreground hover:text-foreground transition-all flex-1 max-w-2xl mx-auto"
-      >
-        <Search className="w-4 h-4 shrink-0" />
-        <span className="hidden sm:block flex-1 text-left text-sm">Search pages, actions…</span>
-        <kbd className="hidden sm:flex items-center gap-1 px-2 py-0.5 rounded-md bg-muted text-[10px] font-medium text-muted-foreground border border-border/50 shrink-0">
-          <Command className="w-3 h-3" />K
-        </kbd>
-      </button>
+      {/* Center: Product title */}
+      <div className="hidden md:flex flex-1 justify-center">
+        <h1 className="text-sm font-bold tracking-widest text-muted-foreground uppercase">
+          Vendor Invoice Management
+        </h1>
+      </div>
 
-      {/* Right */}
-      <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+      {/* Right: Search + controls */}
+      <div className="flex items-center gap-2 sm:gap-3 flex-1 md:flex-none justify-end">
+        {/* Compact search */}
+        <button
+          onClick={onSearchClick}
+          className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border/70 bg-secondary/50 hover:bg-secondary text-sm text-muted-foreground hover:text-foreground transition-all"
+        >
+          <Search className="w-3.5 h-3.5 shrink-0" />
+          <span className="hidden sm:block text-xs">Search pages, actions...</span>
+          <kbd className="hidden lg:flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-muted text-[9px] font-medium text-muted-foreground border border-border/50 shrink-0">
+            <Command className="w-2.5 h-2.5" />K
+          </kbd>
+        </button>
 
         {/* Color theme toggle — hidden on small screens */}
         <div className="hidden sm:flex items-center rounded-md border border-border bg-secondary/50 p-0.5 gap-0.5">

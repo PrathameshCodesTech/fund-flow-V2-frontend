@@ -51,16 +51,8 @@ export const NAV_ITEMS: NavItem[] = [
     requiredCapability: "invoice.view",
   },
   {
-    label: "Pending Review", to: "/pending-review", icon: ListChecks, group: "Operations",
+    label: "Invoice Pending for Approval", to: "/tasks", icon: Inbox, group: "Operations",
     requiredCapability: "workflow.task.view",
-  },
-  {
-    label: "Approval Tasks", to: "/tasks", icon: Inbox, group: "Operations",
-    requiredCapability: "workflow.task.view",
-  },
-  {
-    label: "Finance Handoffs", to: "/finance-handoffs", icon: Landmark, group: "Operations",
-    requiredCapability: "reporting.view_finance",
   },
   {
     label: "Vendors", to: "/vendors", icon: Users, group: "Operations",

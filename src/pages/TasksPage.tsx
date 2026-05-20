@@ -16,8 +16,6 @@ import {
   Clock,
 } from "lucide-react";
 
-// ── Helpers ────────────────────────────────────────────────────────────────────
-
 function fmtAge(d: string) {
   const diff = Date.now() - new Date(d).getTime();
   const hours = Math.floor(diff / 3600000);
@@ -26,7 +24,35 @@ function fmtAge(d: string) {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
-// ── Status badges ─────────────────────────────────────────────────────────────
+function taskPrimaryLabel(task: WorkflowTask) {
+  return task.vendor_name?.trim() || task.step_name;
+}
+
+function taskInvoiceLabel(task: WorkflowTask) {
+  if (task.vendor_invoice_number?.trim()) {
+    return task.vendor_invoice_number;
+  }
+  return `#${task.subject_id}`;
+}
+
+function previousActorPrefix(task: WorkflowTask) {
+  if (task.previous_actor_action === "approved") return "Approved by";
+  if (task.previous_actor_action === "rejected") return "Sent back by";
+  return "Handled by";
+}
+
+function previousActorLabel(task: WorkflowTask) {
+  if (!task.previous_actor_name) return null;
+  const parts = [task.previous_actor_name];
+  if (task.previous_actor_role) {
+    parts.push(task.previous_actor_role);
+  }
+  return `${previousActorPrefix(task)} ${parts.join(" � ")}`;
+}
+
+function taskInternalReference(task: WorkflowTask) {
+  return `#${task.subject_id}`;
+}
 
 const STEP_STATUS_COLORS: Record<string, string> = {
   WAITING: "bg-yellow-100 text-yellow-800 border-yellow-200",
@@ -55,8 +81,6 @@ function InstanceBadge({ status }: { status: string }) {
   );
 }
 
-// ── Compact Task Card ─────────────────────────────────────────────────────────
-
 function TaskCard({
   task,
   onClick,
@@ -65,6 +89,7 @@ function TaskCard({
   onClick: () => void;
 }) {
   const isBranch = task.task_kind === "branch";
+  const previousActor = previousActorLabel(task);
 
   return (
     <button
@@ -72,12 +97,9 @@ function TaskCard({
       onClick={onClick}
       className="w-full text-left rounded-lg border border-border bg-background hover:bg-muted/30 hover:border-muted-foreground/20 transition-colors group"
     >
-      {/* Main row */}
       <div className="flex items-center gap-3 px-4 py-3">
-        {/* Left: type indicator */}
         <div className={`shrink-0 h-8 w-1 rounded-full ${isBranch ? "bg-blue-400" : "bg-primary/60"}`} />
 
-        {/* Center: step + subject */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             {isBranch && (
@@ -86,31 +108,35 @@ function TaskCard({
                 Branch
               </span>
             )}
-            <span className="text-sm font-semibold truncate">{task.step_name}</span>
+            <span className="text-sm font-semibold truncate">{taskPrimaryLabel(task)}</span>
             <StepBadge status={task.status} />
             <InstanceBadge status={task.instance_status} />
           </div>
           <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground flex-wrap">
             <span className="flex items-center gap-1">
               <Building2 className="h-3 w-3 shrink-0" />
-              <span className="capitalize">{task.subject_type}</span>
-              <span className="font-mono">#{task.subject_id}</span>
+              <span>{taskInvoiceLabel(task)}</span>
             </span>
-            <span className="text-muted-foreground/50">·</span>
-            <span className="flex items-center gap-1">
-              <ChevronRight className="h-3 w-3 shrink-0" />
-              {task.group_name}
-            </span>
+            {previousActor && (
+              <>
+                <span className="text-muted-foreground/50">�</span>
+                <span>{previousActor}</span>
+              </>
+            )}
+          </div>
+          <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground flex-wrap">
+            <span className="text-muted-foreground/50">�</span>
+            <span className="font-mono">{taskInternalReference(task)}</span>
             {isBranch && task.target_scope_node_name && (
               <>
-                <span className="text-muted-foreground/50">·</span>
+                <span className="text-muted-foreground/50">�</span>
                 <span className="text-blue-600 flex items-center gap-1">
                   <GitBranch className="h-3 w-3 shrink-0" />
                   {task.target_scope_node_name}
                 </span>
               </>
             )}
-            <span className="text-muted-foreground/50">·</span>
+            <span className="text-muted-foreground/50">�</span>
             <span className="flex items-center gap-1">
               <Clock className="h-3 w-3 shrink-0" />
               {fmtAge(task.created_at)}
@@ -118,14 +144,11 @@ function TaskCard({
           </div>
         </div>
 
-        {/* Right: review arrow */}
         <ChevronRight className="h-4 w-4 text-muted-foreground/40 group-hover:text-muted-foreground transition-colors shrink-0" />
       </div>
     </button>
   );
 }
-
-// ── Loading ───────────────────────────────────────────────────────────────────
 
 function PageLoading() {
   return (
@@ -134,8 +157,6 @@ function PageLoading() {
     </div>
   );
 }
-
-// ── Main Page ────────────────────────────────────────────────────────────────
 
 const TasksPage = () => {
   const { data: tasks = [], isLoading, refetch } = useTasks();
@@ -157,7 +178,7 @@ const TasksPage = () => {
 
   return (
     <V2Shell
-      title="Approval Tasks"
+      title="Invoice Pending for Approval"
       titleIcon={<Inbox className="h-5 w-5 text-muted-foreground" />}
       actions={
         <Button
@@ -177,12 +198,12 @@ const TasksPage = () => {
         ) : tasks.length === 0 ? (
           <div className="p-8 text-center text-sm text-muted-foreground">
             <Inbox className="mx-auto mb-2 h-8 w-8 opacity-30" />
-            <p>No pending tasks. You're all caught up!</p>
+            <p>No invoices are pending your approval.</p>
           </div>
         ) : (
           <div className="space-y-2 p-4">
             <p className="text-xs text-muted-foreground mb-3">
-              {tasks.length} pending task{tasks.length !== 1 ? "s" : ""} — click a card to review and decide
+              {tasks.length} invoice{tasks.length !== 1 ? "s are" : " is"} pending your approval � click a card to review and decide
             </p>
             {tasks.map((task) => (
               <TaskCard

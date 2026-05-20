@@ -2,6 +2,7 @@
 import { useForm, Controller } from "react-hook-form";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { V2Shell } from "@/components/v2/V2Shell";
+import { useWorkingScope } from "@/contexts/WorkingScopeContext";
 import {
   useInvitations,
   useCreateInvitation,
@@ -32,6 +33,7 @@ import {
   type SubmissionStatus,
   type MarketingStatus,
 } from "@/lib/types/v2vendor";
+import { findPreferredOperationalNode, findPreferredOperationalOrg } from "@/lib/working-scope";
 import {
   listVendorProfileRevisions,
   getVendorProfileRevision,
@@ -131,6 +133,7 @@ function CreateInvitationDialog({
   const [open, setOpen] = useState(false);
   const create = useCreateInvitation();
   const { data: scopeNodes = [] } = useScopeNodes(orgId ?? undefined);
+  const { nodeId: workingNodeId } = useWorkingScope();
 
   const {
     register,
@@ -148,9 +151,20 @@ function CreateInvitationDialog({
   // Sync org when prop changes
   useEffect(() => {
     if (orgId) {
-      reset((r) => ({ ...r, org: orgId }));
+      const preferredNode =
+        findPreferredOperationalNode(scopeNodes) ??
+        undefined;
+      const preferredNodeId =
+        workingNodeId && scopeNodes.some((node) => node.id === workingNodeId)
+          ? workingNodeId
+          : preferredNode?.id;
+      reset((r) => ({
+        ...r,
+        org: orgId,
+        scope_node: r.scope_node || preferredNodeId || "",
+      }));
     }
-  }, [orgId, reset]);
+  }, [orgId, reset, scopeNodes, workingNodeId]);
 
   function onSubmit(data: {
     org: string;
@@ -212,28 +226,11 @@ function CreateInvitationDialog({
           <input type="hidden" {...register("org")} value={orgId ?? ""} />
 
           <div className="space-y-1.5">
-            <Label>Unit</Label>
-            <Controller
-              name="scope_node"
-              control={control}
-              rules={{ required: "Please select a unit" }}
-              render={({ field }) => (
-                <select
-                  value={field.value ?? ""}
-                  onChange={(e) => field.onChange(e.target.value)}
-                  className={`flex h-10 w-full rounded-md border bg-background px-3 py-2 text-sm text-foreground ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ${
-                    errors.scope_node ? "border-destructive" : "border-input"
-                  }`}
-                >
-                  <option value="">Select unit</option>
-                  {scopeNodes.map((n) => (
-                    <option key={n.id} value={n.id}>
-                      {n.name} ({n.code})
-                    </option>
-                  ))}
-                </select>
-              )}
-            />
+            <span className="text-[10px] font-bold tracking-widest uppercase text-muted-foreground/50">Context</span>
+            <input type="hidden" {...register("scope_node", { required: "Context is required" })} />
+            <div className="text-sm font-bold tracking-wide text-muted-foreground">
+              Horizon / {scopeNodes.find((node) => node.id === (workingNodeId && scopeNodes.some((node) => node.id === workingNodeId) ? workingNodeId : findPreferredOperationalNode(scopeNodes)?.id))?.name ?? "Marketing"}
+            </div>
             {errors.scope_node && (
               <p className="text-xs text-destructive">{errors.scope_node.message}</p>
             )}
@@ -601,6 +598,7 @@ function InvitationsTab({
   const [emailFilter, setEmailFilter] = useState<string>("");
 
   const { data: organizations = [], isLoading: orgsLoading } = useOrganizations();
+  const selectedOrg = organizations.find((org) => org.id === orgId) ?? null;
   const { data: invitations = [], isLoading } = useInvitations(
     statusFilter !== "all"
       ? { org: orgId ?? undefined, status: statusFilter, vendor_email: emailFilter || undefined }
@@ -624,17 +622,14 @@ function InvitationsTab({
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" /> Loading...
             </div>
+          ) : selectedOrg ? (
+            <div className="rounded-md border border-border bg-secondary/20 px-3 py-2 text-sm">
+              {selectedOrg.name} ({selectedOrg.code})
+            </div>
           ) : (
-            <Select value={orgId ?? ""} onValueChange={setOrgId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select org" />
-              </SelectTrigger>
-              <SelectContent>
-                {organizations.map((o) => (
-                  <SelectItem key={o.id} value={o.id}>{o.name} ({o.code})</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="rounded-md border border-dashed border-border px-3 py-2 text-sm text-muted-foreground">
+              No organization context
+            </div>
           )}
           <div className="flex gap-2">
             <Input
@@ -709,6 +704,7 @@ function SubmissionsTab({
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const { data: organizations = [], isLoading: orgsLoading } = useOrganizations();
+  const selectedOrg = organizations.find((org) => org.id === orgId) ?? null;
   const { data: submissions = [], isLoading } = useSubmissions(
     statusFilter !== "all"
       ? { org: orgId ?? undefined, status: statusFilter }
@@ -739,17 +735,14 @@ function SubmissionsTab({
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" /> Loading...
             </div>
+          ) : selectedOrg ? (
+            <div className="rounded-md border border-border bg-secondary/20 px-3 py-2 text-sm">
+              {selectedOrg.name} ({selectedOrg.code})
+            </div>
           ) : (
-            <Select value={orgId ?? ""} onValueChange={(v) => { setOrgId(v); setSelectedId(null); }}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select org" />
-              </SelectTrigger>
-              <SelectContent>
-                {organizations.map((o) => (
-                  <SelectItem key={o.id} value={o.id}>{o.name} ({o.code})</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="rounded-md border border-dashed border-border px-3 py-2 text-sm text-muted-foreground">
+              No organization context
+            </div>
           )}
           <Select value={statusFilter} onValueChange={setStatusFilter}>
             <SelectTrigger>
@@ -1058,6 +1051,7 @@ function VendorsTab({
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const { data: organizations = [], isLoading: orgsLoading } = useOrganizations();
+  const selectedOrg = organizations.find((org) => org.id === orgId) ?? null;
   const { data: vendors = [], isLoading } = useVendors({
     org: orgId ?? undefined,
     operational_status: opStatus !== "all" ? opStatus : undefined,
@@ -1094,17 +1088,14 @@ function VendorsTab({
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" /> Loading...
             </div>
+          ) : selectedOrg ? (
+            <div className="rounded-md border border-border bg-secondary/20 px-3 py-2 text-sm">
+              {selectedOrg.name} ({selectedOrg.code})
+            </div>
           ) : (
-            <Select value={orgId ?? ""} onValueChange={(v) => { setOrgId(v); setSelectedId(null); }}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select org" />
-              </SelectTrigger>
-              <SelectContent>
-                {organizations.map((o) => (
-                  <SelectItem key={o.id} value={o.id}>{o.name} ({o.code})</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="rounded-md border border-dashed border-border px-3 py-2 text-sm text-muted-foreground">
+              No organization context
+            </div>
           )}
           <div className="flex gap-1">
             <Select value={opStatus} onValueChange={setOpStatus}>
@@ -1286,12 +1277,14 @@ type TabKey = "invitations" | "submissions" | "vendors";
 
 const VendorsPage = () => {
   const [tab, setTab] = useState<TabKey>("invitations");
-  const [orgId, setOrgId] = useState<string | null>(null);
+  const { orgId, setOrgId } = useWorkingScope();
   const { data: organizations = [] } = useOrganizations();
+  const selectedOrg = organizations.find((org) => org.id === orgId) ?? null;
 
   useEffect(() => {
-    if (!orgId && organizations.length === 1 && organizations[0]) {
-      setOrgId(organizations[0].id);
+    const preferredOrg = findPreferredOperationalOrg(organizations);
+    if (preferredOrg && orgId !== preferredOrg.id) {
+      setOrgId(preferredOrg.id);
     }
   }, [orgId, organizations]);
 
@@ -1305,7 +1298,19 @@ const VendorsPage = () => {
     <V2Shell
       title="Vendors"
       titleIcon={<Users className="h-5 w-5 text-muted-foreground" />}
-      actions={<CreateInvitationDialog orgId={orgId} />}
+      actions={
+        <div className="flex items-center gap-3">
+          {selectedOrg ? (
+            <div className="flex items-center gap-3">
+              <span className="text-[10px] font-bold tracking-widest uppercase text-muted-foreground/50">Context</span>
+              <span className="text-sm font-bold tracking-wide text-muted-foreground">
+                {selectedOrg.name}
+              </span>
+            </div>
+          ) : null}
+          <CreateInvitationDialog orgId={orgId} />
+        </div>
+      }
     >
       <div className="flex flex-col flex-1 min-h-0">
         {/* Tab bar */}

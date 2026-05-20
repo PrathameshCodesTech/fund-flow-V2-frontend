@@ -48,7 +48,7 @@ const navItems: NavItem[] = [
   { label: "Insights",        icon: BarChart3,       path: "/insights",   visible: canViewReporting },
   // Finance is visible for users with finance reporting capability
   { label: "Finance",         icon: CreditCard,      path: "/finance",    visible: canViewFinanceReporting },
-  { label: "Finance Handoffs", icon: Landmark,        path: "/finance-handoffs", visible: canViewFinanceReporting },
+  // Finance handoff UI is intentionally hidden from the main nav.
   { label: "Workflow",         icon: GitBranch,       path: "/workflow",       capability: "workflow.manage" },
   { label: "Settings",        icon: Settings,        path: "/settings",      capability: "iam.manage" },
   { label: "Tenant Admin",    icon: Building2,       path: "/tenant-admin",  capability: "iam.manage" },

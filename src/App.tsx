@@ -12,6 +12,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth, type User } from "@/contexts/AuthContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { NotificationProvider } from "@/contexts/NotificationContext";
+import { WorkingScopeProvider } from "@/contexts/WorkingScopeContext";
 import { hasRouteAccess, NAV_ITEMS, KNOWN_PUBLIC_ROUTES } from "@/lib/shell/nav";
 import LoginPage from "./pages/LoginPage.tsx";
 import V2HomePage from "./pages/V2HomePage.tsx";
@@ -219,15 +220,17 @@ const App = () => (
     <TooltipProvider>
       <ThemeProvider>
         <AuthProvider>
-          <NotificationProvider>
-            <Toaster />
-            <Sonner />
-            <BrowserRouter
-              future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
-            >
-              <AppRoutes />
-            </BrowserRouter>
-          </NotificationProvider>
+          <WorkingScopeProvider>
+            <NotificationProvider>
+              <Toaster />
+              <Sonner />
+              <BrowserRouter
+                future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+              >
+                <AppRoutes />
+              </BrowserRouter>
+            </NotificationProvider>
+          </WorkingScopeProvider>
         </AuthProvider>
       </ThemeProvider>
     </TooltipProvider>
