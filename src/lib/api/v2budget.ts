@@ -46,6 +46,8 @@ import type {
 export async function listCategories(params?: {
   org?: string;
   is_active?: boolean;
+  page?: number;
+  page_size?: number;
 }): Promise<CategoryListResponse> {
   return apiClient.get("/api/v1/budgets/categories/", params);
 }
@@ -76,6 +78,8 @@ export async function deleteCategory(id: string): Promise<void> {
 export async function listSubCategories(params?: {
   category?: string;
   is_active?: boolean;
+  page?: number;
+  page_size?: number;
 }): Promise<SubCategoryListResponse> {
   return apiClient.get("/api/v1/budgets/subcategories/", params);
 }
@@ -108,6 +112,8 @@ export async function listBudgets(params?: {
   scope_node?: string;
   financial_year?: string;
   status?: string;
+  page?: number;
+  page_size?: number;
 }): Promise<BudgetListResponse> {
   return apiClient.get("/api/v1/budgets/", params);
 }

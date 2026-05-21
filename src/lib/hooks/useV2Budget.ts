@@ -61,15 +61,41 @@ import type {
   ReviewVarianceRequest,
 } from "../types/v2budget";
 
+type PaginatedListResponse<T> = {
+  count: number;
+  next: string | null;
+  previous: string | null;
+  results: T[];
+};
+
+async function fetchAllPages<T, P extends { page?: number; page_size?: number }>(
+  fetchPage: (params?: P) => Promise<PaginatedListResponse<T>>,
+  params?: Omit<P, "page" | "page_size">,
+): Promise<T[]> {
+  const allItems: T[] = [];
+  let page = 1;
+  let hasNext = true;
+
+  while (hasNext) {
+    const response = await fetchPage({
+      ...(params as P),
+      page,
+      page_size: 500,
+    });
+    allItems.push(...response.results);
+    hasNext = Boolean(response.next);
+    page += 1;
+  }
+
+  return allItems;
+}
+
 // ── Categories ───────────────────────────────────────────────────────────────
 
 export function useCategories(params?: { org?: string; is_active?: boolean }) {
   return useQuery({
     queryKey: ["v2", "budget", "categories", params],
-    queryFn: async () => {
-      const res = await listCategories(params);
-      return res.results;
-    },
+    queryFn: () => fetchAllPages(listCategories, params),
   });
 }
 
@@ -118,10 +144,7 @@ export function useDeleteCategory() {
 export function useSubCategories(params?: { category?: string; is_active?: boolean }) {
   return useQuery({
     queryKey: ["v2", "budget", "subcategories", params],
-    queryFn: async () => {
-      const res = await listSubCategories(params);
-      return res.results;
-    },
+    queryFn: () => fetchAllPages(listSubCategories, params),
   });
 }
 
@@ -130,10 +153,7 @@ export function useSubCategoriesByCategories(categoryIds: string[]) {
   const queries = useQueries({
     queries: normalized.map((categoryId) => ({
       queryKey: ["v2", "budget", "subcategories", { category: categoryId }],
-      queryFn: async () => {
-        const res = await listSubCategories({ category: categoryId });
-        return res.results;
-      },
+      queryFn: () => fetchAllPages(listSubCategories, { category: categoryId }),
       enabled: !!categoryId,
     })),
   });
@@ -203,10 +223,7 @@ export function useBudgets(params?: {
 }) {
   return useQuery({
     queryKey: ["v2", "budget", "budgets", params],
-    queryFn: async () => {
-      const res = await listBudgets(params);
-      return res.results;
-    },
+    queryFn: () => fetchAllPages(listBudgets, params),
   });
 }
 
