@@ -20,7 +20,6 @@ import {
   getBranchScopeNodes,
   getBudgetOwnerScopeNodes,
   getRegionScopeNodes,
-  findPreferredBudgetScopeNode,
   findPreferredOperationalOrg,
 } from "@/lib/working-scope";
 import { useBudget, useBudgets, useCategories, useSubCategoriesByCategories } from "@/lib/hooks/useV2Budget";
@@ -1176,11 +1175,8 @@ const CampaignsPage = () => {
     const selectedNodeStillVisible = selectedNodeId
       ? budgetScopeNodes.some((node) => normalizeCampaignSelectId(node.id) === normalizeCampaignSelectId(selectedNodeId))
       : false;
-    if (!selectedNodeStillVisible) {
-      const preferredNode = findPreferredBudgetScopeNode(budgetScopeNodes);
-      if (preferredNode) {
-        setSelectedNodeId(normalizeCampaignSelectId(preferredNode.id) ?? null);
-      }
+    if (selectedNodeId && !selectedNodeStillVisible) {
+      setSelectedNodeId(null);
     }
   }, [budgetScopeNodes, selectedNodeId, selectedOrgId, setSelectedNodeId]);
 
