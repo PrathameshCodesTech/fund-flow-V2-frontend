@@ -26,10 +26,20 @@ export function useScopeNodes(orgId?: string) {
   return useQuery({
     queryKey: ["v2", "scopeNodes", orgId],
     queryFn: async () => {
-      const res = await listScopeNodes(
-        orgId ? { org: orgId, page_size: 500 } : { page_size: 500 },
-      );
-      return res.results;
+      const allNodes = [];
+      let page = 1;
+      let hasNext = true;
+
+      while (hasNext) {
+        const res = await listScopeNodes(
+          orgId ? { org: orgId, page_size: 500, page } : { page_size: 500, page },
+        );
+        allNodes.push(...res.results);
+        hasNext = Boolean(res.next);
+        page += 1;
+      }
+
+      return allNodes;
     },
   });
 }
