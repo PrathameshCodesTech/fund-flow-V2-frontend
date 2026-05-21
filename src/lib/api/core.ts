@@ -17,6 +17,7 @@ export function listOrganizations(): Promise<PaginatedResponse<Organization>> {
 
 export function listScopeNodes(params?: {
   org?: string;
+  page_size?: number;
 }): Promise<PaginatedResponse<ScopeNode>> {
   return apiClient.get<PaginatedResponse<ScopeNode>>("/api/v1/core/nodes/", params);
 }

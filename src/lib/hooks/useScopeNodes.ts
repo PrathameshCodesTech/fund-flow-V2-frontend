@@ -26,7 +26,9 @@ export function useScopeNodes(orgId?: string) {
   return useQuery({
     queryKey: ["v2", "scopeNodes", orgId],
     queryFn: async () => {
-      const res = await listScopeNodes(orgId ? { org: orgId } : undefined);
+      const res = await listScopeNodes(
+        orgId ? { org: orgId, page_size: 500 } : { page_size: 500 },
+      );
       return res.results;
     },
   });
