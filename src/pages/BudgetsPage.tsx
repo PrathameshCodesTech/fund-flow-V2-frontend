@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
@@ -678,6 +678,7 @@ function CreateBudgetDialog({
 }) {
   const [open, setOpen] = useState(false);
   const create = useCreateBudget();
+  const didInitSelectionRef = useRef(false);
 
   const { data: categories = [] } = useCategories(orgId ? { org: orgId } : undefined);
   const { data: nodes = [] } = useScopeNodes(orgId ?? undefined);
@@ -703,33 +704,50 @@ function CreateBudgetDialog({
     () => nodes.find((node) => normalizeBudgetSelectId(node.id) === normalizeBudgetSelectId(scopeNodeId)) ?? null,
     [nodes, scopeNodeId],
   );
-  const availableBranchNodes = useMemo(
+  const selectedRegionBranchNodes = useMemo(
     () =>
       selectedRegionId
         ? branchNodes.filter((node) => normalizeBudgetSelectId(node.parent) === selectedRegionId)
-        : branchNodes,
+        : [],
     [branchNodes, selectedRegionId],
+  );
+  const selectedRegionHasBranches = selectedRegionBranchNodes.length > 0;
+  const selectedRegionNode = useMemo(
+    () =>
+      regionNodes.find((node) => normalizeBudgetSelectId(node.id) === selectedRegionId) ?? null,
+    [regionNodes, selectedRegionId],
   );
   const selectedScopeNode =
     budgetScopeNodes.find((node) => normalizeBudgetSelectId(node.id) === selectedScopeNodeId) ?? null;
   const budgetCode = generateBudgetCodePreview(financialYear, selectedScopeNode);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      didInitSelectionRef.current = false;
+      return;
+    }
+    if (didInitSelectionRef.current) return;
 
     if (branchNodes.length > 0) {
       if (contextScopeNode?.node_type === "branch") {
         setSelectedRegionId(normalizeBudgetSelectId(contextScopeNode.parent));
         setSelectedScopeNodeId(normalizeBudgetSelectId(contextScopeNode.id));
+        didInitSelectionRef.current = true;
         return;
       }
       if (contextScopeNode?.node_type === "region") {
-        setSelectedRegionId(normalizeBudgetSelectId(contextScopeNode.id));
-        setSelectedScopeNodeId("");
+        const regionId = normalizeBudgetSelectId(contextScopeNode.id);
+        const hasBranches = branchNodes.some(
+          (node) => normalizeBudgetSelectId(node.parent) === regionId,
+        );
+        setSelectedRegionId(regionId);
+        setSelectedScopeNodeId(hasBranches ? "" : regionId);
+        didInitSelectionRef.current = true;
         return;
       }
       setSelectedRegionId("");
       setSelectedScopeNodeId("");
+      didInitSelectionRef.current = true;
       return;
     }
 
@@ -738,48 +756,12 @@ function CreateBudgetDialog({
       budgetScopeNodes.some((node) => normalizeBudgetSelectId(node.id) === normalizeBudgetSelectId(scopeNodeId))
     ) {
       setSelectedScopeNodeId(normalizeBudgetSelectId(scopeNodeId));
+      didInitSelectionRef.current = true;
       return;
     }
     setSelectedScopeNodeId("");
+    didInitSelectionRef.current = true;
   }, [branchNodes.length, budgetScopeNodes, contextScopeNode, open, scopeNodeId]);
-
-  useEffect(() => {
-    if (!selectedScopeNode) return;
-    if (selectedScopeNode.node_type === "branch") {
-      const parentId = normalizeBudgetSelectId(selectedScopeNode.parent) ?? "";
-      if (parentId !== selectedRegionId) {
-        setSelectedRegionId(parentId);
-      }
-      return;
-    }
-    if (selectedScopeNode.node_type === "region") {
-      const scopeId = normalizeBudgetSelectId(selectedScopeNode.id) ?? "";
-      if (scopeId !== selectedRegionId) {
-        setSelectedRegionId(scopeId);
-      }
-    }
-  }, [branchNodes.length, selectedRegionId, selectedScopeNode]);
-
-  useEffect(() => {
-    if (!branchNodes.length) return;
-    if (!selectedRegionId) {
-      if (selectedScopeNodeId) {
-        setSelectedScopeNodeId("");
-      }
-      return;
-    }
-    const scopeStillVisible = availableBranchNodes.some(
-      (node) => normalizeBudgetSelectId(node.id) === selectedScopeNodeId,
-    );
-    if (scopeStillVisible) return;
-
-    if (availableBranchNodes.length === 1) {
-      setSelectedScopeNodeId(normalizeBudgetSelectId(availableBranchNodes[0].id) ?? "");
-      return;
-    }
-
-    setSelectedScopeNodeId("");
-  }, [availableBranchNodes, branchNodes.length, selectedRegionId, selectedScopeNodeId]);
 
   const linesTotal = lines.reduce(
     (sum, l) => sum + (parseFloat(l.allocated_amount) || 0),
@@ -839,7 +821,9 @@ function CreateBudgetDialog({
         lines,
       });
       setOpen(false);
+      didInitSelectionRef.current = false;
       setLines([{ category: "", subcategory: null, allocated_amount: "" }]);
+      setSelectedRegionId("");
       setSelectedScopeNodeId(
         scopeNodeId && budgetScopeNodes.some((node) => normalizeBudgetSelectId(node.id) === scopeNodeId)
           ? scopeNodeId
@@ -918,7 +902,10 @@ function CreateBudgetDialog({
                   onValueChange={(value) => {
                     if (value === UNSET_BUDGET_SELECT_VALUE) return;
                     setSelectedRegionId(value);
-                    setSelectedScopeNodeId("");
+                    const nextBranches = branchNodes.filter(
+                      (node) => normalizeBudgetSelectId(node.parent) === value,
+                    );
+                    setSelectedScopeNodeId(nextBranches.length > 0 ? "" : value);
                   }}
                 >
                   <SelectTrigger>
@@ -937,31 +924,43 @@ function CreateBudgetDialog({
                 </Select>
               </div>
             ) : null}
-            <div className="space-y-1.5">
-              <Label>{branchNodes.length > 0 ? "Branch / Park *" : "Budget For *"}</Label>
-              <Select
-                value={selectedScopeNodeId || UNSET_BUDGET_SELECT_VALUE}
-                onValueChange={(value) => {
-                  if (value === UNSET_BUDGET_SELECT_VALUE) return;
-                  setSelectedScopeNodeId(value);
-                }}
-                disabled={branchNodes.length > 0 && !selectedRegionId}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder={branchNodes.length > 0 ? "Select branch / park" : "Select business unit"} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={UNSET_BUDGET_SELECT_VALUE} disabled>
-                    {branchNodes.length > 0 ? "Select branch / park" : "Select business unit"}
-                  </SelectItem>
-                  {(branchNodes.length > 0 ? availableBranchNodes : budgetScopeNodes).map((node) => (
-                    <SelectItem key={node.id} value={normalizeBudgetSelectId(node.id)}>
-                      {node.name}
+            {selectedRegionHasBranches ? (
+              <div className="space-y-1.5">
+                <Label>Branch / Park *</Label>
+                <Select
+                  value={selectedScopeNodeId || UNSET_BUDGET_SELECT_VALUE}
+                  onValueChange={(value) => {
+                    if (value === UNSET_BUDGET_SELECT_VALUE) return;
+                    setSelectedScopeNodeId(value);
+                  }}
+                  disabled={!selectedRegionId}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select branch / park" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={UNSET_BUDGET_SELECT_VALUE} disabled>
+                      Select branch / park
                     </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+                    {selectedRegionBranchNodes.map((node) => (
+                      <SelectItem key={node.id} value={normalizeBudgetSelectId(node.id)}>
+                        {node.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                <Label>Budget For *</Label>
+                <Input
+                  value={selectedRegionNode?.name ?? ""}
+                  placeholder="Select region"
+                  readOnly
+                  disabled
+                />
+              </div>
+            )}
             <div className="space-y-1.5">
               <Label>Period Type</Label>
               <Select value={periodType} onValueChange={(v) => setPeriodType(v as PeriodType)}>
