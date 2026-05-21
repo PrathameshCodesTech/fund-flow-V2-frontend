@@ -954,13 +954,20 @@ function BudgetImpactPreview({
   const budgetAvailable = parseFloat(budget.available_amount ?? "0");
   const budgetOverdraft = amount > budgetAvailable;
 
-  // Category level — aggregate all lines for this budget + category
+  // Category level:
+  // - if only category is selected, preview the direct-allocation line only
+  //   (category + subcategory = null), because that is the exact backend target
+  // - if subcategory is selected, keep the category rollup as parent context
   let catAllocated = 0, catReserved = 0, catConsumed = 0, catAvailable = 0;
   let showCat = false, catOverdraft = false;
   if (row.category_id) {
-    const catLines = budgetLines.filter(
-      (l) => l.budget_id === row.budget_id && l.category_id === row.category_id,
-    );
+    const catLines = budgetLines.filter((l) => {
+      if (l.budget_id !== row.budget_id || l.category_id !== row.category_id) return false;
+      if (!row.subcategory_id) {
+        return l.subcategory_id == null;
+      }
+      return true;
+    });
     if (catLines.length > 0 && catLines[0].reserved_amount !== undefined) {
       catAllocated = catLines.reduce((s, l) => s + parseFloat(l.allocated_amount ?? "0"), 0);
       catReserved  = catLines.reduce((s, l) => s + parseFloat(l.reserved_amount  ?? "0"), 0);
@@ -1127,6 +1134,7 @@ function ExistingAllocationImpactPreview({
 // ── Split allocation panel ────────────────────────────────────────────────────
 
 interface SplitRow {
+  region_entity_id: number | null;
   entity_id: number | null;
   category_id: number | null;
   subcategory_id: number | null;
@@ -1155,7 +1163,7 @@ function SplitAllocationPanel({
   const submitSplitMutation = useSubmitSplit();
   const returnToVendorMutation = useReturnStepToVendor();
 
-  const [rows, setRows] = useState<SplitRow[]>([{ entity_id: null, category_id: null, subcategory_id: null, campaign_id: null, budget_id: null, amount: "", approver_id: null, note: "", auto_approved: false }]);
+  const [rows, setRows] = useState<SplitRow[]>([{ region_entity_id: null, entity_id: null, category_id: null, subcategory_id: null, campaign_id: null, budget_id: null, amount: "", approver_id: null, note: "", auto_approved: false }]);
   const [splitNote, setSplitNote] = useState("");
   const [validationError, setValidationError] = useState<string | null>(null);
 
@@ -1168,8 +1176,20 @@ function SplitAllocationPanel({
   const config = splitOpts?.step_config;
   const mustBalanceTotal = !config || config.allocation_total_policy === "MUST_EQUAL_INVOICE_TOTAL";
   const isSkipAll = config?.branch_approval_policy === "SKIP_ALL";
-  // Single allowed entity → freeform mode: entity picker hidden, auto-selected on load.
-  const singleEntity = allowedEntities.length === 1 ? allowedEntities[0] : null;
+  const flatSelectableEntities = allowedEntities.flatMap((entity) =>
+    entity.child_entities && entity.child_entities.length > 0 ? entity.child_entities : [entity],
+  );
+  const entityById = new Map(flatSelectableEntities.map((entity) => [entity.entity_id, entity] as const));
+  const regionByEntityId = new Map<number, AllowedSplitEntity>();
+  allowedEntities.forEach((entity) => {
+    if (entity.child_entities && entity.child_entities.length > 0) {
+      entity.child_entities.forEach((child) => regionByEntityId.set(child.entity_id, entity));
+    } else {
+      regionByEntityId.set(entity.entity_id, entity);
+    }
+  });
+  const singleEntity =
+    flatSelectableEntities.length === 1 ? flatSelectableEntities[0] : null;
 
   // Auto-select entity and compute auto_approved when exactly one entity is available.
   useEffect(() => {
@@ -1178,6 +1198,7 @@ function SplitAllocationPanel({
       config.branch_approval_policy === "SKIP_ALL" ||
       (config.branch_approval_policy === "OPTIONAL_WHEN_CONFIGURED" && !singleEntity.approval_required);
     setRows([{
+      region_entity_id: regionByEntityId.get(singleEntity.entity_id)?.entity_id ?? null,
       entity_id: singleEntity.entity_id,
       category_id: singleEntity.default_category_id ?? null,
       subcategory_id: singleEntity.default_subcategory_id ?? null,
@@ -1195,6 +1216,7 @@ function SplitAllocationPanel({
     setRows((prev) => [
       ...prev,
       {
+        region_entity_id: regionByEntityId.get(singleEntity?.entity_id ?? -1)?.entity_id ?? null,
         entity_id: singleEntity?.entity_id ?? null,
         category_id: singleEntity?.default_category_id ?? null,
         subcategory_id: singleEntity?.default_subcategory_id ?? null,
@@ -1211,24 +1233,34 @@ function SplitAllocationPanel({
   const updateRow = (i: number, patch: Partial<SplitRow>) =>
     setRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
 
-  const getEntityOptions = (rowIdx: number): AllowedSplitEntity[] => {
-    if (config?.allow_multiple_lines_per_entity) return allowedEntities;
+  const getRegionOptions = () => allowedEntities;
+
+  const getBranchOptionsForRegion = (regionEntityId: number | null): AllowedSplitEntity[] => {
+    if (!regionEntityId) return [];
+    const region = allowedEntities.find((entity) => entity.entity_id === regionEntityId);
+    if (!region) return [];
+    return region.child_entities && region.child_entities.length > 0 ? region.child_entities : [region];
+  };
+
+  const getEntityOptions = (rowIdx: number, regionEntityId: number | null): AllowedSplitEntity[] => {
+    const selectableEntities = getBranchOptionsForRegion(regionEntityId);
+    if (config?.allow_multiple_lines_per_entity) return selectableEntities;
     const usedEntityIds = new Set(
       rows.filter((_, i) => i !== rowIdx && rows[i].entity_id != null).map((r) => r.entity_id)
     );
-    return allowedEntities.filter((e) => !usedEntityIds.has(e.entity_id));
+    return selectableEntities.filter((e) => !usedEntityIds.has(e.entity_id));
   };
 
   const getApproversForRow = (row: SplitRow): AllowedSplitEntity["eligible_approvers"] => {
     if (!row.entity_id) return [];
-    const opt = allowedEntities.find((e) => e.entity_id === row.entity_id);
+    const opt = entityById.get(row.entity_id);
     return opt?.eligible_approvers ?? [];
   };
 
   const getBudgetOptionsForRow = (rowIdx: number) => {
     const row = rows[rowIdx];
     if (row.entity_id != null) {
-      const entity = allowedEntities.find((e) => e.entity_id === row.entity_id);
+      const entity = entityById.get(row.entity_id);
       return entity?.budgets ?? [];
     }
     return [];
@@ -1236,11 +1268,11 @@ function SplitAllocationPanel({
 
   const getBusinessUnitForRow = (row: SplitRow): AllowedSplitEntity | undefined => {
     if (!row.entity_id) return undefined;
-    return allowedEntities.find((e) => e.entity_id === row.entity_id);
+    return entityById.get(row.entity_id);
   };
 
   const getAutoApprovalForEntity = (entityId: number | null) => {
-    const opt = allowedEntities.find((e) => e.entity_id === entityId);
+    const opt = entityById.get(entityId ?? -1);
     return (
       !!entityId &&
       (config?.branch_approval_policy === "SKIP_ALL" ||
@@ -1248,11 +1280,34 @@ function SplitAllocationPanel({
     );
   };
 
+  const updateRegion = (rowIdx: number, regionEntityId: number | null) => {
+    const region = allowedEntities.find((entity) => entity.entity_id === regionEntityId) ?? null;
+    const branchOptions = region
+      ? region.child_entities && region.child_entities.length > 0
+        ? region.child_entities
+        : [region]
+      : [];
+    const nextEntityId = branchOptions.length === 1 ? branchOptions[0].entity_id : null;
+    const nextEntity = nextEntityId ? entityById.get(nextEntityId) : null;
+    const autoApproved = getAutoApprovalForEntity(nextEntityId);
+    updateRow(rowIdx, {
+      region_entity_id: regionEntityId,
+      entity_id: nextEntityId,
+      budget_id: nextEntity?.budgets?.length === 1 ? nextEntity.budgets[0].id : null,
+      category_id: null,
+      subcategory_id: null,
+      campaign_id: null,
+      approver_id: autoApproved ? null : (nextEntity?.eligible_approvers.length === 1 ? nextEntity.eligible_approvers[0].id : null),
+      auto_approved: autoApproved,
+    });
+  };
+
   const updateBusinessUnit = (rowIdx: number, entityId: number | null) => {
-    const opt = allowedEntities.find((e) => e.entity_id === entityId);
+    const opt = entityById.get(entityId ?? -1);
     const autoApproved = getAutoApprovalForEntity(entityId);
     const nextBudgetId = opt?.budgets?.length === 1 ? opt.budgets[0].id : null;
     updateRow(rowIdx, {
+      region_entity_id: regionByEntityId.get(entityId ?? -1)?.entity_id ?? null,
       entity_id: entityId,
       budget_id: nextBudgetId,
       category_id: null,
@@ -1275,7 +1330,7 @@ function SplitAllocationPanel({
   const getApprovalRequired = (row: SplitRow): boolean => {
     if (!row.entity_id) return false;
     if (config?.branch_approval_policy === "SKIP_ALL") return false;
-    const entity = allowedEntities.find((e) => e.entity_id === row.entity_id);
+    const entity = entityById.get(row.entity_id);
     if (!entity) return false;
     if (config?.branch_approval_policy === "OPTIONAL_WHEN_CONFIGURED") {
       return entity.approval_required;
@@ -1288,7 +1343,7 @@ function SplitAllocationPanel({
     // Policy-aware validation: approver required only when approval_required is true
     for (const r of rows) {
       if (!r.entity_id || !r.amount) {
-        setValidationError("All rows must have a business unit and amount.");
+        setValidationError("All rows must have an allocation target and amount.");
         return;
       }
       if (getApprovalRequired(r) && !r.approver_id) {
@@ -1313,8 +1368,22 @@ function SplitAllocationPanel({
       return;
     }
     if (config?.require_budget && rows.some((r) => !r.budget_id)) {
-      setValidationError("Budget is required for all rows.");
+      setValidationError("Funding budget is required for all rows.");
       return;
+    }
+    const seenAllocationPaths = new Set<string>();
+    for (const r of rows) {
+      const pathKey = [
+        r.entity_id ?? "",
+        r.budget_id ?? "",
+        r.category_id ?? "",
+        r.subcategory_id ?? "__direct__",
+      ].join("::");
+      if (seenAllocationPaths.has(pathKey)) {
+        setValidationError("Duplicate allocation paths are not allowed within the same split.");
+        return;
+      }
+      seenAllocationPaths.add(pathKey);
     }
     if (mustBalanceTotal && !isBalanced) {
       setValidationError(`Total must equal invoice amount. Current balance: ₹${balance.toLocaleString("en-IN", { minimumFractionDigits: 2 })}`);
@@ -1450,16 +1519,10 @@ function SplitAllocationPanel({
         <SectionLabel>Allocation Lines</SectionLabel>
         {rows.map((row, idx) => {
           const budgetOptions = getBudgetOptionsForRow(idx);
-          const entityOptions = getEntityOptions(idx);
+          const regionOptions = getRegionOptions();
+          const entityOptions = getEntityOptions(idx, row.region_entity_id);
           const approverOptions = getApproversForRow(row);
           const businessUnit = getBusinessUnitForRow(row);
-          const usedCategoriesForScope = new Set(
-            rows
-              .filter((_, rowIndex) => rowIndex !== idx)
-              .filter((otherRow) => otherRow.entity_id === row.entity_id && otherRow.budget_id === row.budget_id)
-              .map((otherRow) => otherRow.category_id)
-              .filter((categoryId): categoryId is number => categoryId != null),
-          );
           const usedSubcategoriesForScope = new Set(
             rows
               .filter((_, rowIndex) => rowIndex !== idx)
@@ -1477,9 +1540,7 @@ function SplitAllocationPanel({
           );
           const validCategoryIds = new Set(scopedBudgetLines.map((line) => line.category_id));
           const categories = (businessUnit?.categories ?? []).filter(
-            (category) =>
-              validCategoryIds.has(category.id) &&
-              (!usedCategoriesForScope.has(category.id) || row.category_id === category.id),
+            (category) => validCategoryIds.has(category.id),
           );
           const validSubcategoryIds = new Set(
             scopedBudgetLines
@@ -1515,22 +1576,21 @@ function SplitAllocationPanel({
               </div>
 
               <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-                {/* Business Unit select — hidden when only one entity (auto-selected in freeform mode) */}
                 {!singleEntity && (
                   <div className="space-y-1">
-                    <Label className="text-[11px]">Business Unit *</Label>
+                    <Label className="text-[11px]">Region *</Label>
                     <select
                       className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
-                      value={row.entity_id ?? ""}
+                      value={row.region_entity_id ?? ""}
                       onChange={(e) => {
-                        const eid = e.target.value ? Number(e.target.value) : null;
-                        updateBusinessUnit(idx, eid);
+                        const regionId = e.target.value ? Number(e.target.value) : null;
+                        updateRegion(idx, regionId);
                       }}
                     >
                       <option value="">
-                        Select business unit...
+                        Select region...
                       </option>
-                      {entityOptions.map((e) => (
+                      {regionOptions.map((e) => (
                         <option key={e.entity_id} value={e.entity_id}>
                           {e.business_unit_name ?? e.entity_name}
                         </option>
@@ -1539,8 +1599,29 @@ function SplitAllocationPanel({
                   </div>
                 )}
 
+                {!singleEntity && row.region_entity_id && (allowedEntities.find((entity) => entity.entity_id === row.region_entity_id)?.child_entities?.length ?? 0) > 0 && (
+                  <div className="space-y-1">
+                    <Label className="text-[11px]">Branch / Park *</Label>
+                    <select
+                      className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+                      value={row.entity_id ?? ""}
+                      onChange={(e) => {
+                        const eid = e.target.value ? Number(e.target.value) : null;
+                        updateBusinessUnit(idx, eid);
+                      }}
+                    >
+                      <option value="">Select branch / park...</option>
+                      {entityOptions.map((e) => (
+                        <option key={e.entity_id} value={e.entity_id}>
+                          {e.entity_name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
                 <div className="space-y-1">
-                  <Label className="text-[11px]">Budget {config?.require_budget ? "*" : ""}</Label>
+                  <Label className="text-[11px]">Funding Budget {config?.require_budget ? "*" : ""}</Label>
                   <select
                     className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
                     value={row.budget_id ?? ""}
@@ -1551,7 +1632,7 @@ function SplitAllocationPanel({
                     disabled={!row.entity_id}
                   >
                     <option value="">
-                      {!row.entity_id ? "Select business unit first" : "Select budget..."}
+                      {!row.entity_id ? "Select branch / park first" : "Select funding budget..."}
                     </option>
                     {budgetOptions.map((budget) => (
                       <option key={budget.id} value={budget.id}>
@@ -1581,7 +1662,7 @@ function SplitAllocationPanel({
                       }
                     >
                       <option value="">
-                        {!row.budget_id ? "Select budget first" : "Select category..."}
+                        {!row.budget_id ? "Select funding budget first" : "Select category..."}
                       </option>
                       {categories.map((c) => (
                         <option key={c.id} value={c.id}>
@@ -1933,11 +2014,11 @@ function SingleAllocationPanel({
   };
 
   const validationError = (() => {
-    if (!form.entity_id) return "Business unit is required.";
+    if (!form.entity_id) return "Allocation target is required.";
     if (config?.require_category && !form.category_id) return "Category is required by this workflow.";
     if (config?.require_subcategory && !form.subcategory_id) return "Subcategory is required by this workflow.";
     if (config?.require_campaign && !form.campaign_id) return "Campaign is required by this workflow.";
-    if (config?.require_budget && !form.budget_id) return "Budget is required by this workflow.";
+    if (config?.require_budget && !form.budget_id) return "Funding budget is required by this workflow.";
     return null;
   })();
 
@@ -2027,9 +2108,9 @@ function SingleAllocationPanel({
         </div>
       </div>
 
-      {/* Business Unit */}
+      {/* Allocate To */}
       <div className="space-y-1">
-        <Label className="text-xs">Business Unit *</Label>
+        <Label className="text-xs">Allocate To *</Label>
         <select
           className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
           value={form.entity_id ?? ""}
@@ -2103,10 +2184,10 @@ function SingleAllocationPanel({
             </select>
           </div>
 
-          {/* Budget */}
+          {/* Funding Budget */}
           <div className="space-y-1">
             <Label className="text-xs">
-              Budget {config?.require_budget ? " *" : ""}
+              Funding Budget {config?.require_budget ? " *" : ""}
             </Label>
             <select
               className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
@@ -2115,7 +2196,7 @@ function SingleAllocationPanel({
               disabled={budgets.length === 0}
             >
               <option value="">
-                {budgets.length === 0 ? "No budgets available" : "Select budget..."}
+                {budgets.length === 0 ? "No budgets available" : "Select funding budget..."}
               </option>
               {budgets.map((b) => (
                 <option key={b.id} value={b.id}>

@@ -5,7 +5,12 @@ import { useWorkingScope } from "@/contexts/WorkingScopeContext";
 import { ApiError } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
 import { useOrganizations, useScopeNodes } from "@/lib/hooks/useScopeNodes";
-import { findPreferredOperationalNode, findPreferredOperationalOrg } from "@/lib/working-scope";
+import {
+  getBranchScopeNodes,
+  getBudgetOwnerScopeNodes,
+  getRegionScopeNodes,
+  findPreferredOperationalOrg,
+} from "@/lib/working-scope";
 import { useBudgets, useCategories, useSubCategories } from "@/lib/hooks/useV2Budget";
 import {
   listExpenses,
@@ -91,6 +96,12 @@ function normalizeSelectId(value: string | number | null | undefined): string | 
   return String(value);
 }
 
+function isMarketingNode(node: { name?: string | null; code?: string | null }) {
+  const name = (node.name ?? "").trim().toLowerCase();
+  const code = (node.code ?? "").trim().toLowerCase();
+  return name === "marketing" || code === "marketing";
+}
+
 function formatDate(dateStr: string): string {
   try { return format(parseISO(dateStr), "dd MMM yyyy"); }
   catch { return dateStr; }
@@ -149,12 +160,98 @@ export default function ManualExpensesPage() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editExpenseId, setEditExpenseId] = useState<string | null>(null);
   const queryClient = useQueryClient();
+  const {
+    orgId: selectedOrgId,
+    nodeId: selectedNodeId,
+    setOrgId: setSelectedOrgId,
+    setNodeId: setSelectedNodeId,
+  } = useWorkingScope();
+  const { data: organizations = [], isLoading: orgsLoading } = useOrganizations();
+  const { data: nodes = [], isLoading: nodesLoading } = useScopeNodes(selectedOrgId ?? undefined);
+  const budgetScopeNodes = useMemo(() => getBudgetOwnerScopeNodes(nodes), [nodes]);
+  const regionNodes = useMemo(() => getRegionScopeNodes(nodes), [nodes]);
+  const branchNodes = useMemo(() => getBranchScopeNodes(nodes), [nodes]);
+  const [selectedRegionId, setSelectedRegionId] = useState<string>("");
+  const selectedOrg =
+    organizations.find((org) => normalizeSelectId(org.id) === normalizeSelectId(selectedOrgId)) ?? null;
+  const selectedNode =
+    budgetScopeNodes.find((node) => normalizeSelectId(node.id) === selectedNodeId) ?? null;
+  const availableBranchNodes = useMemo(
+    () =>
+      selectedRegionId
+        ? branchNodes.filter((node) => normalizeSelectId(node.parent) === selectedRegionId)
+        : [],
+    [branchNodes, selectedRegionId],
+  );
+  const selectedBranchNode = useMemo(
+    () =>
+      selectedNode && selectedNode.node_type === "branch"
+        ? branchNodes.find((node) => normalizeSelectId(node.id) === normalizeSelectId(selectedNode.id)) ?? null
+        : null,
+    [branchNodes, selectedNode],
+  );
+
+  useEffect(() => {
+    const preferredOrg = findPreferredOperationalOrg(organizations);
+    if (
+      preferredOrg &&
+      normalizeSelectId(selectedOrgId) !== normalizeSelectId(preferredOrg.id)
+    ) {
+      setSelectedOrgId(String(preferredOrg.id));
+    }
+  }, [organizations, selectedOrgId, setSelectedOrgId]);
+
+  useEffect(() => {
+    if (!selectedOrgId) return;
+    const selectedNodeStillVisible = selectedNodeId
+      ? budgetScopeNodes.some((node) => normalizeSelectId(node.id) === selectedNodeId)
+      : false;
+    if (selectedNodeId && !selectedNodeStillVisible) {
+      setSelectedNodeId(null);
+    }
+  }, [budgetScopeNodes, selectedNodeId, selectedOrgId, setSelectedNodeId]);
+
+  useEffect(() => {
+    if (!selectedNode) return;
+    if (selectedNode.node_type === "branch") {
+      const parentId = normalizeSelectId(selectedNode.parent) ?? "";
+      if (parentId && parentId !== selectedRegionId) {
+        setSelectedRegionId(parentId);
+      }
+      return;
+    }
+    if (selectedNode.node_type === "region") {
+      const nodeId = normalizeSelectId(selectedNode.id) ?? "";
+      if (nodeId && nodeId !== selectedRegionId) {
+        setSelectedRegionId(nodeId);
+      }
+    }
+  }, [selectedNode, selectedRegionId]);
+
+  const handleRegionChange = (value: string) => {
+    const nextRegionId = value === UNSET_SELECT_VALUE ? "" : value;
+    setSelectedRegionId(nextRegionId);
+    const nextBranches = branchNodes.filter((node) => normalizeSelectId(node.parent) === nextRegionId);
+    if (nextBranches.length > 0) {
+      if (
+        selectedNode &&
+        selectedNode.node_type === "branch" &&
+        normalizeSelectId(selectedNode.parent) === nextRegionId
+      ) {
+        return;
+      }
+      setSelectedNodeId(null);
+      return;
+    }
+    setSelectedNodeId(nextRegionId || null);
+  };
 
   // List query
   const listParams = useMemo(() => ({
     status: activeTab === "all" ? undefined : activeTab,
     page: 1,
-  }), [activeTab]);
+    scope_node: selectedNodeId ?? undefined,
+  }), [activeTab, selectedNodeId]);
 
   const {
     data: listData,
@@ -212,7 +309,68 @@ export default function ManualExpensesPage() {
   });
 
   return (
-    <V2Shell>
+    <V2Shell
+      title="Manual Expenses"
+      titleIcon={<IndianRupee className="h-5 w-5 text-muted-foreground" />}
+      orgSelector={
+        orgsLoading ? (
+          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+        ) : selectedOrg ? (
+          <div className="flex items-center gap-3">
+            <span className="text-[10px] font-bold tracking-widest uppercase text-muted-foreground/50">Context</span>
+            <span className="text-sm font-bold tracking-wide text-muted-foreground">
+              {selectedOrg.name}
+            </span>
+          </div>
+        ) : null
+      }
+      unitSelector={
+        nodesLoading ? (
+          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+        ) : (
+          <div className="flex items-center gap-2">
+            <Select
+              value={selectedRegionId || UNSET_SELECT_VALUE}
+              onValueChange={handleRegionChange}
+            >
+              <SelectTrigger className="w-40">
+                <SelectValue placeholder="Select region" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={UNSET_SELECT_VALUE} disabled>
+                  Select region
+                </SelectItem>
+                {regionNodes.map((node) => (
+                  <SelectItem key={node.id} value={String(node.id)}>
+                    {node.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {availableBranchNodes.length > 0 ? (
+              <Select
+                value={selectedBranchNode ? String(selectedBranchNode.id) : UNSET_SELECT_VALUE}
+                onValueChange={(value) => setSelectedNodeId(value === UNSET_SELECT_VALUE ? null : value)}
+              >
+                <SelectTrigger className="w-48">
+                  <SelectValue placeholder="Select branch / park" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={UNSET_SELECT_VALUE} disabled>
+                    Select branch / park
+                  </SelectItem>
+                  {availableBranchNodes.map((node) => (
+                    <SelectItem key={node.id} value={String(node.id)}>
+                      {node.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : null}
+          </div>
+        )
+      }
+    >
       <div className="flex flex-col h-full">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b bg-background">
@@ -228,6 +386,7 @@ export default function ManualExpensesPage() {
           <Button
             onClick={() => { setEditExpenseId(null); setIsCreateOpen(true); }}
             className="gap-1.5"
+            disabled={!selectedNodeId}
           >
             <Plus className="h-4 w-4" />
             New Expense
@@ -802,8 +961,11 @@ function ExpenseFormDialog({ expenseId, onClose, onSaved }: ExpenseFormProps) {
   } = useWorkingScope();
   const selectedOrgId = selectedOrgIdRaw ?? "";
   const { data: scopeNodes = [] } = useScopeNodes(selectedOrgId || undefined);
+  const regionNodes = useMemo(() => getRegionScopeNodes(scopeNodes), [scopeNodes]);
+  const branchNodes = useMemo(() => getBranchScopeNodes(scopeNodes), [scopeNodes]);
   const { data: budgets = [] } = useBudgets({
     org: selectedOrgId || undefined,
+    scope_node: selectedNodeId || undefined,
     status: "active",
   });
   const { data: categories = [] } = useCategories({
@@ -822,35 +984,108 @@ function ExpenseFormDialog({ expenseId, onClose, onSaved }: ExpenseFormProps) {
     () => scopeNodes.find((node) => String(node.id) === normalizeSelectId(form.scope_node)),
     [scopeNodes, form.scope_node],
   );
+  const selectedRegionNode = useMemo(
+    () =>
+      selectedScopeNode?.node_type === "branch"
+        ? regionNodes.find(
+            (node) => normalizeSelectId(node.id) === normalizeSelectId(selectedScopeNode.parent),
+          ) ?? null
+        : selectedScopeNode?.node_type === "region"
+          ? selectedScopeNode
+          : null,
+    [regionNodes, selectedScopeNode],
+  );
+  const selectedBranchNode = useMemo(
+    () =>
+      selectedScopeNode?.node_type === "branch"
+        ? branchNodes.find(
+            (node) => normalizeSelectId(node.id) === normalizeSelectId(selectedScopeNode.id),
+          ) ?? null
+        : null,
+    [branchNodes, selectedScopeNode],
+  );
   const selectedBudget = useMemo(
     () => budgets.find((budget) => String(budget.id) === normalizeSelectId(form.budget)),
     [budgets, form.budget],
   );
+  const selectedBudgetLines = useMemo(
+    () => selectedBudget?.lines ?? [],
+    [selectedBudget],
+  );
+  const availableCategoryIds = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          selectedBudgetLines
+            .map((line) => normalizeSelectId(line.category))
+            .filter((value): value is string => Boolean(value)),
+        ),
+      ),
+    [selectedBudgetLines],
+  );
+  const availableCategories = useMemo(
+    () =>
+      selectedBudget
+        ? categories.filter((category) => availableCategoryIds.includes(String(category.id)))
+        : [],
+    [availableCategoryIds, categories, selectedBudget],
+  );
+  const availableSubcategoryIds = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          selectedBudgetLines
+            .filter((line) => {
+              const lineCategoryId = normalizeSelectId(line.category);
+              return lineCategoryId && lineCategoryId === normalizeSelectId(form.category);
+            })
+            .map((line) => normalizeSelectId(line.subcategory))
+            .filter((value): value is string => Boolean(value)),
+        ),
+      ),
+    [form.category, selectedBudgetLines],
+  );
+  const availableSubcategories = useMemo(
+    () =>
+      selectedBudget && form.category
+        ? subcategories.filter((subcategory) => availableSubcategoryIds.includes(String(subcategory.id)))
+        : [],
+    [availableSubcategoryIds, form.category, selectedBudget, subcategories],
+  );
   const selectedCategory = useMemo(
-    () => categories.find((category) => String(category.id) === normalizeSelectId(form.category)),
-    [categories, form.category],
+    () => availableCategories.find((category) => String(category.id) === normalizeSelectId(form.category)),
+    [availableCategories, form.category],
   );
   const selectedSubcategory = useMemo(
-    () => subcategories.find((subcategory) => String(subcategory.id) === normalizeSelectId(form.subcategory)),
-    [subcategories, form.subcategory],
+    () =>
+      availableSubcategories.find(
+        (subcategory) => String(subcategory.id) === normalizeSelectId(form.subcategory),
+      ),
+    [availableSubcategories, form.subcategory],
   );
 
   useEffect(() => {
     const preferredOrg = findPreferredOperationalOrg(organizations);
-    if (preferredOrg && selectedOrgId !== String(preferredOrg.id)) {
+    if (
+      preferredOrg &&
+      normalizeSelectId(selectedOrgId) !== normalizeSelectId(preferredOrg.id)
+    ) {
       setSelectedOrgId(String(preferredOrg.id));
     }
   }, [organizations, selectedOrgId, setSelectedOrgId]);
 
   useEffect(() => {
     if (!selectedOrgId) return;
-    const preferredNode = findPreferredOperationalNode(scopeNodes);
-    const targetNodeId = selectedNodeId ?? preferredNode?.id ?? null;
-    if (targetNodeId && normalizeSelectId(form.scope_node) !== String(targetNodeId)) {
-      setSelectedNodeId(String(targetNodeId));
-      setForm((f) => ({ ...f, scope_node: String(targetNodeId) }));
+    if (!selectedNodeId) {
+      if (form.scope_node) {
+        setForm((f) => ({ ...f, scope_node: undefined }));
+      }
+      return;
     }
-  }, [form.scope_node, scopeNodes, selectedNodeId, selectedOrgId, setSelectedNodeId]);
+    if (normalizeSelectId(form.scope_node) !== String(selectedNodeId)) {
+      setForm((f) => ({ ...f, scope_node: String(selectedNodeId) }));
+    }
+  }, [form.scope_node, selectedNodeId, selectedOrgId]);
 
   // Pre-fill for edit
   useEffect(() => {
@@ -877,6 +1112,46 @@ function ExpenseFormDialog({ expenseId, onClose, onSaved }: ExpenseFormProps) {
       }
     }
   }, [existing, form.expense_date, setSelectedNodeId, setSelectedOrgId]);
+
+  useEffect(() => {
+    if (!form.budget) {
+      if (form.category || form.subcategory) {
+        setForm((f) => ({
+          ...f,
+          category: undefined,
+          subcategory: undefined,
+        }));
+      }
+      return;
+    }
+
+    if (
+      form.category &&
+      !availableCategoryIds.includes(String(form.category))
+    ) {
+      setForm((f) => ({
+        ...f,
+        category: undefined,
+        subcategory: undefined,
+      }));
+    }
+  }, [availableCategoryIds, form.budget, form.category, form.subcategory]);
+
+  useEffect(() => {
+    if (!form.category) {
+      if (form.subcategory) {
+        setForm((f) => ({ ...f, subcategory: undefined }));
+      }
+      return;
+    }
+
+    if (
+      form.subcategory &&
+      !availableSubcategoryIds.includes(String(form.subcategory))
+    ) {
+      setForm((f) => ({ ...f, subcategory: undefined }));
+    }
+  }, [availableSubcategoryIds, form.category, form.subcategory]);
 
   const createMut = useMutation({
     mutationFn: createExpense,
@@ -993,13 +1268,13 @@ function ExpenseFormDialog({ expenseId, onClose, onSaved }: ExpenseFormProps) {
               <div className="space-y-1.5">
                 <span className="text-[10px] font-bold tracking-widest uppercase text-muted-foreground/50">Context</span>
                 <div className="text-sm font-bold tracking-wide text-muted-foreground">
-                  {selectedOrganization?.name ?? "Horizon"} / {selectedScopeNode?.name ?? "Marketing"}
+                  {selectedOrganization?.name ?? "Horizon"} / Marketing
                 </div>
               </div>
               <div className="space-y-1.5">
-                <span className="text-[10px] font-bold tracking-widest uppercase text-muted-foreground/50">Scope</span>
+                <span className="text-[10px] font-bold tracking-widest uppercase text-muted-foreground/50">Region</span>
                 <div className="text-sm font-bold tracking-wide text-muted-foreground">
-                  {selectedScopeNode?.name ?? "Marketing"}
+                  {selectedRegionNode?.name ?? "Select region"}
                 </div>
               </div>
               <div className="space-y-1.5">
@@ -1020,6 +1295,17 @@ function ExpenseFormDialog({ expenseId, onClose, onSaved }: ExpenseFormProps) {
               </div>
             </div>
 
+            {selectedBranchNode ? (
+              <div className="grid grid-cols-1 gap-3">
+                <div className="space-y-1.5">
+                  <span className="text-[10px] font-bold tracking-widest uppercase text-muted-foreground/50">Branch / Park</span>
+                  <div className="text-sm font-bold tracking-wide text-muted-foreground">
+                    {selectedBranchNode.name}
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
             {/* Row 3: Budget + Category + Subcategory */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               <div className="space-y-1.5">
@@ -1031,6 +1317,8 @@ function ExpenseFormDialog({ expenseId, onClose, onSaved }: ExpenseFormProps) {
                     setForm((f) => ({
                       ...f,
                       budget: value,
+                      category: undefined,
+                      subcategory: undefined,
                     }));
                   }}
                 >
@@ -1055,6 +1343,7 @@ function ExpenseFormDialog({ expenseId, onClose, onSaved }: ExpenseFormProps) {
                 <Label>Category *</Label>
                 <Select
                   value={form.category || UNSET_SELECT_VALUE}
+                  disabled={!form.budget}
                   onValueChange={(value) => {
                     if (value === UNSET_SELECT_VALUE) return;
                     setForm((f) => ({
@@ -1073,7 +1362,7 @@ function ExpenseFormDialog({ expenseId, onClose, onSaved }: ExpenseFormProps) {
                     <SelectItem value={UNSET_SELECT_VALUE} disabled>
                       Select category
                     </SelectItem>
-                    {categories.map((category) => (
+                    {availableCategories.map((category) => (
                       <SelectItem key={category.id} value={String(category.id)}>{category.name}</SelectItem>
                     ))}
                   </SelectContent>
@@ -1083,6 +1372,7 @@ function ExpenseFormDialog({ expenseId, onClose, onSaved }: ExpenseFormProps) {
                 <Label>Subcategory *</Label>
                 <Select
                   value={form.subcategory || UNSET_SELECT_VALUE}
+                  disabled={!form.budget || !form.category}
                   onValueChange={(value) => {
                     if (value === UNSET_SELECT_VALUE) return;
                     setForm((f) => ({
@@ -1100,7 +1390,7 @@ function ExpenseFormDialog({ expenseId, onClose, onSaved }: ExpenseFormProps) {
                     <SelectItem value={UNSET_SELECT_VALUE} disabled>
                       Select subcategory
                     </SelectItem>
-                    {subcategories.map((subcategory) => (
+                    {availableSubcategories.map((subcategory) => (
                       <SelectItem key={subcategory.id} value={String(subcategory.id)}>{subcategory.name}</SelectItem>
                     ))}
                   </SelectContent>

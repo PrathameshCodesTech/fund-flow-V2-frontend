@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from "react";
+﻿import { useState, useEffect, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { useNavigate } from "react-router-dom";
 import { V2Shell } from "@/components/v2/V2Shell";
@@ -16,7 +16,13 @@ import {
   useCreateWorkflowFromCampaign,
 } from "@/lib/hooks/useV2Campaign";
 import { useOrganizations, useScopeNodes } from "@/lib/hooks/useScopeNodes";
-import { findPreferredOperationalNode, findPreferredOperationalOrg } from "@/lib/working-scope";
+import {
+  getBranchScopeNodes,
+  getBudgetOwnerScopeNodes,
+  getRegionScopeNodes,
+  findPreferredBudgetScopeNode,
+  findPreferredOperationalOrg,
+} from "@/lib/working-scope";
 import { useBudget, useBudgets, useCategories, useSubCategoriesByCategories } from "@/lib/hooks/useV2Budget";
 import type {
   Campaign,
@@ -65,7 +71,7 @@ import {
   Upload,
 } from "lucide-react";
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// -- Helpers -------------------------------------------------------------------
 
 function parseDecimal(v: string | null | undefined): number {
   if (!v) return 0;
@@ -76,9 +82,9 @@ function formatBudget(v: string | null | undefined, currency = "INR"): string {
   const amount = parseDecimal(v);
   if (amount === 0) return "—";
   if (currency === "INR") {
-    if (amount >= 10000000) return `₹${(amount / 10000000).toFixed(2)} Cr`;
-    if (amount >= 100000) return `₹${(amount / 100000).toFixed(2)} L`;
-    return `₹${amount.toLocaleString("en-IN")}`;
+    if (amount >= 10000000) return `?${(amount / 10000000).toFixed(2)} Cr`;
+    if (amount >= 100000) return `?${(amount / 100000).toFixed(2)} L`;
+    return `?${amount.toLocaleString("en-IN")}`;
   }
   return `${currency} ${amount.toLocaleString()}`;
 }
@@ -132,12 +138,19 @@ function normalizeCampaignSelectId(value: string | number | null | undefined): s
   return String(value);
 }
 
-// ── Campaign Form Dialog ───────────────────────────────────────────────────────
+function isMarketingNode(node: { name?: string | null; code?: string | null }) {
+  const name = (node.name ?? "").trim().toLowerCase();
+  const code = (node.code ?? "").trim().toLowerCase();
+  return name === "marketing" || code === "marketing";
+}
+
+// -- Campaign Form Dialog -------------------------------------------------------
 
 interface CampaignFormProps {
   initial?: Partial<Campaign>;
   orgId: string | null;
   scopeNodeId?: string | null;
+  disabled?: boolean;
   onSubmit: (data: CreateCampaignRequest | UpdateCampaignRequest) => Promise<void>;
   onCancel: () => void;
   isSaving: boolean;
@@ -150,6 +163,7 @@ function CampaignFormDialog({
   initial,
   orgId,
   scopeNodeId,
+  disabled = false,
   onSubmit,
   onCancel,
   isSaving,
@@ -165,13 +179,44 @@ function CampaignFormDialog({
   const [selectedCampaignType, setSelectedCampaignType] = useState<string>("");
   const [selectedCurrency, setSelectedCurrency] = useState<string>("INR");
 
-  const { data: scopeNodes = [] } = useScopeNodes(orgId ?? undefined);
-  const { data: categories = [] } = useCategories(orgId ? { org: orgId } : undefined);
+  const queriesEnabled = open && !!orgId;
+  const { data: scopeNodes = [] } = useScopeNodes(queriesEnabled ? (orgId ?? undefined) : undefined);
+  const budgetScopeNodes = useMemo(() => getBudgetOwnerScopeNodes(scopeNodes), [scopeNodes]);
+  const regionNodes = useMemo(() => getRegionScopeNodes(scopeNodes), [scopeNodes]);
+  const branchNodes = useMemo(() => getBranchScopeNodes(scopeNodes), [scopeNodes]);
+  const selectedScopeNodeDetails = useMemo(
+    () =>
+      budgetScopeNodes.find(
+        (node) => normalizeCampaignSelectId(node.id) === normalizeCampaignSelectId(selectedScopeNode),
+      ) ?? null,
+    [budgetScopeNodes, selectedScopeNode],
+  );
+  const selectedRegionNode = useMemo(
+    () =>
+      selectedScopeNodeDetails?.node_type === "branch"
+        ? regionNodes.find(
+            (node) => normalizeCampaignSelectId(node.id) === normalizeCampaignSelectId(selectedScopeNodeDetails.parent),
+          ) ?? null
+        : selectedScopeNodeDetails?.node_type === "region"
+          ? selectedScopeNodeDetails
+          : null,
+    [regionNodes, selectedScopeNodeDetails],
+  );
+  const selectedBranchNode = useMemo(
+    () =>
+      selectedScopeNodeDetails?.node_type === "branch"
+        ? branchNodes.find(
+            (node) => normalizeCampaignSelectId(node.id) === normalizeCampaignSelectId(selectedScopeNodeDetails.id),
+          ) ?? null
+        : null,
+    [branchNodes, selectedScopeNodeDetails],
+  );
+  const { data: categories = [] } = useCategories(queriesEnabled && orgId ? { org: orgId } : undefined);
   const subcategoriesByCategory = useSubCategoriesByCategories(
-    selectedCategory ? [selectedCategory] : [],
+    queriesEnabled && selectedCategory ? [selectedCategory] : [],
   );
   const { data: budgets = [] } = useBudgets(
-    selectedScopeNode
+    queriesEnabled && selectedScopeNode
       ? {
           org: orgId ?? undefined,
           scope_node: selectedScopeNode,
@@ -179,7 +224,7 @@ function CampaignFormDialog({
         }
       : undefined,
   );
-  const { data: selectedBudgetDetail } = useBudget(selectedBudget || null);
+  const { data: selectedBudgetDetail } = useBudget(queriesEnabled ? (selectedBudget || null) : null);
   const budgetLines = selectedBudgetDetail?.lines ?? [];
   const budgetCategoryIds = Array.from(
     new Set(
@@ -223,9 +268,9 @@ function CampaignFormDialog({
     if (!v) { setOpen(false); onCancel(); }
     else {
       const preferredScopeNodeId =
-        initial?.scope_node ??
-        scopeNodeId ??
-        findPreferredOperationalNode(scopeNodes)?.id ??
+        normalizeCampaignSelectId(initial?.scope_node) ??
+        normalizeCampaignSelectId(scopeNodeId) ??
+        normalizeCampaignSelectId(findPreferredBudgetScopeNode(budgetScopeNodes)?.id) ??
         "";
       setSelectedScopeNode(preferredScopeNodeId);
       setSelectedCategory(normalizeCampaignSelectId(initial?.category) ?? "");
@@ -320,7 +365,7 @@ function CampaignFormDialog({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         {mode === "create" ? (
-          <Button size="sm" className="gap-1.5">
+          <Button size="sm" className="gap-1.5" disabled={disabled}>
             <Plus className="h-4 w-4" />
             New Campaign
           </Button>
@@ -343,6 +388,7 @@ function CampaignFormDialog({
         >
           <input type="hidden" {...register("org")} value={orgId ?? ""} />
           <input type="hidden" {...register("scope_node", { required: "Context is required" })} />
+          <input type="hidden" {...register("code")} value={initial?.code ?? ""} />
           <input type="hidden" {...register("category")} value={selectedCategory} />
           <input type="hidden" {...register("subcategory")} value={selectedSubcategory} />
           <input type="hidden" {...register("budget")} value={selectedBudget} />
@@ -352,13 +398,30 @@ function CampaignFormDialog({
           <div className="space-y-1.5">
             <span className="text-[10px] font-bold tracking-widest uppercase text-muted-foreground/50">Context</span>
             <div className="text-sm font-bold tracking-wide text-muted-foreground">
-              Horizon / {scopeNodes.find((node) => node.id === selectedScopeNode)?.name ?? "Marketing"}
+              Horizon / Marketing
             </div>
             {errors.scope_node && (
               <p className="text-xs text-destructive">{String(errors.scope_node.message)}</p>
             )}
             {/* Hidden field to submit the value */}
             <input type="hidden" {...register("scope_node", { required: "Required" })} value={selectedScopeNode} />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <span className="text-[10px] font-bold tracking-widest uppercase text-muted-foreground/50">Region</span>
+              <div className="text-sm font-bold tracking-wide text-muted-foreground">
+                {selectedRegionNode?.name ?? "Select region"}
+              </div>
+            </div>
+            {selectedBranchNode ? (
+              <div className="space-y-1.5">
+                <span className="text-[10px] font-bold tracking-widest uppercase text-muted-foreground/50">Branch / Park</span>
+                <div className="text-sm font-bold tracking-wide text-muted-foreground">
+                  {selectedBranchNode.name}
+                </div>
+              </div>
+            ) : null}
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -372,18 +435,6 @@ function CampaignFormDialog({
               />
               {errors.name && (
                 <p className="text-xs text-destructive">{String(errors.name.message)}</p>
-              )}
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="code">Code *</Label>
-              <Input
-                id="code"
-                {...register("code", { required: "Required" })}
-                placeholder="e.g. camp-001"
-                className={errors.code ? "border-destructive" : ""}
-              />
-              {errors.code && (
-                <p className="text-xs text-destructive">{String(errors.code.message)}</p>
               )}
             </div>
           </div>
@@ -555,7 +606,7 @@ function CampaignFormDialog({
   );
 }
 
-// ── Delete Campaign Dialog ─────────────────────────────────────────────────────
+// -- Delete Campaign Dialog -----------------------------------------------------
 
 function DeleteCampaignDialog({
   campaign,
@@ -607,7 +658,7 @@ function DeleteCampaignDialog({
   );
 }
 
-// ── Submit Budget Dialog ───────────────────────────────────────────────────────
+// -- Submit Budget Dialog -------------------------------------------------------
 
 function SubmitBudgetDialog({ campaign }: { campaign: Campaign }) {
   const [open, setOpen] = useState(false);
@@ -651,7 +702,7 @@ function SubmitBudgetDialog({ campaign }: { campaign: Campaign }) {
   );
 }
 
-// ── Start Workflow Dialog ───────────────────────────────────────────────────────
+// -- Start Workflow Dialog -------------------------------------------------------
 
 function StartWorkflowDialog({ campaign }: { campaign: Campaign }) {
   const [open, setOpen] = useState(false);
@@ -717,7 +768,7 @@ function StartWorkflowDialog({ campaign }: { campaign: Campaign }) {
   );
 }
 
-// ── Cancel Campaign Dialog ─────────────────────────────────────────────────────
+// -- Cancel Campaign Dialog -----------------------------------------------------
 
 function CancelCampaignDialog({ campaign }: { campaign: Campaign }) {
   const [open, setOpen] = useState(false);
@@ -777,7 +828,7 @@ function CancelCampaignDialog({ campaign }: { campaign: Campaign }) {
   );
 }
 
-// ── Add Document Dialog ───────────────────────────────────────────────────────
+// -- Add Document Dialog -------------------------------------------------------
 
 function AddDocumentDialog({ campaign }: { campaign: Campaign }) {
   const [open, setOpen] = useState(false);
@@ -862,7 +913,7 @@ function AddDocumentDialog({ campaign }: { campaign: Campaign }) {
   );
 }
 
-// ── Campaign Detail Panel ──────────────────────────────────────────────────────
+// -- Campaign Detail Panel ------------------------------------------------------
 
 function CampaignDetailPanel({
   campaign,
@@ -1048,23 +1099,56 @@ function CampaignDetailPanel({
   );
 }
 
-// ── Main Page ─────────────────────────────────────────────────────────────────
+// -- Main Page -----------------------------------------------------------------
 
 const CampaignsPage = () => {
   const {
     orgId: selectedOrgId,
     nodeId: selectedNodeId,
     setOrgId: setSelectedOrgId,
+    setNodeId: setSelectedNodeId,
   } = useWorkingScope();
   const [selectedCampaignId, setSelectedCampaignId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [page, setPage] = useState(1);
 
   const { data: organizations = [], isLoading: orgsLoading } = useOrganizations();
-  const selectedOrg = organizations.find((org) => org.id === selectedOrgId) ?? null;
+  const { data: nodes = [], isLoading: nodesLoading } = useScopeNodes(selectedOrgId ?? undefined);
+  const budgetScopeNodes = useMemo(() => getBudgetOwnerScopeNodes(nodes), [nodes]);
+  const regionNodes = useMemo(() => getRegionScopeNodes(nodes), [nodes]);
+  const branchNodes = useMemo(() => getBranchScopeNodes(nodes), [nodes]);
+  const [selectedRegionId, setSelectedRegionId] = useState<string>("");
+  const selectedOrg =
+    organizations.find((org) => normalizeCampaignSelectId(org.id) === normalizeCampaignSelectId(selectedOrgId)) ?? null;
+  const selectedNode =
+    budgetScopeNodes.find((node) => normalizeCampaignSelectId(node.id) === normalizeCampaignSelectId(selectedNodeId)) ?? null;
+  const availableBranchNodes = useMemo(
+    () =>
+      selectedRegionId
+        ? branchNodes.filter((node) => normalizeCampaignSelectId(node.parent) === selectedRegionId)
+        : [],
+    [branchNodes, selectedRegionId],
+  );
+  const selectedRegionNode = useMemo(
+    () =>
+      regionNodes.find((node) => normalizeCampaignSelectId(node.id) === selectedRegionId) ??
+      (selectedNode && selectedNode.node_type === "region" ? selectedNode : null) ??
+      (selectedNode && selectedNode.node_type === "branch"
+        ? regionNodes.find((node) => normalizeCampaignSelectId(node.id) === normalizeCampaignSelectId(selectedNode.parent)) ?? null
+        : null),
+    [regionNodes, selectedNode, selectedRegionId],
+  );
+  const selectedBranchNode = useMemo(
+    () =>
+      selectedNode && selectedNode.node_type === "branch"
+        ? branchNodes.find((node) => normalizeCampaignSelectId(node.id) === normalizeCampaignSelectId(selectedNode.id)) ?? null
+        : null,
+    [branchNodes, selectedNode],
+  );
   const { data: campaignResponse, isLoading: campaignsLoading } = useCampaigns(
     {
       org: selectedOrgId ?? undefined,
+      scope_node: selectedNodeId ?? undefined,
       status: statusFilter !== "all" ? statusFilter : undefined,
       page,
     },
@@ -1079,10 +1163,26 @@ const CampaignsPage = () => {
   // Fix #4: use useEffect for auto-select, not render-time side effect
   useEffect(() => {
     const preferredOrg = findPreferredOperationalOrg(organizations);
-    if (preferredOrg && selectedOrgId !== preferredOrg.id) {
-      setSelectedOrgId(preferredOrg.id);
+    if (
+      preferredOrg &&
+      normalizeCampaignSelectId(selectedOrgId) !== normalizeCampaignSelectId(preferredOrg.id)
+    ) {
+      setSelectedOrgId(String(preferredOrg.id));
     }
   }, [selectedOrgId, organizations, setSelectedOrgId]);
+
+  useEffect(() => {
+    if (!selectedOrgId) return;
+    const selectedNodeStillVisible = selectedNodeId
+      ? budgetScopeNodes.some((node) => normalizeCampaignSelectId(node.id) === normalizeCampaignSelectId(selectedNodeId))
+      : false;
+    if (!selectedNodeStillVisible) {
+      const preferredNode = findPreferredBudgetScopeNode(budgetScopeNodes);
+      if (preferredNode) {
+        setSelectedNodeId(normalizeCampaignSelectId(preferredNode.id) ?? null);
+      }
+    }
+  }, [budgetScopeNodes, selectedNodeId, selectedOrgId, setSelectedNodeId]);
 
   useEffect(() => {
     if (selectedCampaignId && !campaignsLoading && !selectedCampaign) {
@@ -1090,15 +1190,115 @@ const CampaignsPage = () => {
     }
   }, [campaignsLoading, selectedCampaign, selectedCampaignId]);
 
+  useEffect(() => {
+    if (!selectedNode) return;
+    if (selectedNode.node_type === "branch") {
+      const parentId = normalizeCampaignSelectId(selectedNode.parent) ?? "";
+      if (parentId && parentId !== selectedRegionId) {
+        setSelectedRegionId(parentId);
+      }
+      return;
+    }
+    if (selectedNode.node_type === "region") {
+      const nodeId = normalizeCampaignSelectId(selectedNode.id) ?? "";
+      if (nodeId && nodeId !== selectedRegionId) {
+        setSelectedRegionId(nodeId);
+      }
+    }
+  }, [selectedNode, selectedRegionId]);
+
+  const handleRegionChange = (value: string) => {
+    const nextRegionId = value === "__unset__" ? "" : value;
+    setSelectedRegionId(nextRegionId);
+    const nextBranches = branchNodes.filter((node) => normalizeCampaignSelectId(node.parent) === nextRegionId);
+    setSelectedCampaignId(null);
+    setPage(1);
+    if (nextBranches.length > 0) {
+      if (
+        selectedNode &&
+        selectedNode.node_type === "branch" &&
+        normalizeCampaignSelectId(selectedNode.parent) === nextRegionId
+      ) {
+        return;
+      }
+      setSelectedNodeId(null);
+      return;
+    }
+    setSelectedNodeId(nextRegionId || null);
+  };
+
   return (
     <V2Shell
       title="Campaigns"
       titleIcon={<Megaphone className="h-5 w-5 text-muted-foreground" />}
+      orgSelector={
+        orgsLoading ? (
+          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+        ) : selectedOrg ? (
+          <div className="flex items-center gap-3">
+            <span className="text-[10px] font-bold tracking-widest uppercase text-muted-foreground/50">Context</span>
+            <span className="text-sm font-bold tracking-wide text-muted-foreground">
+              {selectedOrg.name}
+            </span>
+          </div>
+        ) : null
+      }
+      unitSelector={
+        nodesLoading ? (
+          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+        ) : (
+          <div className="flex items-center gap-2">
+            <Select
+              value={selectedRegionId || "__unset__"}
+              onValueChange={handleRegionChange}
+            >
+              <SelectTrigger className="w-40">
+                <SelectValue placeholder="Select region" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__unset__" disabled>
+                  Select region
+                </SelectItem>
+                {regionNodes.map((node) => (
+                  <SelectItem key={node.id} value={String(node.id)}>
+                    {node.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {availableBranchNodes.length > 0 ? (
+              <Select
+                value={selectedBranchNode ? String(selectedBranchNode.id) : "__unset__"}
+                onValueChange={(value) => {
+                  setSelectedNodeId(value === "__unset__" ? null : value);
+                  setSelectedCampaignId(null);
+                  setPage(1);
+                }}
+              >
+                <SelectTrigger className="w-48">
+                  <SelectValue placeholder="Select branch / park" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__unset__" disabled>
+                    Select branch / park
+                  </SelectItem>
+                  {availableBranchNodes.map((node) => (
+                    <SelectItem key={node.id} value={String(node.id)}>
+                      {node.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : null}
+          </div>
+        )
+      }
       actions={
         <CampaignFormDialog
           mode="create"
           orgId={selectedOrgId}
           scopeNodeId={selectedNodeId}
+          disabled={!selectedNodeId}
           onSubmit={async (data) => {
             await createCampaign.mutateAsync(data as CreateCampaignRequest);
           }}
@@ -1112,18 +1312,18 @@ const CampaignsPage = () => {
       <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
         {/* Left panel: org selector + campaign list */}
         <aside className="flex w-full md:w-80 flex-col border-b border-border md:border-b-0 md:border-r bg-background max-h-[45vh] md:max-h-none">
-          {/* Fixed operational context */}
+          {/* Current working scope */}
           <div className="border-b border-border p-3">
-            {orgsLoading ? (
+            {orgsLoading || nodesLoading ? (
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 Loading...
               </div>
-            ) : selectedOrg ? (
+            ) : selectedOrg && selectedNode ? (
               <div className="flex items-center gap-3">
                 <span className="text-[10px] font-bold tracking-widest uppercase text-muted-foreground/50">Context</span>
                 <span className="text-sm font-bold tracking-wide text-muted-foreground">
-                  {selectedOrg.name} ({selectedOrg.code})
+                  {selectedOrg.name} / {selectedBranchNode ? `${selectedRegionNode?.name ?? ""} / ${selectedBranchNode.name}` : selectedRegionNode?.name ?? selectedNode.name}
                 </span>
               </div>
             ) : null}
@@ -1243,3 +1443,8 @@ const CampaignsPage = () => {
 };
 
 export default CampaignsPage;
+
+
+
+
+

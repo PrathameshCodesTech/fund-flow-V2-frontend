@@ -1330,7 +1330,7 @@ const VendorsPage = () => {
     },
     {
       key: "vendors",
-      label: "Vendor Records",
+      label: "Vendor Onboarded",
       count: vendorRows.length,
     },
   ];

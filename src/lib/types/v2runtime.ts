@@ -307,6 +307,9 @@ export interface AllowedSplitEntity {
   split_option_id: number;
   entity_id: number;
   entity_name: string;
+  node_type?: string;
+  parent_entity_id?: number | null;
+  parent_entity_name?: string | null;
   business_unit_id?: number;
   business_unit_name?: string;
   eligible_approvers: AllocationEligibleApprover[];
@@ -364,6 +367,7 @@ export interface AllowedSplitEntity {
   default_campaign_id: number | null;
   default_campaign_name: string | null;
   default_budget_id: number | null;
+  child_entities?: AllowedSplitEntity[];
 }
 
 export interface SplitStepConfig {

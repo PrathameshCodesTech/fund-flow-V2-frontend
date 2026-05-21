@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
@@ -12,7 +12,13 @@ import {
   useOrganizations,
   useScopeNodes,
 } from "@/lib/hooks/useScopeNodes";
-import { findPreferredOperationalNode, findPreferredOperationalOrg } from "@/lib/working-scope";
+import {
+  getBranchScopeNodes,
+  getBudgetOwnerScopeNodes,
+  getRegionScopeNodes,
+  findPreferredBudgetScopeNode,
+  findPreferredOperationalOrg,
+} from "@/lib/working-scope";
 import type { ScopeNode } from "@/lib/types/core";
 import {
   useCategories,
@@ -149,6 +155,41 @@ const BUDGET_STATUS_COLORS: Record<BudgetStatus, string> = {
 function normalizeBudgetSelectId(value: string | number | null | undefined): string {
   if (value === null || value === undefined) return "";
   return String(value);
+}
+
+const UNSET_BUDGET_SELECT_VALUE = "__unset__";
+
+function isMarketingNode(node: ScopeNode): boolean {
+  const name = (node.name ?? "").trim().toLowerCase();
+  const code = (node.code ?? "").trim().toLowerCase();
+  return name === "marketing" || code === "marketing";
+}
+
+function generateBudgetCodePreview(financialYear: string, scopeNode?: ScopeNode | null): string {
+  const fy = (financialYear || "").trim();
+  if (!fy || !scopeNode) return "";
+  const fySuffix = fy.includes("-") ? fy.split("-").at(-1)?.trim() ?? "" : fy;
+  let digits = fySuffix.replace(/\D/g, "");
+  if (!digits) {
+    digits = fy.replace(/\D/g, "");
+  }
+  if (!digits) return "";
+  return `FY${digits.slice(-2)}-MKT-${(scopeNode.code || scopeNode.name || "").trim().toUpperCase().replace(/\s+/g, "-")}`;
+}
+
+function hasDuplicateBudgetLinePairs(
+  lines: Array<{ category?: string | null; subcategory?: string | null }>,
+): boolean {
+  const seen = new Set<string>();
+  for (const line of lines) {
+    if (!line.category) continue;
+    const key = `${line.category}::${line.subcategory || "__none__"}`;
+    if (seen.has(key)) {
+      return true;
+    }
+    seen.add(key);
+  }
+  return false;
 }
 
 function BudgetStatusBadge({ status }: { status: BudgetStatus }) {
@@ -640,6 +681,8 @@ function CreateBudgetDialog({
 
   const { data: categories = [] } = useCategories(orgId ? { org: orgId } : undefined);
   const { data: nodes = [] } = useScopeNodes(orgId ?? undefined);
+  const regionNodes = useMemo(() => getRegionScopeNodes(nodes), [nodes]);
+  const branchNodes = useMemo(() => getBranchScopeNodes(nodes), [nodes]);
 
   // Dynamic line builder state
   const [lines, setLines] = useState<CreateBudgetLineRequest[]>([
@@ -650,18 +693,93 @@ function CreateBudgetDialog({
   );
   const subcategoriesByCategory = useSubCategoriesByCategories(selectedCategoryIds);
   const [selectedScopeNodeId, setSelectedScopeNodeId] = useState<string>(scopeNodeId ?? "");
-  const [budgetName, setBudgetName] = useState("FY27 Marketing Budget");
-  const [budgetCode, setBudgetCode] = useState("FY27-MKT");
+  const [selectedRegionId, setSelectedRegionId] = useState<string>("");
+  const [budgetName, setBudgetName] = useState("FY27 Budget");
   const [financialYear, setFinancialYear] = useState("2026-27");
   const [periodType, setPeriodType] = useState<PeriodType>("yearly");
   const [currency, setCurrency] = useState("INR");
-  const selectedScopeNode = nodes.find((node) => node.id === selectedScopeNodeId) ?? null;
+  const budgetScopeNodes = useMemo(() => getBudgetOwnerScopeNodes(nodes), [nodes]);
+  const contextScopeNode = useMemo(
+    () => nodes.find((node) => normalizeBudgetSelectId(node.id) === normalizeBudgetSelectId(scopeNodeId)) ?? null,
+    [nodes, scopeNodeId],
+  );
+  const availableBranchNodes = useMemo(
+    () =>
+      selectedRegionId
+        ? branchNodes.filter((node) => normalizeBudgetSelectId(node.parent) === selectedRegionId)
+        : branchNodes,
+    [branchNodes, selectedRegionId],
+  );
+  const selectedScopeNode =
+    budgetScopeNodes.find((node) => normalizeBudgetSelectId(node.id) === selectedScopeNodeId) ?? null;
+  const budgetCode = generateBudgetCodePreview(financialYear, selectedScopeNode);
 
   useEffect(() => {
-    if (scopeNodeId && selectedScopeNodeId !== scopeNodeId) {
-      setSelectedScopeNodeId(scopeNodeId);
+    if (!open) return;
+
+    if (branchNodes.length > 0) {
+      if (contextScopeNode?.node_type === "branch") {
+        setSelectedRegionId(normalizeBudgetSelectId(contextScopeNode.parent));
+        setSelectedScopeNodeId(normalizeBudgetSelectId(contextScopeNode.id));
+        return;
+      }
+      if (contextScopeNode?.node_type === "region") {
+        setSelectedRegionId(normalizeBudgetSelectId(contextScopeNode.id));
+        setSelectedScopeNodeId("");
+        return;
+      }
+      setSelectedRegionId("");
+      setSelectedScopeNodeId("");
+      return;
     }
-  }, [scopeNodeId, selectedScopeNodeId]);
+
+    if (
+      scopeNodeId &&
+      budgetScopeNodes.some((node) => normalizeBudgetSelectId(node.id) === normalizeBudgetSelectId(scopeNodeId))
+    ) {
+      setSelectedScopeNodeId(normalizeBudgetSelectId(scopeNodeId));
+      return;
+    }
+    setSelectedScopeNodeId("");
+  }, [branchNodes.length, budgetScopeNodes, contextScopeNode, open, scopeNodeId]);
+
+  useEffect(() => {
+    if (!selectedScopeNode) return;
+    if (selectedScopeNode.node_type === "branch") {
+      const parentId = normalizeBudgetSelectId(selectedScopeNode.parent) ?? "";
+      if (parentId !== selectedRegionId) {
+        setSelectedRegionId(parentId);
+      }
+      return;
+    }
+    if (selectedScopeNode.node_type === "region") {
+      const scopeId = normalizeBudgetSelectId(selectedScopeNode.id) ?? "";
+      if (scopeId !== selectedRegionId) {
+        setSelectedRegionId(scopeId);
+      }
+    }
+  }, [branchNodes.length, selectedRegionId, selectedScopeNode]);
+
+  useEffect(() => {
+    if (!branchNodes.length) return;
+    if (!selectedRegionId) {
+      if (selectedScopeNodeId) {
+        setSelectedScopeNodeId("");
+      }
+      return;
+    }
+    const scopeStillVisible = availableBranchNodes.some(
+      (node) => normalizeBudgetSelectId(node.id) === selectedScopeNodeId,
+    );
+    if (scopeStillVisible) return;
+
+    if (availableBranchNodes.length === 1) {
+      setSelectedScopeNodeId(normalizeBudgetSelectId(availableBranchNodes[0].id) ?? "");
+      return;
+    }
+
+    setSelectedScopeNodeId("");
+  }, [availableBranchNodes, branchNodes.length, selectedRegionId, selectedScopeNodeId]);
 
   const linesTotal = lines.reduce(
     (sum, l) => sum + (parseFloat(l.allocated_amount) || 0),
@@ -700,8 +818,11 @@ function CreateBudgetDialog({
           !l.allocated_amount ||
           Number.isNaN(parseFloat(l.allocated_amount)) ||
           parseFloat(l.allocated_amount) <= 0,
-      )
+        )
     ) {
+      return;
+    }
+    if (hasDuplicateBudgetLinePairs(lines)) {
       return;
     }
 
@@ -719,9 +840,12 @@ function CreateBudgetDialog({
       });
       setOpen(false);
       setLines([{ category: "", subcategory: null, allocated_amount: "" }]);
-      setSelectedScopeNodeId(scopeNodeId ?? "");
-      setBudgetName("FY27 Marketing Budget");
-      setBudgetCode("FY27-MKT");
+      setSelectedScopeNodeId(
+        scopeNodeId && budgetScopeNodes.some((node) => normalizeBudgetSelectId(node.id) === scopeNodeId)
+          ? scopeNodeId
+          : "",
+      );
+      setBudgetName("FY27 Budget");
       setFinancialYear("2026-27");
       setCurrency("INR");
       onSuccess?.();
@@ -734,6 +858,9 @@ function CreateBudgetDialog({
       : create.isError
       ? "Failed to create budget"
       : null;
+  const duplicateLineError = hasDuplicateBudgetLinePairs(lines)
+    ? "Duplicate category/subcategory lines are not allowed within the same budget."
+    : null;
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -748,22 +875,19 @@ function CreateBudgetDialog({
           <DialogTitle>Create Budget</DialogTitle>
         </DialogHeader>
         <form id="create-budget-form" onSubmit={handleSubmit} className="space-y-5">
+          {duplicateLineError && (
+            <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {duplicateLineError}
+            </p>
+          )}
           {/* Header fields */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4">
             <div className="space-y-1.5">
               <Label>Budget Name *</Label>
               <Input
                 value={budgetName}
                 onChange={(e) => setBudgetName(e.target.value)}
-                placeholder="e.g. FY27 Marketing Budget"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Budget Code *</Label>
-              <Input
-                value={budgetCode}
-                onChange={(e) => setBudgetCode(e.target.value)}
-                placeholder="e.g. FY27-MKT"
+                placeholder="e.g. FY27 North Budget"
               />
             </div>
           </div>
@@ -772,7 +896,7 @@ function CreateBudgetDialog({
             <div className="space-y-1.5">
               <span className="text-[10px] font-bold tracking-widest uppercase text-muted-foreground/50">Context</span>
               <div className="text-sm font-bold tracking-wide text-muted-foreground">
-                Horizon / {selectedScopeNode?.name ?? "Marketing"}
+                Horizon / Marketing
               </div>
             </div>
             <div className="space-y-1.5">
@@ -786,6 +910,58 @@ function CreateBudgetDialog({
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {regionNodes.length > 0 ? (
+              <div className="space-y-1.5">
+                <Label>Region *</Label>
+                <Select
+                  value={selectedRegionId || UNSET_BUDGET_SELECT_VALUE}
+                  onValueChange={(value) => {
+                    if (value === UNSET_BUDGET_SELECT_VALUE) return;
+                    setSelectedRegionId(value);
+                    setSelectedScopeNodeId("");
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select region" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={UNSET_BUDGET_SELECT_VALUE} disabled>
+                      Select region
+                    </SelectItem>
+                    {regionNodes.map((node) => (
+                      <SelectItem key={node.id} value={normalizeBudgetSelectId(node.id)}>
+                        {node.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : null}
+            <div className="space-y-1.5">
+              <Label>{branchNodes.length > 0 ? "Branch / Park *" : "Budget For *"}</Label>
+              <Select
+                value={selectedScopeNodeId || UNSET_BUDGET_SELECT_VALUE}
+                onValueChange={(value) => {
+                  if (value === UNSET_BUDGET_SELECT_VALUE) return;
+                  setSelectedScopeNodeId(value);
+                }}
+                disabled={branchNodes.length > 0 && !selectedRegionId}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={branchNodes.length > 0 ? "Select branch / park" : "Select business unit"} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={UNSET_BUDGET_SELECT_VALUE} disabled>
+                    {branchNodes.length > 0 ? "Select branch / park" : "Select business unit"}
+                  </SelectItem>
+                  {(branchNodes.length > 0 ? availableBranchNodes : budgetScopeNodes).map((node) => (
+                    <SelectItem key={node.id} value={normalizeBudgetSelectId(node.id)}>
+                      {node.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div className="space-y-1.5">
               <Label>Period Type</Label>
               <Select value={periodType} onValueChange={(v) => setPeriodType(v as PeriodType)}>
@@ -895,7 +1071,8 @@ function CreateBudgetDialog({
               !budgetName.trim() ||
               !budgetCode.trim() ||
               !financialYear.trim() ||
-              lines.length === 0
+              lines.length === 0 ||
+              !!duplicateLineError
             }
           >
             {create.isPending ? <><Loader2 className="mr-1.5 h-4 w-4 animate-spin" />Creating...</> : "Create Budget"}
@@ -964,6 +1141,12 @@ function EditBudgetDialog({
   };
 
   const activeLines = lines.filter((line) => !line._deleted);
+  const duplicateActiveLinePairs = hasDuplicateBudgetLinePairs(
+    activeLines.map((line) => ({
+      category: normalizeBudgetSelectId(line.category),
+      subcategory: line.subcategory ? normalizeBudgetSelectId(line.subcategory) : null,
+    })),
+  );
   const linesTotal = activeLines
     .reduce((sum, l) => sum + (parseFloat(l.allocated_amount) || 0), 0);
   const originalTotal = parseFloat(budget.allocated_amount || "0") || 0;
@@ -998,14 +1181,18 @@ function EditBudgetDialog({
 
   const removeLine = (lineId: string) => {
     setLines((prev) =>
-      prev.map((line) => (line.id === lineId ? { ...line, _deleted: true } : line))
+      prev.map((line) =>
+        normalizeBudgetSelectId(line.id) === normalizeBudgetSelectId(lineId)
+          ? { ...line, _deleted: true }
+          : line,
+      )
     );
   };
 
   const updateLine = (lineId: string, patch: Partial<EditableBudgetLine>) => {
     setLines((prev) =>
       prev.map((line) => {
-        if (line.id !== lineId) return line;
+        if (normalizeBudgetSelectId(line.id) !== normalizeBudgetSelectId(lineId)) return line;
 
         const next = { ...line, ...patch };
 
@@ -1071,6 +1258,11 @@ function EditBudgetDialog({
       }
     }
 
+    if (duplicateActiveLinePairs) {
+      setClientError("Duplicate category/subcategory lines are not allowed within the same budget.");
+      return;
+    }
+
     const payload_lines = activeLines
       .filter((line) => line.category && line.allocated_amount)
       .map((l) => {
@@ -1112,6 +1304,9 @@ function EditBudgetDialog({
       : update.isError
       ? "Failed to update budget"
       : null;
+  const duplicateLineError = duplicateActiveLinePairs
+    ? "Duplicate category/subcategory lines are not allowed within the same budget."
+    : null;
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -1219,13 +1414,13 @@ function EditBudgetDialog({
                 const locked = isLineLocked(line);
                 const minAmount = getLineMinimumAmount(line);
                 return (
-                  <div key={line.id} className="rounded-xl border border-border bg-background p-3 space-y-3">
+                  <div key={normalizeBudgetSelectId(line.id)} className="rounded-xl border border-border bg-background p-3 space-y-3">
                     <div className="grid gap-3 md:grid-cols-[1.2fr_1.2fr_0.8fr_auto] md:items-end">
                       <div className="space-y-1">
                         <Label className="text-xs">Category *</Label>
                           <Select
                           value={normalizeBudgetSelectId(line.category)}
-                          onValueChange={(v) => updateLine(line.id, { category: v })}
+                          onValueChange={(v) => updateLine(normalizeBudgetSelectId(line.id), { category: v })}
                           disabled={locked}
                         >
                           <SelectTrigger>
@@ -1244,7 +1439,7 @@ function EditBudgetDialog({
                         <Label className="text-xs">Subcategory</Label>
                         <Select
                           value={normalizeBudgetSelectId(line.subcategory)}
-                          onValueChange={(v) => updateLine(line.id, { subcategory: v || null })}
+                          onValueChange={(v) => updateLine(normalizeBudgetSelectId(line.id), { subcategory: v || null })}
                           disabled={!line.category || locked}
                         >
                           <SelectTrigger>
@@ -1264,7 +1459,7 @@ function EditBudgetDialog({
                         <Label className="text-xs">Amount *</Label>
                         <Input
                           value={line.allocated_amount}
-                          onChange={(e) => updateLine(line.id, { allocated_amount: e.target.value })}
+                          onChange={(e) => updateLine(normalizeBudgetSelectId(line.id), { allocated_amount: e.target.value })}
                           type="number"
                           step="0.01"
                           placeholder="0.00"
@@ -1274,7 +1469,7 @@ function EditBudgetDialog({
                         type="button"
                         variant="ghost"
                         size="icon"
-                        onClick={() => removeLine(line.id)}
+                        onClick={() => removeLine(normalizeBudgetSelectId(line.id))}
                         disabled={locked}
                         className="shrink-0 text-destructive"
                       >
@@ -1310,9 +1505,9 @@ function EditBudgetDialog({
             )}
           </div>
 
-          {(clientError || submitError) && (
+          {(duplicateLineError || clientError || submitError) && (
             <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              {clientError || submitError}
+              {duplicateLineError || clientError || submitError}
             </p>
           )}
         </form>
@@ -1321,7 +1516,13 @@ function EditBudgetDialog({
           <Button
             type="submit"
             form="edit-budget-form"
-            disabled={update.isPending || !name.trim() || !code.trim() || activeLineCount === 0}
+            disabled={
+              update.isPending ||
+              !name.trim() ||
+              !code.trim() ||
+              activeLineCount === 0 ||
+              !!duplicateLineError
+            }
           >
             {update.isPending ? (
               <><Loader2 className="mr-1.5 h-4 w-4 animate-spin" />Saving...</>
@@ -2204,19 +2405,17 @@ const SCOPE_CARD_ACCENTS = [
   "border-l-pink-400",
 ];
 
-function buildRegionSummariesFromBudgets(budgets: Budget[], nodes: ScopeNode[]) {
+function buildBudgetOwnerSummariesFromBudgets(budgets: Budget[], nodes: ScopeNode[]) {
   const nodeMap = new Map(nodes.map((node) => [node.id, node]));
   const groups = new Map<string, {
     id: string;
     name: string;
-    path: string;
-    depth: number;
+    node_type: string;
     allocated_amount: string;
     reserved_amount: string;
     consumed_amount: string;
     available_amount: string;
     utilization_percent: number;
-    parks_count: number;
     budgets_count: number;
   }>();
 
@@ -2232,14 +2431,12 @@ function buildRegionSummariesFromBudgets(budgets: Budget[], nodes: ScopeNode[]) 
       groups.set(key, {
         id: key,
         name,
-        path: scopeNode?.path ?? name,
-        depth: scopeNode?.depth ?? 0,
+        node_type: scopeNode?.node_type ?? "unknown",
         allocated_amount: "0",
         reserved_amount: "0",
         consumed_amount: "0",
         available_amount: "0",
         utilization_percent: 0,
-        parks_count: 0,
         budgets_count: 0,
       });
     }
@@ -2261,48 +2458,120 @@ function buildRegionSummariesFromBudgets(budgets: Budget[], nodes: ScopeNode[]) 
     group.budgets_count += 1;
   }
 
-  return Array.from(groups.values()).sort((a, b) => {
-    if (a.depth !== b.depth) return a.depth - b.depth;
-    return a.path.localeCompare(b.path);
-  });
+  return Array.from(groups.values()).sort((a, b) => a.name.localeCompare(b.name));
 }
 
-function RegionCards({ regions }: { regions: any[] }) {
-  if (!regions?.length) return null;
+function SummaryCards({ items }: { items: any[] }) {
+  if (!items?.length) return null;
   return (
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-      {regions.map((r, index) => (
-        <div key={r.id} className={cn(
+      {items.map((item, index) => (
+        <div key={item.id} className={cn(
           "rounded-lg border bg-card p-3 border-l-4 pl-3",
           SCOPE_CARD_ACCENTS[index % SCOPE_CARD_ACCENTS.length]
         )}>
-          <p className="text-sm font-semibold text-foreground mb-2">{r.name}</p>
+          <p className="text-sm font-semibold text-foreground mb-2">{item.name}</p>
           <div className="space-y-1.5">
             <div className="flex justify-between text-xs">
               <span className="text-muted-foreground">Allocated</span>
-              <span className="font-medium tabular-nums">{fmtCurrency(r.allocated_amount)}</span>
+              <span className="font-medium tabular-nums">{fmtCurrency(item.allocated_amount)}</span>
             </div>
             <div className="flex justify-between text-xs">
               <span className="text-muted-foreground">Available</span>
-              <span className="font-medium tabular-nums">{fmtCurrency(r.available_amount)}</span>
+              <span className="font-medium tabular-nums">{fmtCurrency(item.available_amount)}</span>
             </div>
             <div className="flex justify-between text-xs">
               <span className="text-muted-foreground">Budgets</span>
-              <span className="font-medium">{r.budgets_count}</span>
+              <span className="font-medium">{item.budgets_count}</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-[10px] text-muted-foreground">Utilization</span>
               <span className={cn(
                 "text-[10px] font-bold tabular-nums",
-                r.utilization_percent >= 90 ? "text-red-600" : r.utilization_percent >= 70 ? "text-amber-600" : "text-green-600"
-              )}>{r.utilization_percent}%</span>
+                item.utilization_percent >= 90 ? "text-red-600" : item.utilization_percent >= 70 ? "text-amber-600" : "text-green-600"
+              )}>{item.utilization_percent}%</span>
             </div>
-            <UtilBar pct={r.utilization_percent} />
+            <UtilBar pct={item.utilization_percent} />
           </div>
         </div>
       ))}
     </div>
   );
+}
+
+function buildUnitAndBranchSummariesFromBudgets(budgets: Budget[], nodes: ScopeNode[]) {
+  const nodeMap = new Map(nodes.map((node) => [String(node.id), node]));
+  const ownerSummaries = buildBudgetOwnerSummariesFromBudgets(budgets, nodes);
+  const branchSummaries = ownerSummaries.filter((summary) => summary.node_type === "branch");
+  const unitMap = new Map<string, {
+    id: string;
+    name: string;
+    allocated_amount: string;
+    reserved_amount: string;
+    consumed_amount: string;
+    available_amount: string;
+    utilization_percent: number;
+    budgets_count: number;
+  }>();
+
+  const addToUnit = (
+    id: string,
+    name: string,
+    allocated: number,
+    reserved: number,
+    consumed: number,
+    budgetsCount: number,
+  ) => {
+    if (!unitMap.has(id)) {
+      unitMap.set(id, {
+        id,
+        name,
+        allocated_amount: "0",
+        reserved_amount: "0",
+        consumed_amount: "0",
+        available_amount: "0",
+        utilization_percent: 0,
+        budgets_count: 0,
+      });
+    }
+
+    const unit = unitMap.get(id)!;
+    const nextAllocated = parseFloat(unit.allocated_amount) + allocated;
+    const nextReserved = parseFloat(unit.reserved_amount) + reserved;
+    const nextConsumed = parseFloat(unit.consumed_amount) + consumed;
+    unit.allocated_amount = String(nextAllocated);
+    unit.reserved_amount = String(nextReserved);
+    unit.consumed_amount = String(nextConsumed);
+    unit.available_amount = String(nextAllocated - nextReserved - nextConsumed);
+    unit.utilization_percent =
+      nextAllocated > 0 ? Number((((nextReserved + nextConsumed) / nextAllocated) * 100).toFixed(1)) : 0;
+    unit.budgets_count += budgetsCount;
+  };
+
+  for (const summary of ownerSummaries) {
+    const allocated = parseFloat(summary.allocated_amount ?? "0");
+    const reserved = parseFloat(summary.reserved_amount ?? "0");
+    const consumed = parseFloat(summary.consumed_amount ?? "0");
+    const ownerNode = nodeMap.get(String(summary.id));
+    if (!ownerNode) continue;
+
+    if (ownerNode.node_type === "branch") {
+      const parentNode = ownerNode.parent ? nodeMap.get(String(ownerNode.parent)) : null;
+      if (parentNode) {
+        addToUnit(String(parentNode.id), parentNode.name, allocated, reserved, consumed, summary.budgets_count);
+      }
+      continue;
+    }
+
+    if (ownerNode.node_type === "region") {
+      addToUnit(String(ownerNode.id), ownerNode.name, allocated, reserved, consumed, summary.budgets_count);
+    }
+  }
+
+  return {
+    unitSummaries: Array.from(unitMap.values()).sort((a, b) => a.name.localeCompare(b.name)),
+    branchSummaries: branchSummaries.sort((a, b) => a.name.localeCompare(b.name)),
+  };
 }
 
 // ── Region / Park Matrix ───────────────────────────────────────────────────────
@@ -2597,7 +2866,7 @@ function BudgetsDashboardTab({
   nodes: ScopeNode[];
 }) {
   const { data, isLoading } = useBudgetOverview();
-  const derivedRegions = buildRegionSummariesFromBudgets(budgets, nodes);
+  const { unitSummaries, branchSummaries } = buildUnitAndBranchSummariesFromBudgets(budgets, nodes);
 
   if (isLoading) {
     return (
@@ -2623,10 +2892,10 @@ function BudgetsDashboardTab({
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.22em] text-primary">Budget Control Center</p>
               <h2 className="mt-1 text-2xl font-semibold tracking-tight text-foreground">
-                Marketing budget by region, category, campaign, and utilization
+                Marketing budget by unit, branch, category, campaign, and utilization
               </h2>
               <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-                Live view of seeded FY budget lines, available funds, campaign coverage, and regional allocation health.
+                Live view of seeded FY budget lines, available funds, campaign coverage, and allocation health across units and branches.
               </p>
             </div>
             <div className="rounded-xl border border-border bg-background/70 px-4 py-3 text-right">
@@ -2641,11 +2910,19 @@ function BudgetsDashboardTab({
       {/* KPI Strip */}
       <KpiStrip data={data} />
 
-      {/* Region Cards */}
-      {derivedRegions.length > 0 && (
+      {/* Unit Cards */}
+      {unitSummaries.length > 0 && (
         <div>
-          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Budget by Region</p>
-          <RegionCards regions={derivedRegions} />
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Budget by Unit</p>
+          <SummaryCards items={unitSummaries} />
+        </div>
+      )}
+
+      {/* Branch Cards */}
+      {branchSummaries.length > 0 && (
+        <div>
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Budget by Branch</p>
+          <SummaryCards items={branchSummaries} />
         </div>
       )}
 
@@ -3259,6 +3536,8 @@ export default function BudgetsPage() {
     setOrgId: setSelectedOrgId,
     setNodeId: setSelectedNodeId,
   } = useWorkingScope();
+  const [budgetScopeFilter, setBudgetScopeFilter] = useState<string>("__all__");
+  const [budgetRegionFilter, setBudgetRegionFilter] = useState<string>("__all__");
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("budgets");
   const [budgetViewMode, setBudgetViewMode] = useState<"dashboard" | "list">("dashboard");
@@ -3273,8 +3552,17 @@ export default function BudgetsPage() {
   // List data
   const { data: organizations = [], isLoading: orgsLoading } = useOrganizations();
   const { data: nodes = [], isLoading: nodesLoading } = useScopeNodes(selectedOrgId ?? undefined);
+  const regionNodes = useMemo(() => getRegionScopeNodes(nodes), [nodes]);
+  const branchNodes = useMemo(() => getBranchScopeNodes(nodes), [nodes]);
+  const budgetScopeNodes = useMemo(() => getBudgetOwnerScopeNodes(nodes), [nodes]);
+  const filteredBranchNodes = useMemo(
+    () =>
+      budgetRegionFilter !== "__all__"
+        ? branchNodes.filter((node) => node.parent === budgetRegionFilter)
+        : branchNodes,
+    [branchNodes, budgetRegionFilter],
+  );
   const selectedOrg = organizations.find((org) => org.id === selectedOrgId) ?? null;
-  const selectedNode = nodes.find((node) => node.id === selectedNodeId) ?? null;
   const { data: categories = [], isLoading: catsLoading } = useCategories(
     selectedOrgId ? { org: selectedOrgId } : undefined,
   );
@@ -3283,11 +3571,30 @@ export default function BudgetsPage() {
   const { data: subcategories = [], isLoading: subsLoading } = useSubCategories(
     activeCategoryId ? { category: activeCategoryId } : undefined,
   );
-  const { data: budgets = [], isLoading: budgetsLoading, refetch: refetchBudgets } = useBudgets(
-    selectedNodeId && selectedNodeId !== "__all__"
-      ? { scope_node: selectedNodeId, status: budgetStatusFilter !== "all" ? budgetStatusFilter : undefined }
-      : { status: budgetStatusFilter !== "all" ? budgetStatusFilter : undefined },
-  );
+  const { data: budgets = [], isLoading: budgetsLoading, refetch: refetchBudgets } = useBudgets({
+    status: budgetStatusFilter !== "all" ? budgetStatusFilter : undefined,
+  });
+  const visibleBudgets = useMemo(() => {
+    if (branchNodes.length > 0) {
+      if (budgetScopeFilter !== "__all__") {
+        return budgets.filter((budget) => budget.scope_node === budgetScopeFilter);
+      }
+      if (budgetRegionFilter !== "__all__") {
+        const allowedNodeIds = new Set([
+          budgetRegionFilter,
+          ...filteredBranchNodes.map((node) => node.id),
+        ]);
+        return budgets.filter((budget) => budget.scope_node && allowedNodeIds.has(budget.scope_node));
+      }
+      return budgets;
+    }
+
+    if (budgetScopeFilter !== "__all__") {
+      return budgets.filter((budget) => budget.scope_node === budgetScopeFilter);
+    }
+
+    return budgets;
+  }, [branchNodes.length, budgetRegionFilter, budgetScopeFilter, budgets, filteredBranchNodes]);
   const { data: consumptions = [], isLoading: consumptionsLoading } = useConsumptions(
     consumptionFilters,
   );
@@ -3303,11 +3610,44 @@ export default function BudgetsPage() {
     if (!selectedOrgId) {
       return;
     }
-    const preferredNode = findPreferredOperationalNode(nodes);
-    if (preferredNode && selectedNodeId !== preferredNode.id) {
-      setSelectedNodeId(preferredNode.id);
+    const selectedNodeStillVisible = selectedNodeId
+      ? budgetScopeNodes.some((node) => node.id === selectedNodeId)
+      : false;
+    if (!selectedNodeStillVisible) {
+      const preferredNode = findPreferredBudgetScopeNode(budgetScopeNodes);
+      if (preferredNode) {
+        setSelectedNodeId(preferredNode.id);
+      }
     }
-  }, [nodes, selectedNodeId, selectedOrgId, setSelectedNodeId]);
+  }, [budgetScopeNodes, selectedNodeId, selectedOrgId, setSelectedNodeId]);
+
+  useEffect(() => {
+    if (budgetScopeFilter === "__all__") {
+      return;
+    }
+    const stillVisible = budgetScopeNodes.some((node) => node.id === budgetScopeFilter);
+    if (!stillVisible) {
+      setBudgetScopeFilter("__all__");
+    }
+  }, [budgetScopeFilter, budgetScopeNodes]);
+
+  useEffect(() => {
+    if (budgetRegionFilter === "__all__") return;
+    const stillVisible = regionNodes.some((node) => node.id === budgetRegionFilter);
+    if (!stillVisible) {
+      setBudgetRegionFilter("__all__");
+    }
+  }, [budgetRegionFilter, regionNodes]);
+
+  useEffect(() => {
+    if (!branchNodes.length) return;
+    if (budgetRegionFilter === "__all__") return;
+    if (budgetScopeFilter === "__all__") return;
+    const stillVisible = filteredBranchNodes.some((node) => node.id === budgetScopeFilter);
+    if (!stillVisible) {
+      setBudgetScopeFilter("__all__");
+    }
+  }, [branchNodes.length, budgetRegionFilter, budgetScopeFilter, filteredBranchNodes]);
 
   const renderTabToolbar = (): { left: React.ReactNode; right?: React.ReactNode } => {
     switch (activeTab) {
@@ -3449,25 +3789,62 @@ export default function BudgetsPage() {
     <V2Shell
       title="Budgets"
       titleIcon={<Wallet className="h-5 w-5 text-muted-foreground" />}
-      actions={
-        <div className="flex items-center gap-2">
-          {orgsLoading ? (
-            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-          ) : selectedOrg ? (
-            <div className="flex items-center gap-3">
-              <span className="text-[10px] font-bold tracking-widest uppercase text-muted-foreground/50">Context</span>
-              <span className="text-sm font-bold tracking-wide text-muted-foreground">
-                {selectedOrg.name}{selectedNode ? ` / ${selectedNode.name}` : ""}
-              </span>
-            </div>
-          ) : nodesLoading ? (
-            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-          ) : selectedNode ? (
-            <div className="rounded-md border border-border bg-secondary/20 px-3 py-2 text-sm">
-              {selectedNode.name}
-            </div>
-          ) : null}
-        </div>
+      orgSelector={
+        orgsLoading ? (
+          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+        ) : selectedOrg ? (
+          <div className="flex items-center gap-3">
+            <span className="text-[10px] font-bold tracking-widest uppercase text-muted-foreground/50">Context</span>
+            <span className="text-sm font-bold tracking-wide text-muted-foreground">
+              {selectedOrg.name}
+            </span>
+          </div>
+        ) : null
+      }
+      unitSelector={
+        nodesLoading ? (
+          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+        ) : (
+          <div className="flex items-center gap-2">
+            {regionNodes.length > 0 ? (
+              <Select
+                value={budgetRegionFilter}
+                onValueChange={(value) => {
+                  setBudgetRegionFilter(value);
+                  setBudgetScopeFilter("__all__");
+                }}
+              >
+                <SelectTrigger className="w-40">
+                  <SelectValue placeholder="All regions" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all__">All regions</SelectItem>
+                  {regionNodes.map((node) => (
+                    <SelectItem key={node.id} value={node.id}>
+                      {node.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : null}
+            <Select
+              value={budgetScopeFilter}
+              onValueChange={(value) => setBudgetScopeFilter(value)}
+            >
+              <SelectTrigger className="w-48">
+                <SelectValue placeholder={branchNodes.length > 0 ? "All branches / parks" : "All business units"} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">{branchNodes.length > 0 ? "All branches / parks" : "All business units"}</SelectItem>
+                {(branchNodes.length > 0 ? filteredBranchNodes : budgetScopeNodes).map((node) => (
+                  <SelectItem key={node.id} value={node.id}>
+                    {node.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )
       }
     >
       {/* Tabbed content */}
@@ -3497,9 +3874,9 @@ export default function BudgetsPage() {
           <TabsContent value="budgets" className="m-0 data-[state=inactive]:hidden flex min-h-0 flex-1 flex-col overflow-hidden">
             <ScrollArea className="flex-1">
               {budgetViewMode === "dashboard" ? (
-                <BudgetsDashboardTab budgets={budgets} budgetsLoading={budgetsLoading} nodes={nodes} />
+                <BudgetsDashboardTab budgets={visibleBudgets} budgetsLoading={budgetsLoading} nodes={nodes} />
               ) : (
-                <BudgetList budgets={budgets} isLoading={budgetsLoading} />
+                <BudgetList budgets={visibleBudgets} isLoading={budgetsLoading} />
               )}
             </ScrollArea>
           </TabsContent>
