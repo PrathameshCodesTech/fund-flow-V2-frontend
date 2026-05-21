@@ -67,7 +67,7 @@ function KpiCard({ label, value, sub, icon: Icon, to, urgency = "normal" }: KpiC
     >
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
-          <p className="text-xs font-medium text-muted-foreground mb-2">{label}</p>
+          <p className="text-xs font-medium text-muted-foreground mb-2 leading-tight">{label}</p>
           {value === undefined ? (
             <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
           ) : (
@@ -76,7 +76,7 @@ function KpiCard({ label, value, sub, icon: Icon, to, urgency = "normal" }: KpiC
             </p>
           )}
           {sub && value !== undefined && (
-            <p className="mt-1 text-xs text-muted-foreground truncate">{sub}</p>
+            <p className="mt-1 text-xs text-muted-foreground leading-tight">{sub}</p>
           )}
         </div>
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10">
@@ -171,7 +171,7 @@ const V2HomePage = () => {
       <div className="w-full px-4 py-4 sm:px-6 sm:py-6 space-y-6">
 
         {/* ── KPI Strip ───────────────────────────────────────────────────── */}
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-7">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <KpiCard
             label="Invoice Pending for Approval"
             value={kpis?.pending_task_count}

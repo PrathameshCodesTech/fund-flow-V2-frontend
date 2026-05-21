@@ -490,6 +490,12 @@ function InvoiceCard({
             <p className="text-sm font-medium truncate text-foreground">{invoice.title}</p>
             <InvoiceStatusBadge status={invoice.status} />
           </div>
+          {(invoice.vendor_name || invoice.vendor_invoice_number) && (
+            <div className="mb-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+              {invoice.vendor_name ? <span className="truncate">{invoice.vendor_name}</span> : null}
+              {invoice.vendor_invoice_number ? <span className="font-medium">{invoice.vendor_invoice_number}</span> : null}
+            </div>
+          )}
           <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
             <span className="font-medium">
               {invoice.currency} {parseFloat(invoice.amount).toLocaleString()}
@@ -1288,6 +1294,7 @@ const InvoicesPage = () => {
   } = useWorkingScope();
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [quickFilter, setQuickFilter] = useState<QuickFilter>("all");
+  const [searchQuery, setSearchQuery] = useState("");
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [attachWorkflowOpen, setAttachWorkflowOpen] = useState(false);
@@ -1319,6 +1326,7 @@ const InvoicesPage = () => {
   const params = {
     ...(selectedNodeId && selectedNodeId !== "__all__" ? { scope_node: selectedNodeId } : {}),
     ...(statusFilter !== "all" ? { status: statusFilter } : {}),
+    ...(searchQuery.trim() ? { search: searchQuery.trim() } : {}),
   };
 
   const { data: invoices = [], isLoading: invoicesLoading, refetch } = useInvoices(
@@ -1380,6 +1388,20 @@ const InvoicesPage = () => {
 
           {/* Status filter */}
           <div className="border-b border-border px-3 py-2">
+            <div className="mb-2">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={searchQuery}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    setSelectedInvoiceId(null);
+                  }}
+                  placeholder="Search by invoice or vendor..."
+                  className="h-8 pl-8 text-xs"
+                />
+              </div>
+            </div>
             <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setSelectedInvoiceId(null); }}>
               <SelectTrigger className="text-xs">
                 <SelectValue />

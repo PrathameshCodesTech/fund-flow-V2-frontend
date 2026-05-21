@@ -211,12 +211,18 @@ export interface ReviewDocument {
   file_url?: string | null;
 }
 
+export interface ReviewEditedAfterExtraction {
+  count: number;
+  fields: string[];
+}
+
 export interface ReviewSubject {
   type: string;
   missing: boolean;
   invoice?: ReviewInvoice | null;
   vendor?: ReviewVendor | null;
   documents?: ReviewDocument[];
+  edited_after_extraction?: ReviewEditedAfterExtraction;
 }
 
 export interface ReviewBranch {

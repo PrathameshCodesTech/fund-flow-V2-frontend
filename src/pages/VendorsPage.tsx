@@ -107,6 +107,26 @@ const SUB_COLORS: Record<SubmissionStatus, string> = {
   rejected: "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300",
 };
 
+const INVITED_VENDOR_STATUSES: InvitationStatus[] = ["pending", "opened"];
+const REVIEW_SUBMISSION_STATUSES: SubmissionStatus[] = [
+  "draft",
+  "submitted",
+  "sent_to_finance",
+  "finance_approved",
+  "finance_rejected",
+  "reopened",
+  "marketing_pending",
+  "rejected",
+];
+
+function isInvitedVendorStatus(status: InvitationStatus) {
+  return INVITED_VENDOR_STATUSES.includes(status);
+}
+
+function isReviewSubmissionStatus(status: SubmissionStatus) {
+  return REVIEW_SUBMISSION_STATUSES.includes(status);
+}
+
 function InvStatusBadge({ status }: { status: InvitationStatus }) {
   return (
     <Badge className={INV_COLORS[status] ?? ""} variant="outline">
@@ -604,6 +624,7 @@ function InvitationsTab({
       ? { org: orgId ?? undefined, status: statusFilter, vendor_email: emailFilter || undefined }
       : { org: orgId ?? undefined, vendor_email: emailFilter || undefined },
   );
+  const invitedVendors = invitations.filter((inv) => isInvitedVendorStatus(inv.status));
 
   // Auto-select first org
   useEffect(() => {
@@ -640,12 +661,14 @@ function InvitationsTab({
             />
             <Select value={statusFilter} onValueChange={setStatusFilter}>
               <SelectTrigger className="w-36">
-                <SelectValue placeholder="All statuses" />
+                <SelectValue placeholder="Invitation stage" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All</SelectItem>
-                {Object.entries(INVITATION_STATUS_LABELS).map(([v, l]) => (
-                  <SelectItem key={v} value={v}>{l}</SelectItem>
+                <SelectItem value="all">All invited</SelectItem>
+                {INVITED_VENDOR_STATUSES.map((status) => (
+                  <SelectItem key={status} value={status}>
+                    {INVITATION_STATUS_LABELS[status]}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -658,13 +681,13 @@ function InvitationsTab({
             <div className="flex items-center justify-center p-6">
               <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
             </div>
-          ) : invitations.length === 0 ? (
+          ) : invitedVendors.length === 0 ? (
             <div className="p-4 text-sm text-muted-foreground text-center">
-              No invitations found
+              No invited vendors found
             </div>
           ) : (
             <div className="py-1">
-              {invitations.map((inv) => (
+              {invitedVendors.map((inv) => (
                 <div
                   key={inv.id}
                   className="flex items-center justify-between px-3 py-2.5 hover:bg-accent transition-colors"
@@ -685,7 +708,7 @@ function InvitationsTab({
 
       {/* Detail placeholder */}
       <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
-        Select an invitation to view details
+        Select an invited vendor to view details
       </div>
     </div>
   );
@@ -710,6 +733,7 @@ function SubmissionsTab({
       ? { org: orgId ?? undefined, status: statusFilter }
       : { org: orgId ?? undefined },
   );
+  const reviewSubmissions = submissions.filter((sub) => isReviewSubmissionStatus(sub.status));
 
   useEffect(() => {
     if (!orgId && organizations.length === 1 && organizations[0]) {
@@ -717,7 +741,7 @@ function SubmissionsTab({
     }
   }, [orgId, organizations]);
 
-  const selected = submissions.find((s) => s.id === selectedId);
+  const selected = reviewSubmissions.find((s) => s.id === selectedId);
   const { data: attachments = [] } = useAttachments(selected ? { submission: selected.id } : undefined);
 
   const canSendToFinance = selected?.status === "reopened";
@@ -746,12 +770,14 @@ function SubmissionsTab({
           )}
           <Select value={statusFilter} onValueChange={setStatusFilter}>
             <SelectTrigger>
-              <SelectValue placeholder="All statuses" />
+              <SelectValue placeholder="Review stage" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All</SelectItem>
-              {Object.entries(SUBMISSION_STATUS_LABELS).map(([v, l]) => (
-                <SelectItem key={v} value={v}>{l}</SelectItem>
+              <SelectItem value="all">All under review</SelectItem>
+              {REVIEW_SUBMISSION_STATUSES.map((status) => (
+                <SelectItem key={status} value={status}>
+                  {SUBMISSION_STATUS_LABELS[status]}
+                </SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -762,13 +788,13 @@ function SubmissionsTab({
             <div className="flex items-center justify-center p-6">
               <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
             </div>
-          ) : submissions.length === 0 ? (
+          ) : reviewSubmissions.length === 0 ? (
             <div className="p-4 text-sm text-muted-foreground text-center">
-              No submissions found
+              No vendors under review found
             </div>
           ) : (
             <div className="py-1">
-              {submissions.map((sub) => (
+              {reviewSubmissions.map((sub) => (
                 <button
                   key={sub.id}
                   className={`flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm transition-colors hover:bg-accent ${
@@ -867,7 +893,7 @@ function SubmissionsTab({
           </div>
         ) : (
           <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-            Select a submission to view details
+            Select a vendor under review to view details
           </div>
         )}
       </ScrollArea>
@@ -1100,10 +1126,10 @@ function VendorsTab({
           <div className="flex gap-1">
             <Select value={opStatus} onValueChange={setOpStatus}>
               <SelectTrigger className="flex-1">
-                <SelectValue placeholder="Op status" />
+                <SelectValue placeholder="Vendor status" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Op: All</SelectItem>
+                <SelectItem value="all">Operational: All</SelectItem>
                 {Object.entries(OPERATIONAL_STATUS_LABELS).map(([v, l]) => (
                   <SelectItem key={v} value={v}>{l}</SelectItem>
                 ))}
@@ -1111,10 +1137,10 @@ function VendorsTab({
             </Select>
             <Select value={mktStatus} onValueChange={setMktStatus}>
               <SelectTrigger className="flex-1">
-                <SelectValue placeholder="Mkt status" />
+                <SelectValue placeholder="Marketing status" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Mkt: All</SelectItem>
+                <SelectItem value="all">Marketing: All</SelectItem>
                 {Object.entries(MARKETING_STATUS_LABELS).map(([v, l]) => (
                   <SelectItem key={v} value={v}>{l}</SelectItem>
                 ))}
@@ -1130,7 +1156,7 @@ function VendorsTab({
             </div>
           ) : vendors.length === 0 ? (
             <div className="p-4 text-sm text-muted-foreground text-center">
-              No vendors found
+              No vendor records found
             </div>
           ) : (
             <div className="py-1">
@@ -1263,7 +1289,7 @@ function VendorsTab({
           </div>
         ) : (
           <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-            Select a vendor to view details
+            Select a vendor record to view details
           </div>
         )}
       </ScrollArea>
@@ -1280,6 +1306,9 @@ const VendorsPage = () => {
   const { orgId, setOrgId } = useWorkingScope();
   const { data: organizations = [] } = useOrganizations();
   const selectedOrg = organizations.find((org) => org.id === orgId) ?? null;
+  const { data: invitationRows = [] } = useInvitations({ org: orgId ?? undefined });
+  const { data: submissionRows = [] } = useSubmissions({ org: orgId ?? undefined });
+  const { data: vendorRows = [] } = useVendors({ org: orgId ?? undefined, marketing_status: "approved" });
 
   useEffect(() => {
     const preferredOrg = findPreferredOperationalOrg(organizations);
@@ -1288,10 +1317,22 @@ const VendorsPage = () => {
     }
   }, [orgId, organizations]);
 
-  const tabItems: { key: TabKey; label: string }[] = [
-    { key: "invitations", label: "Invitations" },
-    { key: "submissions", label: "Submissions" },
-    { key: "vendors", label: "Vendors" },
+  const tabItems: { key: TabKey; label: string; count: number }[] = [
+    {
+      key: "invitations",
+      label: "Invited Vendors",
+      count: invitationRows.filter((row) => isInvitedVendorStatus(row.status)).length,
+    },
+    {
+      key: "submissions",
+      label: "Vendors Under Review",
+      count: submissionRows.filter((row) => isReviewSubmissionStatus(row.status)).length,
+    },
+    {
+      key: "vendors",
+      label: "Vendor Records",
+      count: vendorRows.length,
+    },
   ];
 
   return (
@@ -1316,7 +1357,7 @@ const VendorsPage = () => {
         {/* Tab bar */}
         <div className="border-b border-border px-6 pt-3 bg-background">
           <div className="inline-flex items-center gap-1 rounded-lg border border-orange-200/70 bg-gradient-to-r from-orange-50/80 via-background to-background p-1">
-          {tabItems.map(({ key, label }) => (
+          {tabItems.map(({ key, label, count }) => (
             <button
               key={key}
               onClick={() => setTab(key)}
@@ -1326,7 +1367,12 @@ const VendorsPage = () => {
                   : "text-muted-foreground hover:bg-orange-50/70 hover:text-foreground"
               }`}
             >
-              {label}
+              <span className="inline-flex items-center gap-2">
+                <span>{label}</span>
+                <span className="rounded-full bg-foreground/8 px-1.5 py-0.5 text-[11px] font-medium leading-none text-current">
+                  {count}
+                </span>
+              </span>
             </button>
           ))}
           </div>

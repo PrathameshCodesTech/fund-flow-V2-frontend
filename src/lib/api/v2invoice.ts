@@ -13,6 +13,7 @@ import type {
 export function listInvoices(params?: {
   scope_node?: string;
   status?: string;
+  search?: string;
   page?: number;
 }): Promise<InvoiceListResponse> {
   return apiClient.get<InvoiceListResponse>("/api/v1/invoices/", params);

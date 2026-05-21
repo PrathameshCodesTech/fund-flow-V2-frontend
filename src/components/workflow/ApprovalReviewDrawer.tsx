@@ -153,6 +153,22 @@ const DOC_TYPE_LABELS: Record<string, string> = {
   supporting_document: "Supporting Document",
 };
 
+const EXTRACTION_FIELD_LABELS: Record<string, string> = {
+  vendor_invoice_number: "Invoice Reference",
+  invoice_date: "Invoice Date",
+  due_date: "Due Date",
+  currency: "Currency",
+  subtotal_amount: "Subtotal",
+  tax_amount: "Tax",
+  total_amount: "Total",
+  po_number: "PO Number",
+  description: "Description",
+};
+
+function getExtractionFieldLabel(field: string) {
+  return EXTRACTION_FIELD_LABELS[field] ?? field.replace(/_/g, " ");
+}
+
 const EVENT_TYPE_LABELS: Record<string, string> = {
   STEP_ASSIGNED: "Step assigned",
   STEP_APPROVED: "Step approved",
@@ -315,22 +331,39 @@ function OverviewTab({ subject }: { subject: ReturnType<typeof useTaskReview>["d
 
 function DocumentsTab({ subject }: { subject: ReturnType<typeof useTaskReview>["data"] extends undefined ? never : ReturnType<typeof useTaskReview>["data"]["subject"] }) {
   const docs = subject?.documents ?? [];
+  const editedAfterExtraction = subject?.edited_after_extraction;
 
   if (subject?.missing || subject?.type !== "invoice") {
     return <p className="text-sm text-muted-foreground">No documents available for this task type.</p>;
   }
 
-  if (docs.length === 0) {
-    return (
-      <div className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-800">
-        <AlertTriangle className="h-4 w-4 shrink-0" />
-        No documents attached to this invoice. Approving without documents may be a compliance risk.
-      </div>
-    );
-  }
-
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
+      {editedAfterExtraction && editedAfterExtraction.count > 0 && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3">
+          <p className="text-xs font-semibold text-amber-900 mb-1.5">Edited after extraction</p>
+          <p className="text-[11px] text-amber-800 mb-2">
+            Vendor changed {editedAfterExtraction.count} extracted field{editedAfterExtraction.count === 1 ? "" : "s"} before submission.
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {editedAfterExtraction.fields.map((field) => (
+              <Badge
+                key={field}
+                variant="outline"
+                className="text-[10px] bg-white text-amber-800 border-amber-200"
+              >
+                {getExtractionFieldLabel(field)}
+              </Badge>
+            ))}
+          </div>
+        </div>
+      )}
+      {docs.length === 0 ? (
+        <div className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-800">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          No documents attached to this invoice. Approving without documents may be a compliance risk.
+        </div>
+      ) : null}
       {docs.map((doc) => (
         <div
           key={doc.id}
@@ -1025,17 +1058,10 @@ function ExistingAllocationImpactPreview({
   currency: string;
 }) {
   if (!alloc.budget_impact) return null;
-
   const budget = alloc.budget_impact.budget;
   const line = alloc.budget_impact.line;
   const splitAmount = parseFloat(alloc.amount || "0") || 0;
   const budgetCurrency = budget.currency ?? currency;
-
-  const pathLabel = alloc.subcategory_name
-    ? `Subcategory: ${alloc.subcategory_name}`
-    : alloc.category_name
-    ? `Category: ${alloc.category_name}`
-    : "Selected Path";
 
   const budgetBeforeAvailable = parseFloat(budget.before_available_amount ?? "0");
   const budgetBeforeReserved = parseFloat(budget.before_reserved_amount ?? "0");
@@ -1051,46 +1077,49 @@ function ExistingAllocationImpactPreview({
   const lineReservedEffect = parseFloat(line?.effect_reserved_amount ?? alloc.amount ?? "0");
   const lineOverdraft = lineReservedEffect > lineBeforeAvailable;
 
+  const hasSubcategory = Boolean(alloc.subcategory_name);
+  const hasCategory = Boolean(alloc.category_name);
+  const detailLabel = hasSubcategory
+    ? `Subcategory: ${alloc.subcategory_name}`
+    : hasCategory
+    ? `Category: ${alloc.category_name}`
+    : `Budget: ${alloc.budget_name ?? budget.name ?? "—"}${alloc.budget_code ? ` (${alloc.budget_code})` : ""}`;
+
   return (
     <div className="rounded-md border border-blue-100 bg-blue-50/30 px-3 py-3 space-y-2.5">
       <div className="flex items-center gap-1.5 text-[11px] font-semibold text-blue-700">
         <TrendingDown className="h-3 w-3" />
-        Budget Impact Preview
+        Budget Source
       </div>
 
-      <div className="rounded border border-slate-200 bg-white/80 px-2.5 py-2 text-[11px]">
-        <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Selected Path</p>
-        <p className="mt-1 font-medium text-foreground">
-          {alloc.budget_name ?? "—"}
-          {alloc.category_name ? ` → ${alloc.category_name}` : ""}
-          {alloc.subcategory_name ? ` → ${alloc.subcategory_name}` : ""}
-        </p>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        {(hasCategory || hasSubcategory) && (
+          <div className="rounded border border-slate-200 bg-white/80 px-2.5 py-2 text-[11px]">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Budget</p>
+            <p className="mt-1 font-medium text-foreground">
+              {alloc.budget_name ?? budget.name ?? "—"}
+              {alloc.budget_code ? ` (${alloc.budget_code})` : ""}
+            </p>
+          </div>
+        )}
+        {hasSubcategory && (
+          <div className="rounded border border-slate-200 bg-white/80 px-2.5 py-2 text-[11px]">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Category</p>
+            <p className="mt-1 font-medium text-foreground">{alloc.category_name}</p>
+          </div>
+        )}
       </div>
 
       <ImpactSection
-        label={`Budget: ${alloc.budget_name ?? budget.name ?? "—"}${alloc.budget_code ? ` (${alloc.budget_code})` : ""}`}
-        allocated={budgetAllocated}
-        reserved={budgetBeforeReserved}
-        consumed={budgetBeforeConsumed}
-        available={budgetBeforeAvailable}
-        splitAmount={budgetReservedEffect}
+        label={detailLabel}
+        allocated={hasCategory || hasSubcategory ? lineAllocated : budgetAllocated}
+        reserved={hasCategory || hasSubcategory ? lineBeforeReserved : budgetBeforeReserved}
+        consumed={hasCategory || hasSubcategory ? lineBeforeConsumed : budgetBeforeConsumed}
+        available={hasCategory || hasSubcategory ? lineBeforeAvailable : budgetBeforeAvailable}
+        splitAmount={hasCategory || hasSubcategory ? lineReservedEffect || splitAmount : budgetReservedEffect}
         currency={budgetCurrency}
-        overdraft={budgetOverdraft}
+        overdraft={hasCategory || hasSubcategory ? lineOverdraft : budgetOverdraft}
       />
-
-      {line && (
-        <ImpactSection
-          label={pathLabel}
-          allocated={lineAllocated}
-          reserved={lineBeforeReserved}
-          consumed={lineBeforeConsumed}
-          available={lineBeforeAvailable}
-          splitAmount={lineReservedEffect || splitAmount}
-          currency={budgetCurrency}
-          overdraft={lineOverdraft}
-          indent
-        />
-      )}
     </div>
   );
 }
@@ -1197,23 +1226,12 @@ function SplitAllocationPanel({
   };
 
   const getBudgetOptionsForRow = (rowIdx: number) => {
-    const entityOptions = getEntityOptions(rowIdx);
-    const seenBudgetIds = new Set<number>();
-    const budgets: NonNullable<AllowedSplitEntity["budgets"]> = [];
-    for (const entity of entityOptions) {
-      for (const budget of entity.budgets ?? []) {
-        if (seenBudgetIds.has(budget.id)) continue;
-        seenBudgetIds.add(budget.id);
-        budgets.push(budget);
-      }
+    const row = rows[rowIdx];
+    if (row.entity_id != null) {
+      const entity = allowedEntities.find((e) => e.entity_id === row.entity_id);
+      return entity?.budgets ?? [];
     }
-    return budgets;
-  };
-
-  const getEntityOptionsForBudget = (rowIdx: number, budgetId: number | null): AllowedSplitEntity[] => {
-    const entityOptions = getEntityOptions(rowIdx);
-    if (!budgetId) return entityOptions;
-    return entityOptions.filter((entity) => (entity.budgets ?? []).some((budget) => budget.id === budgetId));
+    return [];
   };
 
   const getBusinessUnitForRow = (row: SplitRow): AllowedSplitEntity | undefined => {
@@ -1233,8 +1251,10 @@ function SplitAllocationPanel({
   const updateBusinessUnit = (rowIdx: number, entityId: number | null) => {
     const opt = allowedEntities.find((e) => e.entity_id === entityId);
     const autoApproved = getAutoApprovalForEntity(entityId);
+    const nextBudgetId = opt?.budgets?.length === 1 ? opt.budgets[0].id : null;
     updateRow(rowIdx, {
       entity_id: entityId,
+      budget_id: nextBudgetId,
       category_id: null,
       subcategory_id: null,
       campaign_id: null,
@@ -1244,26 +1264,11 @@ function SplitAllocationPanel({
   };
 
   const updateBudget = (rowIdx: number, budgetId: number | null) => {
-    const row = rows[rowIdx];
-    const eligibleEntities = getEntityOptionsForBudget(rowIdx, budgetId);
-    const currentEntityStillValid = row.entity_id != null && eligibleEntities.some((entity) => entity.entity_id === row.entity_id);
-    const nextEntityId =
-      currentEntityStillValid
-        ? row.entity_id
-        : eligibleEntities.length === 1
-        ? eligibleEntities[0].entity_id
-        : null;
-    const nextEntity = eligibleEntities.find((entity) => entity.entity_id === nextEntityId);
-    const autoApproved = getAutoApprovalForEntity(nextEntityId);
-
     updateRow(rowIdx, {
       budget_id: budgetId,
-      entity_id: nextEntityId,
       category_id: null,
       subcategory_id: null,
       campaign_id: null,
-      approver_id: autoApproved ? null : (nextEntity?.eligible_approvers.length === 1 ? nextEntity.eligible_approvers[0].id : null),
-      auto_approved: autoApproved,
     });
   };
 
@@ -1445,14 +1450,37 @@ function SplitAllocationPanel({
         <SectionLabel>Allocation Lines</SectionLabel>
         {rows.map((row, idx) => {
           const budgetOptions = getBudgetOptionsForRow(idx);
-          const entityOptions = getEntityOptionsForBudget(idx, row.budget_id);
+          const entityOptions = getEntityOptions(idx);
           const approverOptions = getApproversForRow(row);
           const businessUnit = getBusinessUnitForRow(row);
+          const usedCategoriesForScope = new Set(
+            rows
+              .filter((_, rowIndex) => rowIndex !== idx)
+              .filter((otherRow) => otherRow.entity_id === row.entity_id && otherRow.budget_id === row.budget_id)
+              .map((otherRow) => otherRow.category_id)
+              .filter((categoryId): categoryId is number => categoryId != null),
+          );
+          const usedSubcategoriesForScope = new Set(
+            rows
+              .filter((_, rowIndex) => rowIndex !== idx)
+              .filter(
+                (otherRow) =>
+                  otherRow.entity_id === row.entity_id &&
+                  otherRow.budget_id === row.budget_id &&
+                  otherRow.category_id === row.category_id,
+              )
+              .map((otherRow) => otherRow.subcategory_id)
+              .filter((subcategoryId): subcategoryId is number => subcategoryId != null),
+          );
           const scopedBudgetLines = (businessUnit?.budget_lines ?? []).filter(
             (line) => !row.budget_id || line.budget_id === row.budget_id,
           );
           const validCategoryIds = new Set(scopedBudgetLines.map((line) => line.category_id));
-          const categories = (businessUnit?.categories ?? []).filter((category) => validCategoryIds.has(category.id));
+          const categories = (businessUnit?.categories ?? []).filter(
+            (category) =>
+              validCategoryIds.has(category.id) &&
+              (!usedCategoriesForScope.has(category.id) || row.category_id === category.id),
+          );
           const validSubcategoryIds = new Set(
             scopedBudgetLines
               .filter((line) => !row.category_id || line.category_id === row.category_id)
@@ -1462,7 +1490,8 @@ function SplitAllocationPanel({
           const subcategories = (businessUnit?.subcategories ?? []).filter(
             (subcategory) =>
               (!row.category_id || subcategory.category_id === row.category_id) &&
-              validSubcategoryIds.has(subcategory.id),
+              validSubcategoryIds.has(subcategory.id) &&
+              (!usedSubcategoriesForScope.has(subcategory.id) || row.subcategory_id === subcategory.id),
           );
           const campaigns = (businessUnit?.campaigns ?? []).filter(
             (c) =>
@@ -1486,27 +1515,6 @@ function SplitAllocationPanel({
               </div>
 
               <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-                <div className="space-y-1">
-                  <Label className="text-[11px]">Budget {config?.require_budget ? "*" : ""}</Label>
-                  <select
-                    className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
-                    value={row.budget_id ?? ""}
-                    onChange={(e) => {
-                      const budgetId = e.target.value ? Number(e.target.value) : null;
-                      updateBudget(idx, budgetId);
-                    }}
-                  >
-                    <option value="">Select budget...</option>
-                    {budgetOptions.map((budget) => (
-                      <option key={budget.id} value={budget.id}>
-                        {budget.scope_node_name ? `${budget.scope_node_name} - ` : ""}
-                        {budget.name}
-                        {budget.available_amount ? ` | Available ${fmtAmount(budget.available_amount, budget.currency ?? invoiceCurrency)}` : ""}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
                 {/* Business Unit select — hidden when only one entity (auto-selected in freeform mode) */}
                 {!singleEntity && (
                   <div className="space-y-1">
@@ -1518,10 +1526,9 @@ function SplitAllocationPanel({
                         const eid = e.target.value ? Number(e.target.value) : null;
                         updateBusinessUnit(idx, eid);
                       }}
-                      disabled={!row.budget_id}
                     >
                       <option value="">
-                        {!row.budget_id ? "Select budget first" : "Select business unit..."}
+                        Select business unit...
                       </option>
                       {entityOptions.map((e) => (
                         <option key={e.entity_id} value={e.entity_id}>
@@ -1531,6 +1538,30 @@ function SplitAllocationPanel({
                     </select>
                   </div>
                 )}
+
+                <div className="space-y-1">
+                  <Label className="text-[11px]">Budget {config?.require_budget ? "*" : ""}</Label>
+                  <select
+                    className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+                    value={row.budget_id ?? ""}
+                    onChange={(e) => {
+                      const budgetId = e.target.value ? Number(e.target.value) : null;
+                      updateBudget(idx, budgetId);
+                    }}
+                    disabled={!row.entity_id}
+                  >
+                    <option value="">
+                      {!row.entity_id ? "Select business unit first" : "Select budget..."}
+                    </option>
+                    {budgetOptions.map((budget) => (
+                      <option key={budget.id} value={budget.id}>
+                        {budget.scope_node_name ? `${budget.scope_node_name} - ` : ""}
+                        {budget.name}
+                        {budget.available_amount ? ` | Available ${fmtAmount(budget.available_amount, budget.currency ?? invoiceCurrency)}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
               {row.entity_id && (
@@ -1540,6 +1571,7 @@ function SplitAllocationPanel({
                     <select
                       className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
                       value={row.category_id ?? ""}
+                      disabled={!row.budget_id}
                       onChange={(e) =>
                         updateRow(idx, {
                           category_id: e.target.value ? Number(e.target.value) : null,
@@ -1548,7 +1580,9 @@ function SplitAllocationPanel({
                         })
                       }
                     >
-                      <option value="">Select category...</option>
+                      <option value="">
+                        {!row.budget_id ? "Select budget first" : "Select category..."}
+                      </option>
                       {categories.map((c) => (
                         <option key={c.id} value={c.id}>
                           {c.name}{c.code ? ` (${c.code})` : ""}
@@ -1562,6 +1596,7 @@ function SplitAllocationPanel({
                     <select
                       className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
                       value={row.subcategory_id ?? ""}
+                      disabled={!row.category_id}
                       onChange={(e) =>
                         updateRow(idx, {
                           subcategory_id: e.target.value ? Number(e.target.value) : null,
@@ -1569,7 +1604,9 @@ function SplitAllocationPanel({
                         })
                       }
                     >
-                      <option value="">Select subcategory...</option>
+                      <option value="">
+                        {!row.category_id ? "Select category first" : "Select subcategory..."}
+                      </option>
                       {subcategories.map((s) => (
                         <option key={s.id} value={s.id}>
                           {s.name}{s.category_name ? ` (${s.category_name})` : ""}
@@ -1583,6 +1620,7 @@ function SplitAllocationPanel({
                     <select
                       className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
                       value={row.campaign_id ?? ""}
+                      disabled={!row.budget_id}
                       onChange={(e) => {
                         const campaignId = e.target.value ? Number(e.target.value) : null;
                         const campaign = campaigns.find((c) => c.id === campaignId);

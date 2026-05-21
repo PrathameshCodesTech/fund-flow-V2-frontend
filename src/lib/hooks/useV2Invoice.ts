@@ -32,7 +32,7 @@ import type {
 
 // ── Invoice List ─────────────────────────────────────────────────────────────
 
-export function useInvoices(params?: { scope_node?: string; status?: string }) {
+export function useInvoices(params?: { scope_node?: string; status?: string; search?: string }) {
   return useQuery({
     queryKey: ["v2", "invoices", params],
     queryFn: async () => {

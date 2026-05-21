@@ -41,6 +41,8 @@ export interface Invoice {
   status: InvoiceStatus;
   po_number: string;
   vendor: string | null;
+  vendor_name?: string | null;
+  send_to_route_label?: string | null;
   vendor_invoice_number?: string;
   invoice_date?: string;
   due_date?: string;

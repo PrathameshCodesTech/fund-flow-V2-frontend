@@ -71,25 +71,58 @@ const invoiceErrCls = "border-destructive";
 const invoiceLblCls = "block text-xs font-medium text-foreground mb-1.5";
 const invoiceErrMsgCls = "mt-1 text-xs text-destructive";
 
+function emptyInvoiceForm(): NormalizedInvoiceData {
+  return {
+    vendor_invoice_number: "",
+    invoice_date: new Date().toISOString().slice(0, 10),
+    due_date: "",
+    currency: "INR",
+    subtotal_amount: "",
+    tax_amount: "",
+    total_amount: "",
+    po_number: "",
+    description: "",
+  };
+}
+
+function getChangedInvoiceFields(
+  form: NormalizedInvoiceData,
+  extractedData: NormalizedInvoiceData,
+): string[] {
+  const baseline = extractedData ?? {};
+  return Object.keys(form ?? {}).filter((key) => {
+    const typedKey = key as keyof NormalizedInvoiceData;
+    return normalizeComparableValue(form?.[typedKey]) !== normalizeComparableValue(baseline[typedKey]);
+  });
+}
+
 function InvoiceFormFields({
   form,
   onChange,
   validationErrors,
   showPo,
+  changedFields,
   readOnly = false,
 }: {
   form: NormalizedInvoiceData;
   onChange: (key: keyof NormalizedInvoiceData, value: string) => void;
   validationErrors: Record<string, string>;
   showPo: boolean;
+  changedFields?: string[];
   readOnly?: boolean;
 }) {
   const readOnlyCls = readOnly ? "opacity-70 cursor-not-allowed" : "";
+  const changeBadge = (field: keyof NormalizedInvoiceData) =>
+    changedFields?.includes(field) ? (
+      <span className="ml-2 inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
+        Edited
+      </span>
+    ) : null;
 
   return (
     <div className="space-y-4">
       <div>
-        <label className={invoiceLblCls}>Your Invoice Reference <span className="text-destructive">*</span></label>
+        <label className={invoiceLblCls}>Your Invoice Reference <span className="text-destructive">*</span>{changeBadge("vendor_invoice_number")}</label>
         {readOnly ? (
           <p className="text-sm py-2">{form.vendor_invoice_number || "â€”"}</p>
         ) : (
@@ -104,7 +137,7 @@ function InvoiceFormFields({
       </div>
       {showPo && (
         <div>
-          <label className={invoiceLblCls}>PO Number <span className="text-destructive">*</span></label>
+          <label className={invoiceLblCls}>PO Number <span className="text-destructive">*</span>{changeBadge("po_number")}</label>
           {readOnly ? (
             <p className="text-sm py-2">{form.po_number || "â€”"}</p>
           ) : (
@@ -121,7 +154,7 @@ function InvoiceFormFields({
       )}
       <div>
         <div>
-          <label className={invoiceLblCls}>Invoice Date <span className="text-destructive">*</span></label>
+          <label className={invoiceLblCls}>Invoice Date <span className="text-destructive">*</span>{changeBadge("invoice_date")}</label>
           {readOnly ? (
             <p className="text-sm py-2">{form.invoice_date || "â€”"}</p>
           ) : (
@@ -136,7 +169,7 @@ function InvoiceFormFields({
         </div>
       </div>
       <div>
-        <label className={invoiceLblCls}>Currency <span className="text-destructive">*</span></label>
+        <label className={invoiceLblCls}>Currency <span className="text-destructive">*</span>{changeBadge("currency")}</label>
         {readOnly ? (
           <p className="text-sm py-2">{form.currency || "â€”"}</p>
         ) : (
@@ -152,7 +185,7 @@ function InvoiceFormFields({
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         <div>
-          <label className={invoiceLblCls}>Subtotal</label>
+          <label className={invoiceLblCls}>Subtotal{changeBadge("subtotal_amount")}</label>
           {readOnly ? (
             <p className="text-sm py-2">{form.subtotal_amount || "â€”"}</p>
           ) : (
@@ -167,7 +200,7 @@ function InvoiceFormFields({
           )}
         </div>
         <div>
-          <label className={invoiceLblCls}>Tax</label>
+          <label className={invoiceLblCls}>Tax{changeBadge("tax_amount")}</label>
           {readOnly ? (
             <p className="text-sm py-2">{form.tax_amount || "â€”"}</p>
           ) : (
@@ -182,7 +215,7 @@ function InvoiceFormFields({
           )}
         </div>
         <div>
-          <label className={invoiceLblCls}>Total <span className="text-destructive">*</span></label>
+          <label className={invoiceLblCls}>Total <span className="text-destructive">*</span>{changeBadge("total_amount")}</label>
           {readOnly ? (
             <p className="text-sm py-2 font-medium">{form.total_amount || "â€”"}</p>
           ) : (
@@ -199,7 +232,7 @@ function InvoiceFormFields({
         </div>
       </div>
       <div>
-        <label className={invoiceLblCls}>Description</label>
+        <label className={invoiceLblCls}>Description{changeBadge("description")}</label>
         {readOnly ? (
           <p className="text-sm py-2 whitespace-pre-wrap">{form.description || "â€”"}</p>
         ) : (
@@ -345,14 +378,60 @@ function extractionMethodLabel(method: VendorInvoiceSubmission["extraction_metho
 function extractFieldErrors(err: unknown): Record<string, string> {
   const apiErr = (err as { errors?: unknown })?.errors;
   const fieldErrors: Record<string, string> = {};
+
+  function firstMeaningfulMessage(value: unknown): string | null {
+    if (typeof value === "string" && value.trim()) return value.trim();
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        const nested = firstMeaningfulMessage(item);
+        if (nested) return nested;
+      }
+      return null;
+    }
+    if (value && typeof value === "object") {
+      for (const nestedValue of Object.values(value as Record<string, unknown>)) {
+        const nested = firstMeaningfulMessage(nestedValue);
+        if (nested) return nested;
+      }
+      return null;
+    }
+    return null;
+  }
+
   if (apiErr && typeof apiErr === "object" && !Array.isArray(apiErr)) {
     for (const [field, msgs] of Object.entries(apiErr as Record<string, unknown>)) {
-      if (Array.isArray(msgs) && msgs.length > 0) {
-        fieldErrors[field] = String(msgs[0]);
-      }
+      const message = firstMeaningfulMessage(msgs);
+      if (message) fieldErrors[field] = message;
     }
   }
   return fieldErrors;
+}
+
+const INVOICE_FIELD_LABELS: Record<string, string> = {
+  vendor_invoice_number: "Invoice Reference",
+  po_number: "PO Number",
+  invoice_date: "Invoice Date",
+  due_date: "Due Date",
+  currency: "Currency",
+  subtotal_amount: "Subtotal",
+  tax_amount: "Tax",
+  total_amount: "Total",
+  description: "Description",
+  send_to_option_id: "Send To",
+  _workflow: "Workflow Route",
+  _normalized_data: "Invoice Details",
+};
+
+function getInvoiceFieldLabel(field: string) {
+  return INVOICE_FIELD_LABELS[field] ?? field.replace(/_/g, " ");
+}
+
+function normalizeComparableValue(value: unknown) {
+  if (value == null) return "";
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "number" || typeof value === "boolean") return String(value).trim();
+  if (value instanceof Date) return value.toISOString();
+  return String(value).trim();
 }
 
 // ── Portal header ─────────────────────────────────────────────────────────────
@@ -521,6 +600,11 @@ function InvoiceRow({ invoice }: { invoice: Invoice }) {
         </div>
         <div className="flex items-center gap-3 shrink-0 ml-2">
           <StatusBadge status={invoice.status} paymentStatus={payment?.payment_status} />
+          {invoice.send_to_route_label && (
+            <span className="text-xs text-muted-foreground">
+              {invoice.send_to_route_label}
+            </span>
+          )}
           <span className="text-sm font-semibold text-foreground">{fmtAmount(invoice.amount, invoice.currency)}</span>
           <ChevronRight className={`w-4 h-4 text-muted-foreground transition-transform ${expanded ? "rotate-90" : ""}`} />
         </div>
@@ -534,6 +618,7 @@ function InvoiceRow({ invoice }: { invoice: Invoice }) {
             <div><span className="text-muted-foreground block mb-0.5">Created</span><span className="font-medium">{fmtDate(invoice.created_at)}</span></div>
             <div><span className="text-muted-foreground block mb-0.5">Currency</span><span className="font-medium">{invoice.currency}</span></div>
             <div><span className="text-muted-foreground block mb-0.5">Amount</span><span className="font-medium">{fmtAmount(invoice.amount, invoice.currency)}</span></div>
+            <div><span className="text-muted-foreground block mb-0.5">Sent To</span><span className="font-medium">{invoice.send_to_route_label || "—"}</span></div>
           </div>
 
           {payment && (
@@ -822,7 +907,7 @@ function SubmissionDetailPanel({
             <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2.5">
               <p className="text-xs font-semibold text-destructive mb-1.5">Please fix the following:</p>
               {Object.entries(validationErrors).map(([f, msg]) => (
-                <p key={f} className="text-xs text-destructive">• {msg}</p>
+                <p key={f} className="text-xs text-destructive">• {getInvoiceFieldLabel(f)}: {msg}</p>
               ))}
             </div>
           )}
@@ -972,7 +1057,7 @@ function SubmitInvoiceTab({ vendor }: { vendor: Vendor }) {
   const [invoiceFile, setInvoiceFile] = useState<File | null>(null);
   const [supportingFiles, setSupportingFiles] = useState<File[]>([]);
 
-  const [form, setForm] = useState<NormalizedInvoiceData>(EMPTY_FORM());
+  const [form, setForm] = useState<NormalizedInvoiceData>(emptyInvoiceForm());
 
   const createSub = useCreateSubmission();
   const extractSub = useExtractSubmission();
@@ -983,27 +1068,14 @@ function SubmitInvoiceTab({ vendor }: { vendor: Vendor }) {
   const [sendToOptionId, setSendToOptionId] = useState<string>("");
 
   const isBusy = createSub.isPending || extractSub.isPending || submitSub.isPending;
-
-  function EMPTY_FORM(): NormalizedInvoiceData {
-    return {
-      vendor_invoice_number: "",
-      invoice_date: new Date().toISOString().slice(0, 10),
-      due_date: "",
-      currency: "INR",
-      subtotal_amount: "",
-      tax_amount: "",
-      total_amount: "",
-      po_number: "",
-      description: "",
-    };
-  }
+  const changedFields = getChangedInvoiceFields(form, extractedData);
 
   function resetAll() {
     setStep("choose");
     setSubmissionId(null);
     setExtractedData({});
     setExtractionMethod(null);
-    setForm(EMPTY_FORM());
+    setForm(emptyInvoiceForm());
     setValidationErrors({});
     setInvoiceFile(null);
     setSupportingFiles([]);
@@ -1028,13 +1100,20 @@ function SubmitInvoiceTab({ vendor }: { vendor: Vendor }) {
 
   function validateForm(data: NormalizedInvoiceData): boolean {
     const errs: Record<string, string> = {};
-    if (!data.vendor_invoice_number?.trim()) errs.vendor_invoice_number = "Required";
-    if (!data.invoice_date) errs.invoice_date = "Required";
-    if (!data.currency?.trim()) errs.currency = "Required";
-    const total = parseFloat(data.total_amount || "0") || (parseFloat(data.subtotal_amount || "0") + parseFloat(data.tax_amount || "0"));
-    if (!total || total <= 0) errs.total_amount = "Total amount is required";
+    if (!data.vendor_invoice_number?.trim()) errs.vendor_invoice_number = "Invoice reference is required.";
+    if (!data.invoice_date) errs.invoice_date = "Invoice date is required.";
+    if (!data.currency?.trim()) errs.currency = "Currency is required.";
+    const rawTotal = data.total_amount?.trim() ?? "";
+    const total = rawTotal
+      ? parseFloat(rawTotal)
+      : parseFloat(data.subtotal_amount || "0") + parseFloat(data.tax_amount || "0");
+    if (!rawTotal && !(parseFloat(data.subtotal_amount || "0") || parseFloat(data.tax_amount || "0"))) {
+      errs.total_amount = "Total amount is required.";
+    } else if (!Number.isFinite(total) || total <= 0) {
+      errs.total_amount = "Total amount must be greater than zero.";
+    }
     if (vendor.po_mandate_enabled && !data.po_number?.trim()) {
-      errs.po_number = "PO number is required for this vendor";
+      errs.po_number = "PO number is required for this vendor.";
     }
     setValidationErrors(errs);
     return Object.keys(errs).length === 0;
@@ -1119,15 +1198,7 @@ function SubmitInvoiceTab({ vendor }: { vendor: Vendor }) {
       setTimeout(resetAll, 3000);
     } catch (err) {
       const msg = extractErrorMessage(err, "Failed to submit invoice. Please try again.");
-      const apiErr = (err as any)?.errors;
-      const fieldErrors: Record<string, string> = {};
-      if (apiErr && typeof apiErr === "object" && !Array.isArray(apiErr)) {
-        for (const [field, msgs] of Object.entries(apiErr as Record<string, unknown>)) {
-          if (Array.isArray(msgs) && msgs.length > 0) {
-            fieldErrors[field] = String(msgs[0]);
-          }
-        }
-      }
+      const fieldErrors = extractFieldErrors(err);
       if (Object.keys(fieldErrors).length > 0) {
         setValidationErrors(fieldErrors);
         setSubmitError(msg);
@@ -1200,15 +1271,14 @@ function SubmitInvoiceTab({ vendor }: { vendor: Vendor }) {
         </div>
 
         <div>
-          <label className={invoiceLblCls}>Bill To Entity</label>
           {!vendor.scope_node ? (
             <div className="flex items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">
               <AlertCircle className="w-4 h-4 shrink-0" />
               Vendor billing scope is not configured. Contact support.
             </div>
           ) : (
-            <div className="flex items-center gap-2 rounded-lg border border-border bg-secondary/20 px-3 py-2 text-sm text-foreground">
-              <span>{vendor.scope_node_name || vendor.scope_node}</span>
+            <div className="text-sm font-medium text-foreground">
+              {vendor.scope_node_name || vendor.scope_node}
             </div>
           )}
         </div>
@@ -1281,7 +1351,7 @@ function SubmitInvoiceTab({ vendor }: { vendor: Vendor }) {
           <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3">
             <p className="text-xs font-semibold text-destructive mb-2">Please fix the following fields:</p>
             {Object.entries(validationErrors).map(([field, msg]) => (
-              <p key={field} className="text-xs text-destructive">• {msg}</p>
+              <p key={field} className="text-xs text-destructive">• {getInvoiceFieldLabel(field)}: {msg}</p>
             ))}
           </div>
         )}
@@ -1302,7 +1372,13 @@ function SubmitInvoiceTab({ vendor }: { vendor: Vendor }) {
           error={validationErrors.send_to_option_id}
         />
 
-        <InvoiceFormFields form={form} onChange={handleFieldChange} validationErrors={validationErrors} showPo={vendor.po_mandate_enabled} />
+        <InvoiceFormFields
+          form={form}
+          onChange={handleFieldChange}
+          validationErrors={validationErrors}
+          showPo={vendor.po_mandate_enabled}
+          changedFields={changedFields}
+        />
 
         {invoiceFile && (
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -1313,6 +1389,21 @@ function SubmitInvoiceTab({ vendor }: { vendor: Vendor }) {
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <Eye className="w-3.5 h-3.5" />
             <span>Extraction source: <strong>{extractionMethodLabel(extractionMethod)}</strong></span>
+          </div>
+        )}
+        {changedFields.length > 0 && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+            <p className="text-xs font-semibold text-amber-800 mb-1.5">Edited after extraction</p>
+            <div className="flex flex-wrap gap-1.5">
+              {changedFields.map((field) => (
+                <span
+                  key={field}
+                  className="inline-flex items-center rounded-full border border-amber-200 bg-white px-2 py-1 text-[11px] font-medium text-amber-800"
+                >
+                  {getInvoiceFieldLabel(field)}
+                </span>
+              ))}
+            </div>
           </div>
         )}
 

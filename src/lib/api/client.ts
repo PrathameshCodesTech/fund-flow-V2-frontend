@@ -39,15 +39,45 @@ function normalizeErrors(payload: unknown): Record<string, string[]> {
     return { detail: [String(payload)] };
   }
 
-  const result: Record<string, string[]> = {};
+  function flattenValue(value: unknown): string[] {
+    if (Array.isArray(value)) {
+      return value.flatMap(flattenValue);
+    }
+    if (typeof value === 'string') {
+      return [value];
+    }
+    if (value && typeof value === 'object') {
+      return Object.values(value as Record<string, unknown>).flatMap(flattenValue);
+    }
+    if (value == null) {
+      return [];
+    }
+    return [String(value)];
+  }
 
-  for (const [key, val] of Object.entries(payload as Record<string, unknown>)) {
+  const result: Record<string, string[]> = {};
+  const source = payload as Record<string, unknown>;
+
+  if (source.errors && typeof source.errors === 'object' && !Array.isArray(source.errors)) {
+    for (const [field, val] of Object.entries(source.errors as Record<string, unknown>)) {
+      const messages = flattenValue(val);
+      if (messages.length > 0) {
+        result[field] = messages;
+      }
+    }
+  }
+
+  for (const [key, val] of Object.entries(source)) {
+    if (key === 'errors') continue;
     if (Array.isArray(val)) {
       result[key] = val.map(String);
     } else if (typeof val === 'string') {
       result[key] = [val];
     } else {
-      result[key] = [String(val)];
+      const messages = flattenValue(val);
+      if (messages.length > 0) {
+        result[key] = messages;
+      }
     }
   }
 
