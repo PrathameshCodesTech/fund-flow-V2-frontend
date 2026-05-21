@@ -1,4 +1,4 @@
-import { useState } from "react";
+ï»¿import { useState } from "react";
 import { useTasks } from "@/lib/hooks/useV2Runtime";
 import { V2Shell } from "@/components/v2/V2Shell";
 import { ApprovalReviewDrawer } from "@/components/workflow/ApprovalReviewDrawer";
@@ -47,12 +47,9 @@ function previousActorLabel(task: WorkflowTask) {
   if (task.previous_actor_role) {
     parts.push(task.previous_actor_role);
   }
-  return `${previousActorPrefix(task)} ${parts.join(" · ")}`;
+  return `${previousActorPrefix(task)} ${parts.join(" Â· ")}`;
 }
 
-function taskInternalReference(task: WorkflowTask) {
-  return `#${task.subject_id}`;
-}
 
 const STEP_STATUS_COLORS: Record<string, string> = {
   WAITING: "bg-yellow-100 text-yellow-800 border-yellow-200",
@@ -119,24 +116,23 @@ function TaskCard({
             </span>
             {previousActor && (
               <>
-                <span className="text-muted-foreground/50">·</span>
+                <span className="text-muted-foreground/50">Â·</span>
                 <span>{previousActor}</span>
               </>
             )}
           </div>
           <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground flex-wrap">
-            <span className="text-muted-foreground/50">·</span>
-            <span className="font-mono">{taskInternalReference(task)}</span>
+
             {isBranch && task.target_scope_node_name && (
               <>
-                <span className="text-muted-foreground/50">·</span>
+                <span className="text-muted-foreground/50">Â·</span>
                 <span className="text-blue-600 flex items-center gap-1">
                   <GitBranch className="h-3 w-3 shrink-0" />
                   {task.target_scope_node_name}
                 </span>
               </>
             )}
-            <span className="text-muted-foreground/50">·</span>
+            <span className="text-muted-foreground/50">Â·</span>
             <span className="flex items-center gap-1">
               <Clock className="h-3 w-3 shrink-0" />
               {fmtAge(task.created_at)}
@@ -203,7 +199,7 @@ const TasksPage = () => {
         ) : (
           <div className="space-y-2 p-4">
             <p className="text-xs text-muted-foreground mb-3">
-              {tasks.length} invoice{tasks.length !== 1 ? "s are" : " is"} pending your approval — click a card to review and decide
+              {tasks.length} invoice{tasks.length !== 1 ? "s are" : " is"} pending your approval â€” click a card to review and decide
             </p>
             {tasks.map((task) => (
               <TaskCard
@@ -231,3 +227,4 @@ const TasksPage = () => {
 };
 
 export default TasksPage;
+

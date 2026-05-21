@@ -772,6 +772,13 @@ function BranchAllocationInfo({ alloc, currency }: { alloc: AllocationContextLin
             {alloc.percentage && <span className="text-muted-foreground font-normal ml-1">({parseFloat(alloc.percentage).toFixed(1)}%)</span>}
           </p>
         </div>
+        <div>
+          <p className="text-muted-foreground">Budget</p>
+          <p className="font-medium">
+            {alloc.budget_name ?? "—"}
+            {alloc.budget_code ? ` (${alloc.budget_code})` : ""}
+          </p>
+        </div>
         {alloc.category_name && (
           <div>
             <p className="text-muted-foreground">Category</p>
@@ -1094,29 +1101,6 @@ function ExistingAllocationImpactPreview({
 
   return (
     <div className="rounded-md border border-blue-100 bg-blue-50/30 px-3 py-3 space-y-2.5">
-      <div className="flex items-center gap-1.5 text-[11px] font-semibold text-blue-700">
-        <TrendingDown className="h-3 w-3" />
-        Budget Source
-      </div>
-
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-        {(hasCategory || hasSubcategory) && (
-          <div className="rounded border border-slate-200 bg-white/80 px-2.5 py-2 text-[11px]">
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Budget</p>
-            <p className="mt-1 font-medium text-foreground">
-              {alloc.budget_name ?? budget.name ?? "—"}
-              {alloc.budget_code ? ` (${alloc.budget_code})` : ""}
-            </p>
-          </div>
-        )}
-        {hasSubcategory && (
-          <div className="rounded border border-slate-200 bg-white/80 px-2.5 py-2 text-[11px]">
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Category</p>
-            <p className="mt-1 font-medium text-foreground">{alloc.category_name}</p>
-          </div>
-        )}
-      </div>
-
       <ImpactSection
         label={detailLabel}
         allocated={hasCategory || hasSubcategory ? lineAllocated : budgetAllocated}
