@@ -92,7 +92,7 @@ function getChangedInvoiceFields(
   const baseline = extractedData ?? {};
   return Object.keys(form ?? {}).filter((key) => {
     const typedKey = key as keyof NormalizedInvoiceData;
-    return normalizeComparableValue(form?.[typedKey]) !== normalizeComparableValue(baseline[typedKey]);
+    return normalizeComparableValue(key, form?.[typedKey]) !== normalizeComparableValue(key, baseline[typedKey]);
   });
 }
 
@@ -426,8 +426,14 @@ function getInvoiceFieldLabel(field: string) {
   return INVOICE_FIELD_LABELS[field] ?? field.replace(/_/g, " ");
 }
 
-function normalizeComparableValue(value: unknown) {
+const NUMERIC_COMPARE_FIELDS = new Set(["subtotal_amount", "tax_amount", "total_amount"]);
+
+function normalizeComparableValue(field: string, value: unknown) {
   if (value == null) return "";
+  if (NUMERIC_COMPARE_FIELDS.has(field)) {
+    const numeric = typeof value === "number" ? value : Number(String(value).trim());
+    if (Number.isFinite(numeric)) return String(numeric);
+  }
   if (typeof value === "string") return value.trim();
   if (typeof value === "number" || typeof value === "boolean") return String(value).trim();
   if (value instanceof Date) return value.toISOString();
