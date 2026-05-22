@@ -2007,9 +2007,11 @@ function SubCategoryList({
 function BudgetList({
   budgets,
   isLoading,
+  canManage = false,
 }: {
   budgets: Budget[];
   isLoading: boolean;
+  canManage?: boolean;
 }) {
   if (isLoading) return <PageLoading />;
   if (budgets.length === 0) {
@@ -2019,7 +2021,7 @@ function BudgetList({
   return (
     <div className="space-y-4 px-4 py-4">
       {budgets.map((budget) => (
-        <BudgetAllocationCard key={budget.id} budget={budget} canManage={canManageBudgetModule} />
+        <BudgetAllocationCard key={budget.id} budget={budget} canManage={canManage} />
       ))}
     </div>
   );
@@ -2867,10 +2869,12 @@ function BudgetsDashboardTab({
   budgets,
   budgetsLoading,
   nodes,
+  canManage = false,
 }: {
   budgets: Budget[];
   budgetsLoading: boolean;
   nodes: ScopeNode[];
+  canManage?: boolean;
 }) {
   const { data, isLoading } = useBudgetOverview();
   const { unitSummaries, branchSummaries } = buildUnitAndBranchSummariesFromBudgets(budgets, nodes);
@@ -2969,7 +2973,7 @@ function BudgetsDashboardTab({
           <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Budget Allocation Drilldown</span>
           <span className="ml-1 text-[10px] text-muted-foreground">Budget → Category → Subcategory</span>
         </div>
-        <BudgetList budgets={budgets} isLoading={budgetsLoading} />
+        <BudgetList budgets={budgets} isLoading={budgetsLoading} canManage={canManage} />
       </div>
       </div>
     </div>
@@ -3885,9 +3889,9 @@ export default function BudgetsPage() {
           <TabsContent value="budgets" className="m-0 data-[state=inactive]:hidden flex min-h-0 flex-1 flex-col overflow-hidden">
             <ScrollArea className="flex-1">
               {budgetViewMode === "dashboard" ? (
-                <BudgetsDashboardTab budgets={visibleBudgets} budgetsLoading={budgetsLoading} nodes={nodes} />
+                <BudgetsDashboardTab budgets={visibleBudgets} budgetsLoading={budgetsLoading} nodes={nodes} canManage={canManageBudgetModule} />
               ) : (
-                <BudgetList budgets={visibleBudgets} isLoading={budgetsLoading} />
+                <BudgetList budgets={visibleBudgets} isLoading={budgetsLoading} canManage={canManageBudgetModule} />
               )}
             </ScrollArea>
           </TabsContent>
