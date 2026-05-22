@@ -2,7 +2,9 @@
 import { useForm } from "react-hook-form";
 import { useNavigate } from "react-router-dom";
 import { V2Shell } from "@/components/v2/V2Shell";
+import { useAuth } from "@/contexts/AuthContext";
 import { useWorkingScope } from "@/contexts/WorkingScopeContext";
+import { canCreateCampaign, canEditCampaign, canManageCampaign } from "@/lib/capabilities";
 import {
   useCampaigns,
   useCreateCampaign,
@@ -917,9 +919,13 @@ function AddDocumentDialog({ campaign }: { campaign: Campaign }) {
 function CampaignDetailPanel({
   campaign,
   onClose,
+  canEdit,
+  canDelete,
 }: {
   campaign: Campaign;
   onClose: () => void;
+  canEdit: boolean;
+  canDelete: boolean;
 }) {
   const { data: documents = [], isLoading: docsLoading } = useCampaignDocuments({ campaign: campaign.id });
   const deleteDoc = useDeleteCampaignDocument();
@@ -1023,25 +1029,29 @@ function CampaignDetailPanel({
             <div className="flex flex-wrap gap-2">
               {canSubmitBudget && <SubmitBudgetDialog campaign={campaign} />}
               {canStartWorkflow && <StartWorkflowDialog campaign={campaign} />}
-              <CampaignFormDialog
-                mode="edit"
-                initial={campaign}
-                orgId={campaign.org}
-                onSubmit={async (data) => {
-                  await updateCampaign.mutateAsync({ id: campaign.id, data: data as UpdateCampaignRequest });
-                }}
-                onCancel={() => {}}
-                isSaving={updateCampaign.isPending}
-                error={updateCampaign.error}
-                submitLabel="Save Changes"
-              />
-              <DeleteCampaignDialog
-                campaign={campaign}
-                onClose={() => {}}
-                isDeleting={deleteCampaign.isPending}
-                error={deleteCampaign.error}
-                onConfirm={() => deleteCampaign.mutateAsync(campaign.id)}
-              />
+              {canEdit && (
+                <CampaignFormDialog
+                  mode="edit"
+                  initial={campaign}
+                  orgId={campaign.org}
+                  onSubmit={async (data) => {
+                    await updateCampaign.mutateAsync({ id: campaign.id, data: data as UpdateCampaignRequest });
+                  }}
+                  onCancel={() => {}}
+                  isSaving={updateCampaign.isPending}
+                  error={updateCampaign.error}
+                  submitLabel="Save Changes"
+                />
+              )}
+              {canDelete && (
+                <DeleteCampaignDialog
+                  campaign={campaign}
+                  onClose={() => {}}
+                  isDeleting={deleteCampaign.isPending}
+                  error={deleteCampaign.error}
+                  onConfirm={() => deleteCampaign.mutateAsync(campaign.id)}
+                />
+              )}
               {canCancel && <CancelCampaignDialog campaign={campaign} />}
             </div>
           </div>
@@ -1101,6 +1111,7 @@ function CampaignDetailPanel({
 // -- Main Page -----------------------------------------------------------------
 
 const CampaignsPage = () => {
+  const { user } = useAuth();
   const {
     orgId: selectedOrgId,
     nodeId: selectedNodeId,
@@ -1110,6 +1121,9 @@ const CampaignsPage = () => {
   const [selectedCampaignId, setSelectedCampaignId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [page, setPage] = useState(1);
+  const canCreateCampaigns = canCreateCampaign(user);
+  const canEditCampaigns = canEditCampaign(user);
+  const canDeleteCampaigns = canManageCampaign(user);
 
   const { data: organizations = [], isLoading: orgsLoading } = useOrganizations();
   const { data: nodes = [], isLoading: nodesLoading } = useScopeNodes(selectedOrgId ?? undefined);
@@ -1290,19 +1304,21 @@ const CampaignsPage = () => {
         )
       }
       actions={
-        <CampaignFormDialog
-          mode="create"
-          orgId={selectedOrgId}
-          scopeNodeId={selectedNodeId}
-          disabled={!selectedNodeId}
-          onSubmit={async (data) => {
-            await createCampaign.mutateAsync(data as CreateCampaignRequest);
-          }}
-          onCancel={() => {}}
-          isSaving={createCampaign.isPending}
-          error={createCampaign.error}
-          submitLabel="Create Campaign"
-        />
+        canCreateCampaigns ? (
+          <CampaignFormDialog
+            mode="create"
+            orgId={selectedOrgId}
+            scopeNodeId={selectedNodeId}
+            disabled={!selectedNodeId}
+            onSubmit={async (data) => {
+              await createCampaign.mutateAsync(data as CreateCampaignRequest);
+            }}
+            onCancel={() => {}}
+            isSaving={createCampaign.isPending}
+            error={createCampaign.error}
+            submitLabel="Create Campaign"
+          />
+        ) : null
       }
     >
       <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
@@ -1426,6 +1442,8 @@ const CampaignsPage = () => {
             <CampaignDetailPanel
               campaign={selectedCampaign}
               onClose={() => setSelectedCampaignId(null)}
+              canEdit={canEditCampaigns}
+              canDelete={canDeleteCampaigns}
             />
           ) : (
             <div className="flex h-full items-center justify-center text-sm text-muted-foreground">

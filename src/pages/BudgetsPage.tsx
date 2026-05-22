@@ -5,8 +5,10 @@ import {
   Tooltip, ResponsiveContainer, Cell,
 } from "recharts";
 import { V2Shell } from "@/components/v2/V2Shell";
+import { useAuth } from "@/contexts/AuthContext";
 import { useWorkingScope } from "@/contexts/WorkingScopeContext";
 import { ApiError } from "@/lib/api/client";
+import { canManageBudget } from "@/lib/capabilities";
 import { cn } from "@/lib/utils";
 import {
   useOrganizations,
@@ -2147,8 +2149,12 @@ function BudgetAllocationCard({
             </div>
           </div>
           <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-            <EditBudgetDialog budget={budget} />
-            <DeleteBudgetDialog budget={budget} />
+            {canManageBudgetModule && (
+              <>
+                <EditBudgetDialog budget={budget} />
+                <DeleteBudgetDialog budget={budget} />
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -3529,6 +3535,8 @@ function BudgetImportPanel({ orgId }: { orgId: string | null }) {
 }
 
 export default function BudgetsPage() {
+  const { user } = useAuth();
+  const canManageBudgetModule = canManageBudget(user);
   const {
     orgId: selectedOrgId,
     nodeId: selectedNodeId,
@@ -3703,11 +3711,13 @@ export default function BudgetsPage() {
               </div>
             ),
             right: (
-              <CreateBudgetDialog
-                orgId={selectedOrgId}
-                scopeNodeId={selectedNodeId}
-                onSuccess={() => refetchBudgets()}
-              />
+              canManageBudgetModule ? (
+                <CreateBudgetDialog
+                  orgId={selectedOrgId}
+                  scopeNodeId={selectedNodeId}
+                  onSuccess={() => refetchBudgets()}
+                />
+              ) : null
             ),
           }
         );
@@ -3721,7 +3731,7 @@ export default function BudgetsPage() {
                 </p>
               </div>
             ),
-            right: <CreateCategoryDialog orgId={selectedOrgId} />,
+            right: canManageBudgetModule ? <CreateCategoryDialog orgId={selectedOrgId} /> : null,
           }
         );
       case "subcategories":
