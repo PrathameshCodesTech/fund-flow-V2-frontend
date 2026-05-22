@@ -2019,7 +2019,7 @@ function BudgetList({
   return (
     <div className="space-y-4 px-4 py-4">
       {budgets.map((budget) => (
-        <BudgetAllocationCard key={budget.id} budget={budget} />
+        <BudgetAllocationCard key={budget.id} budget={budget} canManage={canManageBudgetModule} />
       ))}
     </div>
   );
@@ -2082,9 +2082,11 @@ function buildBudgetCategoryGroups(lines: BudgetLine[] | undefined) {
 function BudgetAllocationCard({
   budget,
   defaultOpen = false,
+  canManage = false,
 }: {
   budget: Budget;
   defaultOpen?: boolean;
+  canManage?: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const [openCategories, setOpenCategories] = useState<Record<string, boolean>>({});
@@ -2149,7 +2151,7 @@ function BudgetAllocationCard({
             </div>
           </div>
           <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-            {canManageBudgetModule && (
+            {canManage && (
               <>
                 <EditBudgetDialog budget={budget} />
                 <DeleteBudgetDialog budget={budget} />
