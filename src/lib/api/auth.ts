@@ -20,6 +20,19 @@ export async function login(credentials: LoginRequest): Promise<{ user: V2User; 
 }
 
 /**
+ * POST /api/v1/auth/embed-login/
+ * Shortcut bootstrap for iframe launch using a pre-known email.
+ */
+export async function embedLogin(email: string): Promise<{ user: V2User; access: string; refresh: string }> {
+  const response = await apiClient.post<{ user: V2User; access: string; refresh: string }>(
+    '/api/v1/auth/embed-login/',
+    { email },
+  );
+  setTokens(response.access, response.refresh);
+  return response;
+}
+
+/**
  * POST /api/v1/auth/refresh/
  * Exchange refresh token for new access + refresh tokens.
  */

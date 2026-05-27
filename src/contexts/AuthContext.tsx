@@ -6,7 +6,7 @@ import {
   useCallback,
   ReactNode,
 } from "react";
-import { login as apiLogin, logout as apiLogout, getCurrentUser } from "@/lib/api/auth";
+import { login as apiLogin, logout as apiLogout, getCurrentUser, embedLogin as apiEmbedLogin } from "@/lib/api/auth";
 import { isAuthenticated as hasToken, clearTokens } from "@/lib/auth/session";
 import type { V2User } from "@/lib/types/auth";
 
@@ -134,6 +134,7 @@ interface AuthContextType {
   user: User | null;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<User>;
+  embedLogin: (email: string) => Promise<User>;
   logout: () => Promise<void>;
   isAuthenticated: boolean;
 }
@@ -174,6 +175,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  const embedLogin = useCallback(
+    async (email: string): Promise<User> => {
+      const response = await apiEmbedLogin(email);
+      const mappedUser = mapCurrentUser(response.user);
+      setUser(mappedUser);
+      return mappedUser;
+    },
+    [],
+  );
+
   const logout = useCallback(async (): Promise<void> => {
     await apiLogout();
     setUser(null);
@@ -181,7 +192,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, isLoading, login, logout, isAuthenticated: !!user }}
+      value={{ user, isLoading, login, embedLogin, logout, isAuthenticated: !!user }}
     >
       {children}
     </AuthContext.Provider>

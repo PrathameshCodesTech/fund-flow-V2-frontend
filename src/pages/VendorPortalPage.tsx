@@ -10,9 +10,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useMyVendor } from "@/lib/hooks/useV2Vendor";
 import {
-  useInvoices,
   useSubmissions,
-  useSubmission,
   useCreateSubmission,
   useExtractSubmission,
   useUpdateSubmissionFields,
@@ -21,13 +19,10 @@ import {
   useCancelSubmission,
   useDiscardSubmission,
   useAddSubmissionDocument,
-  useInvoicePayment,
 } from "@/lib/hooks/useV2Invoice";
-import { useQuery } from "@tanstack/react-query";
 import { showErrorToast, extractErrorMessage } from "@/lib/utils/toast-error";
 import type { Vendor } from "@/lib/types/v2vendor";
 import type {
-  Invoice,
   VendorInvoiceSubmission,
   NormalizedInvoiceData,
   VendorSendToOption,
@@ -37,12 +32,7 @@ import {
   SUBMISSION_STATUS_LABELS,
   type SubmissionStatus,
 } from "@/lib/types/v2invoice";
-import {
-  PAYMENT_STATUS_LABELS,
-  PAYMENT_METHOD_LABELS,
-  type InvoicePaymentStatus,
-  type PaymentMethod,
-} from "@/lib/types/invoice-payment";
+import { type InvoicePaymentStatus } from "@/lib/types/invoice-payment";
 import {
   LogOut,
   FileText,
@@ -64,7 +54,6 @@ import {
   User,
 } from "lucide-react";
 import { getPortalProfile } from "@/lib/api/v2vendor";
-import { listAllInvoices } from "@/lib/api/v2invoice";
 
 const invoiceInputCls = "w-full px-3 py-2 text-sm rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary disabled:opacity-50";
 const invoiceErrCls = "border-destructive";
@@ -332,6 +321,14 @@ function getVendorDisplayStatus(status: string, paymentStatus?: InvoicePaymentSt
   return "processing";
 }
 
+function getSubmissionDisplayStatus(submission: VendorInvoiceSubmission) {
+  if (submission.final_invoice_status === "paid") return "paid";
+  if (submission.final_invoice_status === "finance_rejected") return "action_required";
+  if (submission.final_invoice_status === "rejected") return "action_required";
+  if (submission.status === "submitted" && submission.final_invoice_status) return "processing";
+  return getVendorDisplayStatus(submission.status);
+}
+
 function StatusBadge({
   status,
   paymentStatus,
@@ -478,24 +475,12 @@ function PortalHeader({ vendorName, userName, onLogout }: { vendorName: string; 
 function MyInvoicesTab() {
   const PAGE_SIZE = 8;
   const [page, setPage] = useState(1);
-  const { data: invoices = [], isLoading: invLoading } = useQuery({
-    queryKey: ["v2", "vendor-portal", "all-invoices"],
-    queryFn: () => listAllInvoices(),
-  });
   const { data: submissions = [], isLoading: subLoading } = useSubmissions();
 
-  const isLoading = invLoading || subLoading;
+  const isLoading = subLoading;
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [selectedSubmission, setSelectedSubmission] = useState<VendorInvoiceSubmission | null>(null);
-
-  type MergedRow =
-    | { kind: "invoice"; data: Invoice }
-    | { kind: "submission"; data: typeof submissions[0] };
-
-  const rows: MergedRow[] = [
-    ...invoices.map((i) => ({ kind: "invoice" as const, data: i })),
-    ...submissions.filter((s) => s.status !== "submitted").map((s) => ({ kind: "submission" as const, data: s })),
-  ].sort((a, b) => b.data.created_at.localeCompare(a.data.created_at));
+  const rows = [...submissions].sort((a, b) => b.created_at.localeCompare(a.created_at));
 
   const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
@@ -527,11 +512,13 @@ function MyInvoicesTab() {
           <p className="text-xs text-muted-foreground">Submit your first invoice using the Submit Invoice tab.</p>
         </div>
       )}
-      {!isLoading && pagedRows.map((row) =>
-        row.kind === "invoice"
-          ? <InvoiceRow key={`inv-${row.data.id}`} invoice={row.data} />
-          : <SubmissionRow key={`sub-${row.data.id}`} submission={row.data} onClick={() => setSelectedSubmission(row.data)} />
-      )}
+      {!isLoading && pagedRows.map((submission) => (
+        <SubmissionRow
+          key={`sub-${submission.id}`}
+          submission={submission}
+          onClick={() => setSelectedSubmission(submission)}
+        />
+      ))}
 
       {!isLoading && rows.length > PAGE_SIZE && (
         <div className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3">
@@ -585,107 +572,18 @@ function MyInvoicesTab() {
   );
 }
 
-function InvoiceRow({ invoice }: { invoice: Invoice }) {
-  const [expanded, setExpanded] = useState(false);
-  const { data: payment } = useInvoicePayment(expanded ? invoice.id : null);
-
-  return (
-    <div className="rounded-xl border bg-card overflow-hidden border-border">
-      <button
-        className="w-full flex items-center justify-between px-4 py-3.5 text-left hover:bg-secondary/30 transition-colors"
-        onClick={() => setExpanded((e) => !e)}
-      >
-        <div className="flex items-center gap-3 min-w-0">
-          <FileText className="w-4 h-4 shrink-0 text-muted-foreground" />
-          <div className="min-w-0">
-            <p className="text-sm font-medium text-foreground truncate">
-              {invoice.title || invoice.vendor_invoice_number || invoice.id.slice(0, 8)}
-            </p>
-            <p className="text-xs text-muted-foreground">{fmtDate(invoice.created_at)}</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-3 shrink-0 ml-2">
-          <StatusBadge status={invoice.status} paymentStatus={payment?.payment_status} />
-          {invoice.send_to_route_label && (
-            <span className="text-xs text-muted-foreground">
-              {invoice.send_to_route_label}
-            </span>
-          )}
-          <span className="text-sm font-semibold text-foreground">{fmtAmount(invoice.amount, invoice.currency)}</span>
-          <ChevronRight className={`w-4 h-4 text-muted-foreground transition-transform ${expanded ? "rotate-90" : ""}`} />
-        </div>
-      </button>
-      {expanded && (
-        <div className="px-4 pb-4 border-t border-border pt-3 space-y-3">
-          <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
-            <div><span className="text-muted-foreground block mb-0.5">Invoice Ref</span><span className="font-medium">{invoice.vendor_invoice_number || "—"}</span></div>
-            <div><span className="text-muted-foreground block mb-0.5">PO Number</span><span className="font-medium">{invoice.po_number || "—"}</span></div>
-            <div><span className="text-muted-foreground block mb-0.5">Invoice Date</span><span className="font-medium">{fmtDate(invoice.invoice_date)}</span></div>
-            <div><span className="text-muted-foreground block mb-0.5">Created</span><span className="font-medium">{fmtDate(invoice.created_at)}</span></div>
-            <div><span className="text-muted-foreground block mb-0.5">Currency</span><span className="font-medium">{invoice.currency}</span></div>
-            <div><span className="text-muted-foreground block mb-0.5">Amount</span><span className="font-medium">{fmtAmount(invoice.amount, invoice.currency)}</span></div>
-            <div><span className="text-muted-foreground block mb-0.5">Sent To</span><span className="font-medium">{invoice.send_to_route_label || "—"}</span></div>
-          </div>
-
-          {payment && (
-            <div className="rounded-lg border border-purple-200 bg-purple-50/60 dark:border-purple-800 dark:bg-purple-950/30 p-3 space-y-1.5">
-              <p className="text-xs font-semibold text-purple-900 dark:text-purple-100 mb-1.5">Payment Details</p>
-              <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
-                <div><span className="text-muted-foreground">Status</span></div>
-                <div><span className="font-medium">{PAYMENT_STATUS_LABELS[payment.payment_status]}</span></div>
-                {payment.payment_method && (
-                  <>
-                    <div><span className="text-muted-foreground">Method</span></div>
-                    <div><span className="font-medium">{PAYMENT_METHOD_LABELS[payment.payment_method as PaymentMethod] ?? payment.payment_method}</span></div>
-                  </>
-                )}
-                {payment.paid_amount && (
-                  <>
-                    <div><span className="text-muted-foreground">Amount Paid</span></div>
-                    <div><span className="font-medium">{payment.currency} {parseFloat(payment.paid_amount).toLocaleString()}</span></div>
-                  </>
-                )}
-                {payment.payment_date && (
-                  <>
-                    <div><span className="text-muted-foreground">Payment Date</span></div>
-                    <div><span className="font-medium">{fmtDate(payment.payment_date)}</span></div>
-                  </>
-                )}
-                {payment.payment_reference_number && (
-                  <>
-                    <div><span className="text-muted-foreground">Ref Number</span></div>
-                    <div><span className="font-medium font-mono text-xs">{payment.payment_reference_number}</span></div>
-                  </>
-                )}
-                {payment.utr_number && (
-                  <>
-                    <div><span className="text-muted-foreground">UTR Number</span></div>
-                    <div><span className="font-medium font-mono text-xs">{payment.utr_number}</span></div>
-                  </>
-                )}
-                {payment.remarks && (
-                  <>
-                    <div><span className="text-muted-foreground">Remarks</span></div>
-                    <div><span className="font-medium">{payment.remarks}</span></div>
-                  </>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
 function SubmissionRow({ submission, onClick }: { submission: VendorInvoiceSubmission; onClick: () => void }) {
   const nd = submission.normalized_data || {};
-  const isActionable = submission.status === "needs_correction" || submission.status === "ready";
-  const isDiscardable =
-    submission.status === "uploaded" ||
-    submission.status === "needs_correction" ||
-    submission.status === "ready" ||
-    submission.status === "cancelled";
+  const displayStatus = getSubmissionDisplayStatus(submission);
+  const displayTitle =
+    submission.final_invoice_title ||
+    nd.vendor_invoice_number ||
+    submission.source_file_name ||
+    "Draft";
+  const displayDate = submission.submitted_at || submission.created_at;
+  const displayAmount = submission.final_invoice_amount || nd.total_amount || nd.subtotal_amount || "0";
+  const displayCurrency = submission.final_invoice_currency || nd.currency || "INR";
+
   return (
     <div className="rounded-xl border bg-card overflow-hidden border-border">
       <button
@@ -696,20 +594,26 @@ function SubmissionRow({ submission, onClick }: { submission: VendorInvoiceSubmi
           <Upload className="w-4 h-4 shrink-0 text-muted-foreground" />
           <div className="min-w-0">
             <p className="text-sm font-medium text-foreground truncate">
-              {nd.vendor_invoice_number || submission.source_file_name || "Draft"}
+              {displayTitle}
             </p>
-            <p className="text-xs text-muted-foreground">{fmtDate(submission.created_at)}</p>
+            <p className="text-xs text-muted-foreground">{fmtDate(displayDate)}</p>
             {submission.status === "needs_correction" && submission.correction_note && (
               <p className="text-xs text-orange-700 truncate mt-0.5">{submission.correction_note}</p>
             )}
           </div>
         </div>
         <div className="flex items-center gap-3 shrink-0 ml-2">
-          <StatusBadge status={submission.status} />
-          {submission.confidence_percent != null && (
+          <StatusBadge status={displayStatus} />
+          {submission.send_to_route_label && (
+            <span className="text-xs text-muted-foreground">
+              {submission.send_to_route_label}
+            </span>
+          )}
+          {submission.confidence_percent != null && !submission.final_invoice_id && (
             <span className="text-xs text-muted-foreground">{submission.confidence_percent}%</span>
           )}
-          {(isActionable || isDiscardable) && <ChevronRight className="w-4 h-4 text-muted-foreground" />}
+          <span className="text-sm font-semibold text-foreground">{fmtAmount(displayAmount, displayCurrency)}</span>
+          <ChevronRight className="w-4 h-4 text-muted-foreground" />
         </div>
       </button>
     </div>
@@ -852,10 +756,11 @@ function SubmissionDetailPanel({
   const isNeedsCorrection = status === "needs_correction";
   const isReady = status === "ready";
   const isDiscardable =
-    status === "uploaded" ||
-    status === "needs_correction" ||
-    status === "ready" ||
-    status === "cancelled";
+    !submission.final_invoice_id &&
+    (status === "uploaded" ||
+      status === "needs_correction" ||
+      status === "ready" ||
+      status === "cancelled");
   const workflowValidationMessage =
     submission.validation_errors?.find((e) => e.field === "_workflow")?.message || "";
   const correctionReason = submission.correction_note || workflowValidationMessage || validationErrors._workflow || "";
@@ -1071,10 +976,14 @@ function SubmitInvoiceTab({ vendor }: { vendor: Vendor }) {
   const submitSub = useSubmitSubmission();
   const addDoc = useAddSubmissionDocument();
   const { data: sendToOptions = [] } = useVendorSendToOptions();
+  const { data: existingSubmissions = [] } = useSubmissions();
   const [sendToOptionId, setSendToOptionId] = useState<string>("");
 
   const isBusy = createSub.isPending || extractSub.isPending || submitSub.isPending;
   const changedFields = getChangedInvoiceFields(form, extractedData);
+  const resumableSubmission = existingSubmissions
+    .filter((submission) => submission.status === "needs_correction" && !!submission.final_invoice_id)
+    .sort((a, b) => b.updated_at.localeCompare(a.updated_at))[0] ?? null;
 
   function resetAll() {
     setStep("choose");
@@ -1248,6 +1157,40 @@ function SubmitInvoiceTab({ vendor }: { vendor: Vendor }) {
             Download PDF Template
           </a>
         </div>
+
+        {resumableSubmission && (
+          <div className="rounded-xl border border-orange-200 bg-orange-50/80 px-4 py-4 space-y-3">
+            <div>
+              <p className="text-sm font-semibold text-orange-900">Returned invoice awaiting correction</p>
+              <p className="text-xs text-orange-800 mt-1">
+                Resume the existing invoice correction thread instead of creating a fresh upload. This keeps one vendor-facing record for the same invoice.
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                setSubmissionId(resumableSubmission.id);
+                setExtractedData(resumableSubmission.normalized_data || {});
+                setExtractionMethod(resumableSubmission.extraction_method ?? null);
+                setForm(resumableSubmission.normalized_data || {});
+                const fieldErrors: Record<string, string> = {};
+                for (const err of resumableSubmission.validation_errors || []) fieldErrors[err.field] = err.message;
+                setValidationErrors(fieldErrors);
+                setSendToOptionId(
+                  resumableSubmission.send_to_route_id != null
+                    ? String(resumableSubmission.send_to_route_id)
+                    : ""
+                );
+                setSubmitError(null);
+                setSuccessMsg(null);
+                setStep("preview");
+              }}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
+            >
+              <RefreshCw className="w-4 h-4" />
+              Resume Returned Invoice
+            </button>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 gap-3">
           <button

@@ -118,6 +118,7 @@ const ROUTE_ACCESS: Record<string, RouteAccess> = {
 
 /** Routes that bypass all guards (public token pages). */
 export const KNOWN_PUBLIC_ROUTES = [
+  "/embed-login",
   "/vendor/register",
   "/vendor/activate",
   "/vendor/onboarding",

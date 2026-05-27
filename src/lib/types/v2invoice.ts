@@ -127,6 +127,10 @@ export interface VendorInvoiceSubmission {
   validation_errors: ValidationError[];
   final_invoice: string | null;
   final_invoice_id: string | null;
+  final_invoice_status?: InvoiceStatus | null;
+  final_invoice_title?: string | null;
+  final_invoice_amount?: string | null;
+  final_invoice_currency?: string | null;
   documents: SubmissionDocument[];
   created_at: string;
   updated_at: string;

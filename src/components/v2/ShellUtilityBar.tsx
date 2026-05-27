@@ -3,6 +3,7 @@ import { useTheme } from "@/contexts/ThemeContext";
 import { NotificationBell } from "@/components/v2/NotificationBell";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { isEmbedSession } from "@/lib/auth/session";
 import { Search, Command, LogOut, Moon, Sun, Menu } from "lucide-react";
 
 interface ShellUtilityBarProps {
@@ -13,6 +14,7 @@ interface ShellUtilityBarProps {
 export function ShellUtilityBar({ onSearchClick, onMenuClick }: ShellUtilityBarProps) {
   const { user, logout } = useAuth();
   const { mode, colorTheme, toggleMode, setColorTheme } = useTheme();
+  const hideLogout = isEmbedSession();
 
   return (
     <header className="flex items-center justify-between border-b border-border px-3 sm:px-5 py-2.5 gap-3 sm:gap-6">
@@ -107,15 +109,17 @@ export function ShellUtilityBar({ onSearchClick, onMenuClick }: ShellUtilityBarP
           </div>
         </div>
 
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => logout()}
-          className="gap-1.5 text-muted-foreground"
-          title="Sign out"
-        >
-          <LogOut className="h-4 w-4" />
-        </Button>
+        {!hideLogout && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => logout()}
+            className="gap-1.5 text-muted-foreground"
+            title="Sign out"
+          >
+            <LogOut className="h-4 w-4" />
+          </Button>
+        )}
       </div>
     </header>
   );

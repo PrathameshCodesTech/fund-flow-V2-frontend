@@ -7,9 +7,12 @@ import { ShellUtilityBar } from "@/components/v2/ShellUtilityBar";
 import { ShellContextBar } from "@/components/v2/ShellContextBar";
 import { CommandPalette } from "@/components/v2/CommandPalette";
 import { V2Footer } from "@/components/v2/V2Footer";
+import { NotificationBell } from "@/components/v2/NotificationBell";
 import { NAV_GROUPS, itemsForGroup, visibleGroups, type NavGroup } from "@/lib/shell/nav";
 import { useAuth } from "@/contexts/AuthContext";
-import { X } from "lucide-react";
+import { useTheme } from "@/contexts/ThemeContext";
+import { isEmbedSession, isRunningInIframe } from "@/lib/auth/session";
+import { Moon, Sun, X } from "lucide-react";
 
 interface Breadcrumb {
   label: string;
@@ -26,6 +29,63 @@ interface V2ShellProps {
   children: ReactNode;
 }
 
+function EmbeddedShellActions() {
+  const { user } = useAuth();
+  const { mode, colorTheme, toggleMode, setColorTheme } = useTheme();
+
+  return (
+    <div className="flex min-w-0 items-center gap-2">
+      <div className="hidden sm:flex items-center rounded-md border border-border bg-secondary/50 p-0.5 gap-0.5">
+        <button
+          onClick={() => setColorTheme("orange")}
+          title="Orange theme"
+          className={cn(
+            "h-6 w-6 rounded flex items-center justify-center transition-all",
+            colorTheme === "orange"
+              ? "bg-primary text-primary-foreground shadow-sm ring-1 ring-primary/30"
+              : "hover:bg-primary/10",
+          )}
+        >
+          <span className="h-2.5 w-2.5 rounded-full bg-orange-500" />
+        </button>
+        <button
+          onClick={() => setColorTheme("green")}
+          title="Green theme"
+          className={cn(
+            "h-6 w-6 rounded flex items-center justify-center transition-all",
+            colorTheme === "green"
+              ? "bg-primary text-primary-foreground shadow-sm ring-1 ring-primary/30"
+              : "hover:bg-primary/10",
+          )}
+        >
+          <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
+        </button>
+      </div>
+
+      <button
+        onClick={toggleMode}
+        title={mode === "light" ? "Switch to dark mode" : "Switch to light mode"}
+        className="h-7 w-7 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+      >
+        {mode === "light" ? <Moon className="h-3.5 w-3.5" /> : <Sun className="h-3.5 w-3.5" />}
+      </button>
+
+      <NotificationBell />
+
+      <div className="hidden sm:flex items-center gap-2">
+        <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-primary-foreground text-sm font-bold shrink-0">
+          {user?.avatar ?? "??"}
+        </div>
+        <div className="hidden xl:block">
+          <p className="max-w-36 truncate text-sm font-medium text-foreground">{user?.name ?? "User"}</p>
+          <p className="max-w-40 truncate text-xs text-muted-foreground">{user?.email ?? ""}</p>
+        </div>
+      </div>
+
+    </div>
+  );
+}
+
 export function V2Shell({
   title,
   titleIcon,
@@ -39,6 +99,15 @@ export function V2Shell({
   const [commandOpen, setCommandOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { user } = useAuth();
+  const embedded = isEmbedSession() && isRunningInIframe();
+  const contextActions = embedded ? (
+    <>
+      {actions}
+      <EmbeddedShellActions />
+    </>
+  ) : (
+    actions
+  );
 
   const navContent = (
     <ScrollArea className="flex-1 py-3">
@@ -83,10 +152,12 @@ export function V2Shell({
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-background">
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        <ShellUtilityBar
-          onSearchClick={() => setCommandOpen(true)}
-          onMenuClick={() => setSidebarOpen(true)}
-        />
+        {!embedded && (
+            <ShellUtilityBar
+              onSearchClick={() => setCommandOpen(true)}
+              onMenuClick={() => setSidebarOpen(true)}
+            />
+        )}
 
         <ShellContextBar
           title={title}
@@ -94,12 +165,10 @@ export function V2Shell({
           breadcrumbs={breadcrumbs}
           orgSelector={orgSelector}
           unitSelector={unitSelector}
-          actions={actions}
+          actions={contextActions}
         />
 
         <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
-
-          {/* Mobile backdrop */}
           {sidebarOpen && (
             <div
               className="fixed inset-0 z-40 bg-black/50 lg:hidden"
@@ -107,7 +176,6 @@ export function V2Shell({
             />
           )}
 
-          {/* Sidebar — overlay on mobile, static on desktop */}
           <aside
             className={cn(
               "flex flex-col border-r border-border bg-sidebar z-50 transition-transform duration-300",
@@ -115,7 +183,6 @@ export function V2Shell({
               sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
             )}
           >
-            {/* Mobile close header */}
             <div className="flex items-center justify-between border-b border-border px-4 py-3 lg:hidden">
               <div className="flex items-center gap-2">
                 <img src="/vims-brand.png" alt="VIMS" className="h-7 w-auto object-contain" />
@@ -132,18 +199,25 @@ export function V2Shell({
             {navContent}
           </aside>
 
-          <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-secondary/5">
+          <main
+            className={cn(
+              "flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden",
+              embedded ? "bg-background" : "bg-secondary/5",
+            )}
+          >
             {children}
           </main>
         </div>
 
-        <CommandPalette
-          open={commandOpen}
-          onOpenChange={setCommandOpen}
-        />
+        {!embedded && (
+          <CommandPalette
+            open={commandOpen}
+            onOpenChange={setCommandOpen}
+          />
+        )}
       </div>
 
-      <V2Footer />
+      {!embedded && <V2Footer />}
     </div>
   );
 }

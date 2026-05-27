@@ -15,6 +15,7 @@ import { NotificationProvider } from "@/contexts/NotificationContext";
 import { WorkingScopeProvider } from "@/contexts/WorkingScopeContext";
 import { hasRouteAccess, NAV_ITEMS, KNOWN_PUBLIC_ROUTES } from "@/lib/shell/nav";
 import LoginPage from "./pages/LoginPage.tsx";
+import EmbedLoginPage from "./pages/EmbedLoginPage.tsx";
 import V2HomePage from "./pages/V2HomePage.tsx";
 import ScopeNodesPage from "./pages/ScopeNodesPage.tsx";
 import AccessControlPage from "./pages/AccessControlPage.tsx";
@@ -101,6 +102,7 @@ function AppRoutes() {
   if (!isAuthenticated) {
     return (
       <Routes>
+        <Route path="/embed-login" element={<EmbedLoginPage />} />
         <Route path="/vendor/register" element={<VendorRegistrationPage />} />
         <Route path="/vendor/activate/:uid/:token" element={<VendorActivatePage />} />
         <Route path="/vendor/onboarding/:token" element={<VendorOnboardingPage />} />
@@ -115,6 +117,7 @@ function AppRoutes() {
   if (isPublicRoute(location.pathname)) {
     return (
       <Routes>
+        <Route path="/embed-login" element={<EmbedLoginPage />} />
         <Route path="/vendor/register" element={<VendorRegistrationPage />} />
         <Route path="/vendor/activate/:uid/:token" element={<VendorActivatePage />} />
         <Route path="/vendor/onboarding/:token" element={<VendorOnboardingPage />} />
