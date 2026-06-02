@@ -150,7 +150,7 @@ export default function ActivatePage() {
             <span className="text-primary-foreground font-bold text-lg font-display">V</span>
           </div>
           <h1 className="text-4xl font-bold text-primary-foreground font-display leading-tight">
-            VIMS
+            Horizon Industrial Parks
           </h1>
           <p className="mt-4 text-primary-foreground/70 text-lg max-w-md">
             Vendor Invoice Management System
@@ -170,7 +170,7 @@ export default function ActivatePage() {
 
           <h2 className="text-2xl font-bold font-display text-foreground">Set Your Password</h2>
           <p className="text-muted-foreground mt-1 mb-8">
-            Create a password to activate your VIMS account.
+            Create a password to activate your Horizon Industrial Parks account.
           </p>
 
           <form onSubmit={handleSubmit} className="space-y-5">

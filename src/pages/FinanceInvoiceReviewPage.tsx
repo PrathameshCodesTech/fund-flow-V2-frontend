@@ -1,11 +1,19 @@
+/**
+ * FinanceInvoiceReviewPage — authenticated finance review page for invoices/campaigns.
+ *
+ * Route: /finance/invoices/:id
+ *
+ * Uses authenticated API endpoints instead of token-based ones.
+ * Reuses UI patterns from FinanceReviewPage.tsx.
+ */
+
 import { useState } from "react";
-import { useParams } from "react-router-dom";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useParams, useNavigate } from "react-router-dom";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "@/lib/api/client";
-import { financeApprove, financeReject, getPublicFinanceToken } from "@/lib/api/v2finance";
+import { getFinanceHandoffReview, approveFinanceHandoff, rejectFinanceHandoff } from "@/lib/api/v2finance";
 import type { PublicFinanceToken } from "@/lib/types/v2finance";
 import {
-  InvoiceFinanceHandoff,
   InvoiceFinanceData,
   InvoiceFinanceVendor,
   InvoiceFinanceDocument,
@@ -13,6 +21,8 @@ import {
   InvoiceFinanceWorkflow,
   InvoiceFinanceTimelineEvent,
 } from "@/lib/types/v2finance";
+import { FinanceShell } from "@/components/v2/FinanceShell";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -20,10 +30,12 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { FinanceDocumentsTab } from "@/components/finance/FinanceDocumentsTab";
 import {
-  CheckCircle2, XCircle, Loader2, FileText, GitBranch,
-  Clock, Building2, Download, AlertTriangle, Info,
-  CreditCard, Landmark, ArrowLeft,
+  CheckCircle2, XCircle, Loader2, FileText,
+  Building2, Download, AlertTriangle, Info, ArrowLeft, CreditCard, Landmark,
+  GitBranch, Clock,
 } from "lucide-react";
+import { toast } from "sonner";
+import { RecordPaymentButton } from "@/components/invoices/RecordPaymentDialog";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -71,7 +83,7 @@ function errorMessage(err: unknown): string {
 }
 
 function emptyDash(value?: string | number | null): string {
-  if (value === null || value === undefined || value === "" || value === "â€”" || value === "—") return "-";
+  if (value === null || value === undefined || value === "") return "-";
   return String(value);
 }
 
@@ -88,35 +100,15 @@ function DetailRows({ rows }: { rows: Array<[string, string | number | null | un
   );
 }
 
-// ── Message screens ─────────────────────────────────────────────────────────────
-
-function MessageScreen({ title, message, destructive = false }: { title: string; message: string; destructive?: boolean }) {
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-6">
-      <Card className="max-w-md w-full text-center">
-        <CardContent className="pt-8">
-          {destructive
-            ? <XCircle className="w-12 h-12 text-destructive mx-auto mb-4" />
-            : <CheckCircle2 className="w-12 h-12 text-green-600 mx-auto mb-4" />
-          }
-          <h1 className="text-xl font-bold text-foreground mb-2">{title}</h1>
-          <p className="text-sm text-muted-foreground">{message}</p>
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
 // ── Invoice Overview Tab ───────────────────────────────────────────────────────
 
 function OverviewTab({ data }: { data: PublicFinanceToken }) {
   const inv: InvoiceFinanceData | undefined = data.invoice;
   const vendor: InvoiceFinanceVendor | undefined = data.vendor;
-  const handoff: InvoiceFinanceHandoff | undefined = data.handoff;
+  const handoff = data.handoff;
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-      {/* Invoice Card */}
       <Card className="md:col-span-2">
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
@@ -144,7 +136,6 @@ function OverviewTab({ data }: { data: PublicFinanceToken }) {
         </CardContent>
       </Card>
 
-      {/* Vendor + Handoff sidebar */}
       <div className="space-y-4">
         {vendor && (
           <Card>
@@ -445,41 +436,36 @@ function WorkflowTab({ workflow, timeline }: { workflow: InvoiceFinanceWorkflow 
 // ── Decision Panel ────────────────────────────────────────────────────────────
 
 function DecisionPanel({
+  handoffId,
   data,
-  token,
   onSuccess,
 }: {
+  handoffId: string;
   data: PublicFinanceToken;
-  token: string;
   onSuccess: () => void;
 }) {
-  const canChooseDecision = data.action_type === "approve" && !!data.reject_token;
-  const initialAction = canChooseDecision ? null : data.action_type;
-  const rejectToken = data.reject_token ?? token;
-
-  const [action, setAction] = useState<"approve" | "reject" | null>(initialAction);
+  const [action, setAction] = useState<"approve" | "reject" | null>(null);
   const [referenceId, setReferenceId] = useState("");
   const [note, setNote] = useState("");
   const [localError, setLocalError] = useState<string | null>(null);
 
-  const isApprove = action === "approve";
-  const isReject = action === "reject";
-  const panelDescription = !action
-    ? "Review the details, then choose whether to approve or reject."
-    : isApprove
-      ? "Review the details above, then enter your finance reference and confirm."
-      : "Provide a rejection reason - this will be shared with the vendor and submitter.";
-
   const approveMutation = useMutation({
-    mutationFn: () => financeApprove(token, {
+    mutationFn: () => approveFinanceHandoff(handoffId, {
       reference_id: referenceId.trim(),
       note: note.trim() || undefined,
     }),
-    onSuccess,
+    onSuccess: () => {
+      toast.success("Invoice approved successfully");
+      onSuccess();
+    },
   });
+
   const rejectMutation = useMutation({
-    mutationFn: () => financeReject(rejectToken, { note: note.trim() }),
-    onSuccess,
+    mutationFn: () => rejectFinanceHandoff(handoffId, { note: note.trim() }),
+    onSuccess: () => {
+      toast.success("Invoice rejected successfully");
+      onSuccess();
+    },
   });
 
   const isPending = approveMutation.isPending || rejectMutation.isPending;
@@ -487,285 +473,311 @@ function DecisionPanel({
 
   const handleSubmit = () => {
     setLocalError(null);
-    if (!action) {
-      setLocalError("Choose approve or reject to continue.");
-      return;
-    }
-    if (isApprove && !referenceId.trim()) {
+    if (action === "approve" && !referenceId.trim()) {
       setLocalError("Finance reference ID is required for approval.");
       return;
     }
-    if (isReject && !note.trim()) {
+    if (action === "reject" && !note.trim()) {
       setLocalError("Rejection reason is required.");
       return;
     }
-    if (isApprove) approveMutation.mutate();
+    if (action === "approve") approveMutation.mutate();
     else rejectMutation.mutate();
   };
 
-  return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center gap-3">
-          {action && (
-            <button
-              onClick={() => {
-                setAction(null);
-                setReferenceId("");
-                setNote("");
-                setLocalError(null);
-              }}
-              className="p-1.5 rounded-md hover:bg-muted transition-colors border border-border"
-              title="Back to options"
-            >
-              <ArrowLeft className="h-4 w-4 text-muted-foreground" />
-            </button>
-          )}
-          <div className="flex-1">
-            <CardTitle className="text-base flex items-center gap-2">
-              {!action
-                ? <Info className="h-4 w-4 text-muted-foreground" />
-                : isApprove
-                  ? <CheckCircle2 className="h-4 w-4 text-green-600" />
-                  : <XCircle className="h-4 w-4 text-destructive" />
-              }
-              {!action ? "Finance Decision" : isApprove ? "Finance Approval" : "Finance Rejection"}
-            </CardTitle>
-            <p className="text-xs text-muted-foreground mt-1">
-              {panelDescription}
-            </p>
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {canChooseDecision && !action && (
-          <div className="flex gap-3">
-            <Button
-              variant="default"
-              className="flex-1 bg-green-600 hover:bg-green-700 text-white"
-              onClick={() => {
-                setAction("approve");
-                setNote("");
-                setLocalError(null);
-              }}
-            >
-              <CheckCircle2 className="mr-1.5 h-4 w-4" /> Approve Invoice
-            </Button>
-            <Button
-              variant="outline"
-              className="flex-1 border-destructive/50 text-destructive hover:bg-destructive/5"
-              onClick={() => {
-                setAction("reject");
-                setReferenceId("");
-                setLocalError(null);
-              }}
-            >
-              <XCircle className="mr-1.5 h-4 w-4" /> Reject Invoice
-            </Button>
-          </div>
-        )}
+  // Already completed
+  if (data.is_used || data.handoff_status === "finance_approved" || data.handoff_status === "finance_rejected") {
+    const invoiceId = data.invoice?.id;
+    const isApproved = data.handoff_status === "finance_approved";
+    const canRecordPayment = data.invoice?.can_record_payment === true;
 
-        {isApprove && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <Label htmlFor="ref-id">Finance Reference ID *</Label>
-              <Input
-                id="ref-id"
-                value={referenceId}
-                onChange={(e) => setReferenceId(e.target.value)}
-                placeholder="e.g. SAP-2025-00123"
-                autoFocus
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="note">Note (optional)</Label>
-              <Input
-                id="note"
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                placeholder="Optional note..."
-              />
-            </div>
-          </div>
-        )}
-        {isReject && (
-          <div className="space-y-1.5">
-            <Label htmlFor="note">Rejection Reason *</Label>
-            <textarea
-              id="note"
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-              rows={3}
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              placeholder="Explain why this invoice is being rejected..."
-              autoFocus
-            />
-          </div>
-        )}
-
-        {(localError || apiError) && (
-          <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive flex items-start gap-2">
-            <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-            {localError ?? errorMessage(apiError)}
-          </div>
-        )}
-
-        {action && (
-          <div className="flex justify-end">
-            <Button
-              onClick={handleSubmit}
-              disabled={isPending}
-              variant={isApprove ? "default" : "destructive"}
-              className={`gap-1.5 px-6 ${isApprove ? "bg-green-600 hover:bg-green-700" : ""}`}
-            >
-              {isPending ? (
-                <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Submitting...</>
-              ) : isApprove ? (
-                <><CheckCircle2 className="h-3.5 w-3.5" /> Confirm Approval</>
-              ) : (
-                <><XCircle className="h-3.5 w-3.5" /> Confirm Rejection</>
-              )}
-            </Button>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-// ── Main Page ─────────────────────────────────────────────────────────────────
-
-export default function FinanceReviewPage() {
-  const { token } = useParams<{ token: string }>();
-
-  const tokenQuery = useQuery({
-    queryKey: ["v2", "finance", "public", token],
-    queryFn: () => getPublicFinanceToken(token!),
-    enabled: !!token,
-    retry: false,
-  });
-
-  if (tokenQuery.isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="flex items-center gap-3 text-sm text-muted-foreground">
-          <Loader2 className="w-5 h-5 animate-spin" />
-          Loading finance review...
+      <div className="rounded-xl border bg-card p-4">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            {isApproved ? (
+              <>
+                <div className="h-10 w-10 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">
+                  <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">Approved</p>
+                  <p className="text-xs text-muted-foreground">
+                    Ref: {data.handoff?.finance_reference_id ?? "—"}
+                  </p>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="h-10 w-10 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
+                  <XCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-red-700 dark:text-red-400">Rejected</p>
+                  <p className="text-xs text-muted-foreground">Decision recorded</p>
+                </div>
+              </>
+            )}
+          </div>
+
+          {isApproved && invoiceId && canRecordPayment && (
+            <RecordPaymentButton
+              invoiceId={String(invoiceId)}
+              additionalInvalidateKeys={[
+                ["finance", "handoffs"],
+                ["finance", "handoff", "review", handoffId],
+              ]}
+              onSuccess={onSuccess}
+            />
+          )}
         </div>
       </div>
     );
   }
 
-  if (tokenQuery.isError || !tokenQuery.data) {
-    return <MessageScreen title="Invalid Link" message={errorMessage(tokenQuery.error)} destructive />;
+  // Pending decision
+  if (action === null) {
+    return (
+      <div className="rounded-xl border bg-card p-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <p className="text-sm font-semibold text-foreground">Finance Decision</p>
+            <p className="text-xs text-muted-foreground">Review the details and record your decision</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5 border-emerald-500/50 text-emerald-700 hover:bg-emerald-50"
+              onClick={() => { setAction("approve"); setNote(""); setLocalError(null); }}
+            >
+              <CheckCircle2 className="h-4 w-4" /> Approve
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5 border-destructive/50 text-destructive hover:bg-destructive/5"
+              onClick={() => { setAction("reject"); setReferenceId(""); setLocalError(null); }}
+            >
+              <XCircle className="h-4 w-4" /> Reject
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
-  const data = tokenQuery.data;
+  // Action form
+  return (
+    <div className="rounded-xl border bg-card p-4 space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-semibold text-foreground">
+          {action === "approve" ? "Approve Invoice" : "Reject Invoice"}
+        </p>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => { setAction(null); setLocalError(null); }}
+          disabled={isPending}
+        >
+          Cancel
+        </Button>
+      </div>
 
-  if (data.is_expired) {
-    return <MessageScreen title="Link Expired" message="This finance review link has expired. Please request a new email." destructive />;
-  }
-  if (data.is_used) {
-    return <MessageScreen title="Already Completed" message="This finance review link has already been used." destructive />;
+      {action === "approve" && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="ref-id" className="text-xs">Finance Reference ID *</Label>
+            <Input
+              id="ref-id"
+              value={referenceId}
+              onChange={(e) => setReferenceId(e.target.value)}
+              placeholder="e.g. SAP-2025-00123"
+              autoFocus
+              className="h-9"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="note" className="text-xs">Note (optional)</Label>
+            <Input
+              id="note"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="Optional note..."
+              className="h-9"
+            />
+          </div>
+        </div>
+      )}
+
+      {action === "reject" && (
+        <div className="space-y-1.5">
+          <Label htmlFor="note" className="text-xs">Rejection Reason *</Label>
+          <textarea
+            id="note"
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            rows={2}
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="Explain why this invoice is being rejected..."
+            autoFocus
+          />
+        </div>
+      )}
+
+      {(localError || apiError) && (
+        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive flex items-center gap-2">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+          {localError ?? errorMessage(apiError)}
+        </div>
+      )}
+
+      <div className="flex justify-end">
+        <Button
+          onClick={handleSubmit}
+          disabled={isPending}
+          variant={action === "approve" ? "default" : "destructive"}
+          size="sm"
+          className="gap-1.5"
+        >
+          {isPending ? (
+            <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Submitting...</>
+          ) : action === "approve" ? (
+            <><CheckCircle2 className="h-3.5 w-3.5" /> Confirm Approval</>
+          ) : (
+            <><XCircle className="h-3.5 w-3.5" /> Confirm Rejection</>
+          )}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// ── Main Page ─────────────────────────────────────────────────────────────────
+
+export default function FinanceInvoiceReviewPage() {
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+
+  const reviewQuery = useQuery({
+    queryKey: ["finance", "handoff", "review", id],
+    queryFn: () => getFinanceHandoffReview(id!),
+    enabled: !!id,
+    retry: false,
+  });
+
+  const handleSuccess = () => {
+    queryClient.invalidateQueries({ queryKey: ["finance", "handoffs"] });
+    navigate("/finance/invoices");
+  };
+
+  if (reviewQuery.isLoading) {
+    return (
+      <FinanceShell title="Loading...">
+        <div className="flex items-center justify-center flex-1">
+          <div className="flex items-center gap-3 text-sm text-muted-foreground">
+            <Loader2 className="w-5 h-5 animate-spin" />
+            Loading review data...
+          </div>
+        </div>
+      </FinanceShell>
+    );
   }
 
-  const isApprove = data.action_type === "approve";
-  const hasUnifiedDecision = data.action_type === "approve" && !!data.reject_token;
-  const isInvoice = data.module === "invoice";
+  if (reviewQuery.isError || !reviewQuery.data) {
+    return (
+      <FinanceShell
+        title="Error"
+        breadcrumbs={[
+          { label: "Finance", href: "/finance" },
+          { label: "Invoice Reviews", href: "/finance/invoices" },
+          { label: "Error" },
+        ]}
+      >
+        <div className="flex items-center justify-center flex-1">
+          <Card className="max-w-md w-full text-center">
+            <CardContent className="pt-8">
+              <XCircle className="w-12 h-12 text-destructive mx-auto mb-4" />
+              <h1 className="text-xl font-bold text-foreground mb-2">Error Loading Review</h1>
+              <p className="text-sm text-muted-foreground mb-4">{errorMessage(reviewQuery.error)}</p>
+              <Button variant="outline" onClick={() => navigate("/finance/invoices")}>
+                <ArrowLeft className="mr-2 h-4 w-4" /> Back to Reviews
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      </FinanceShell>
+    );
+  }
+
+  const data = reviewQuery.data;
   const inv = data.invoice;
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Top Header */}
-      <div className="border-b bg-white px-6 py-4">
-        <div className="max-w-4xl mx-auto">
-          <div className="flex items-center gap-6">
-            {/* Logo */}
-            <div className="shrink-0 pr-6 border-r border-border">
-              <img src="/hp.jpg" alt="Horizon Industrial Parks" className="h-10 w-auto object-contain" />
-            </div>
-            {/* Info */}
-            <div className="flex-1 flex items-start justify-between gap-4">
-              <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <h1 className="text-lg font-bold text-foreground">Finance Review</h1>
-                  <StatusBadge
-                    label={hasUnifiedDecision ? "Awaiting Finance Review" : isApprove ? "Awaiting Approval" : "Awaiting Rejection"}
-                    variant={hasUnifiedDecision ? "outline" : isApprove ? "warning" : "danger"}
-                  />
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  {data.subject_name}
-                  {inv && <span className="ml-2 text-foreground font-medium">{fmt(inv.amount, inv.currency)}</span>}
-                </p>
-              </div>
-              <div className="text-right shrink-0">
-                <p className="text-2xl font-bold text-foreground">{isInvoice && inv ? fmt(inv.amount, inv.currency) : data.subject_name}</p>
-                {isInvoice && inv && <p className="text-xs text-muted-foreground">{inv.title}</p>}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+    <FinanceShell
+      title={inv?.title ?? data.subject_name}
+      breadcrumbs={[
+        { label: "Finance", href: "/finance" },
+        { label: "Invoice Reviews", href: "/finance/invoices" },
+        { label: inv?.title ?? data.subject_name },
+      ]}
+      actions={
+        <Button variant="ghost" size="sm" onClick={() => navigate("/finance/invoices")}>
+          <ArrowLeft className="mr-1.5 h-4 w-4" /> Back
+        </Button>
+      }
+    >
+      <ScrollArea className="flex-1">
+        <div className="p-4 sm:p-6 space-y-4">
+          {/* Decision Panel - at the top */}
+          <DecisionPanel handoffId={id!} data={data} onSuccess={handleSuccess} />
 
-      {/* Body */}
-      <div className="max-w-4xl mx-auto px-6 py-6">
-        <div className="flex flex-col gap-6">
           {/* Main content */}
-          <div className="w-full">
-            {isInvoice && data.invoice ? (
-              <Tabs defaultValue="overview" className="w-full">
-                <div className="overflow-x-auto pb-px mb-4">
-                  <TabsList>
-                    <TabsTrigger value="overview">Overview</TabsTrigger>
-                    <TabsTrigger value="vendor">Vendor Details</TabsTrigger>
-                    <TabsTrigger value="documents">
-                      Documents{data.documents?.length ? ` (${data.documents.length})` : ""}
-                    </TabsTrigger>
-                  </TabsList>
-                </div>
+          {data.module === "invoice" && data.invoice ? (
+            <Tabs defaultValue="overview" className="w-full">
+              <div className="overflow-x-auto pb-px mb-4">
+                <TabsList>
+                  <TabsTrigger value="overview">Overview</TabsTrigger>
+                  <TabsTrigger value="vendor">Vendor Details</TabsTrigger>
+                  <TabsTrigger value="documents">
+                    Documents{data.documents?.length ? ` (${data.documents.length})` : ""}
+                  </TabsTrigger>
+                </TabsList>
+              </div>
 
-                <TabsContent value="overview">
-                  <OverviewTab data={data} />
-                </TabsContent>
-                <TabsContent value="vendor">
-                  <VendorDetailsTab vendor={data.vendor} />
-                </TabsContent>
-                <TabsContent value="documents">
-                  <FinanceDocumentsTab docs={data.documents ?? []} />
-                </TabsContent>
-              </Tabs>
-            ) : (
-              /* Non-invoice: basic info */
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">Review Details</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2 text-sm">
-                  {[
-                    ["Module", data.module],
-                    ["Subject", data.subject_name],
-                    ["Type", data.subject_type],
-                    ["Handoff Status", data.handoff_status],
-                  ].map(([k, v]) => (
-                    <div key={k} className="flex justify-between gap-4">
-                      <span className="text-muted-foreground">{k}</span>
-                      <span className="font-medium">{v}</span>
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-            )}
-          </div>
-
-          {/* Decision section */}
-          <div className="w-full">
-            <DecisionPanel data={data} token={token!} onSuccess={() => {
-              tokenQuery.refetch();
-            }} />
-          </div>
+              <TabsContent value="overview">
+                <OverviewTab data={data} />
+              </TabsContent>
+              <TabsContent value="vendor">
+                <VendorDetailsTab vendor={data.vendor} />
+              </TabsContent>
+              <TabsContent value="documents">
+                <FinanceDocumentsTab docs={data.documents ?? []} />
+              </TabsContent>
+            </Tabs>
+          ) : (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Review Details</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 text-sm">
+                {[
+                  ["Module", data.module],
+                  ["Subject", data.subject_name],
+                  ["Type", data.subject_type],
+                  ["Status", data.handoff_status],
+                ].map(([k, v]) => (
+                  <div key={k} className="flex justify-between gap-4">
+                    <span className="text-muted-foreground">{k}</span>
+                    <span className="font-medium">{v}</span>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
         </div>
-      </div>
-    </div>
+      </ScrollArea>
+    </FinanceShell>
   );
 }

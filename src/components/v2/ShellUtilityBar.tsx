@@ -29,14 +29,8 @@ export function ShellUtilityBar({ onSearchClick, onMenuClick }: ShellUtilityBarP
       </button>
 
       {/* Left: Organization brand — hidden on mobile */}
-      <div className="hidden lg:flex shrink-0 items-center gap-2.5">
-        <img src="/vims-brand.png" alt="VIMS" className="h-8 w-auto object-contain" />
-        <div className="border-l border-border pl-2.5">
-          <p className="text-sm font-bold tracking-tight text-foreground leading-none">HORIZON</p>
-          <p className="text-[10px] text-muted-foreground leading-none mt-0.5">
-            INDUSTRIAL PARKS
-          </p>
-        </div>
+      <div className="hidden lg:flex shrink-0 items-center">
+        <img src="/hp.jpg" alt="Horizon Industrial Parks" className="h-7 w-auto object-contain" />
       </div>
 
       {/* Center: Product title */}

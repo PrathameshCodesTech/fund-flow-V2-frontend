@@ -33,7 +33,7 @@ import { ApiError } from "@/lib/api/client";
 import type {
   TaskKind,
   ReviewGroup,
-  ReviewTimelineEvent,
+  ReviewBusinessTimelineEvent,
   AllowedSplitEntity,
   AllocationLine,
   AllocationContextLine,
@@ -169,46 +169,6 @@ function getExtractionFieldLabel(field: string) {
   return EXTRACTION_FIELD_LABELS[field] ?? field.replace(/_/g, " ");
 }
 
-const EVENT_TYPE_LABELS: Record<string, string> = {
-  STEP_ASSIGNED: "Step assigned",
-  STEP_APPROVED: "Step approved",
-  STEP_REJECTED: "Step rejected",
-  STEP_REASSIGNED: "Step reassigned",
-  STEP_ORPHANED: "Step orphaned",
-  INSTANCE_STUCK: "Workflow stuck",
-  INSTANCE_FROZEN: "Workflow frozen",
-  INSTANCE_APPROVED: "Workflow approved",
-  INSTANCE_REJECTED: "Workflow rejected",
-  BRANCH_ASSIGNED: "Branch assigned",
-  BRANCH_APPROVED: "Branch approved",
-  BRANCH_REJECTED: "Branch rejected",
-  BRANCH_REASSIGNED: "Branch reassigned",
-  BRANCHES_SPLIT: "Branches split",
-  BRANCHES_JOINED: "Branches joined",
-  SPLIT_ALLOCATIONS_SUBMITTED: "Split allocations submitted",
-  SPLIT_ALLOCATION_CORRECTED: "Split allocation corrected",
-  ALLOCATION_BUDGET_RESERVED: "Budget reserved",
-  ALLOCATION_BUDGET_RELEASED: "Budget released",
-  ALLOCATION_BUDGET_CONSUMED: "Budget consumed",
-};
-
-const EVENT_COLORS: Record<string, string> = {
-  STEP_APPROVED: "bg-green-500",
-  BRANCH_APPROVED: "bg-green-500",
-  INSTANCE_APPROVED: "bg-green-600",
-  STEP_REJECTED: "bg-red-500",
-  BRANCH_REJECTED: "bg-red-500",
-  INSTANCE_REJECTED: "bg-red-600",
-  STEP_REASSIGNED: "bg-purple-500",
-  BRANCH_REASSIGNED: "bg-purple-500",
-  STEP_ASSIGNED: "bg-blue-500",
-  BRANCH_ASSIGNED: "bg-blue-500",
-  BRANCHES_SPLIT: "bg-orange-400",
-  BRANCHES_JOINED: "bg-teal-500",
-  INSTANCE_STUCK: "bg-red-400",
-  INSTANCE_FROZEN: "bg-slate-400",
-};
-
 // ── Section label ──────────────────────────────────────────────────────────────
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
@@ -307,13 +267,6 @@ function OverviewTab({ subject }: { subject: ReturnType<typeof useTaskReview>["d
               <DetailRow label="GSTIN" value={<span className="font-mono">{vendor.gstin || "—"}</span>} />
               <DetailRow label="PAN" value={<span className="font-mono">{vendor.pan || "—"}</span>} />
               <DetailRow label="Status" value={<StatusBadge status={vendor.operational_status.toUpperCase()} />} />
-              {vendor.po_mandate_enabled && (
-                <DetailRow label="PO Mandate" value={
-                  <Badge variant="outline" className="text-xs bg-amber-50 text-amber-800 border-amber-200">
-                    Required
-                  </Badge>
-                } />
-              )}
             </div>
           </div>
         </div>
@@ -410,7 +363,7 @@ function DocumentsTab({ subject }: { subject: ReturnType<typeof useTaskReview>["
 
 // ── Timeline tab ──────────────────────────────────────────────────────────────
 
-function TimelineTab({ events }: { events: ReviewTimelineEvent[] }) {
+function TimelineTab({ events }: { events: ReviewBusinessTimelineEvent[] }) {
   if (events.length === 0) {
     return <p className="text-sm text-muted-foreground">No events recorded yet.</p>;
   }
@@ -418,7 +371,13 @@ function TimelineTab({ events }: { events: ReviewTimelineEvent[] }) {
   return (
     <div className="relative space-y-0">
       {events.map((ev, i) => {
-        const dotColor = EVENT_COLORS[ev.event_type] ?? "bg-gray-400";
+        const source = typeof ev.metadata?.source === "string" ? ev.metadata.source : "";
+        const dotColor =
+          source === "finance_decision" || source === "finance_handoff"
+            ? "bg-green-600"
+            : source === "invoice_payment"
+            ? "bg-orange-500"
+            : "bg-blue-500";
         const isLast = i === events.length - 1;
         return (
           <div key={ev.id} className="flex gap-3">
@@ -430,12 +389,11 @@ function TimelineTab({ events }: { events: ReviewTimelineEvent[] }) {
             {/* Content */}
             <div className="pb-4 min-w-0">
               <p className="text-xs font-medium leading-tight">
-                {EVENT_TYPE_LABELS[ev.event_type] ?? ev.event_type}
+                {ev.label}
               </p>
               {ev.actor && (
                 <p className="text-[11px] text-muted-foreground mt-0.5">
                   By {ev.actor.email}
-                  {ev.target && ev.target.id !== ev.actor.id && ` → ${ev.target.email}`}
                 </p>
               )}
               {ev.metadata && typeof ev.metadata === "object" && (ev.metadata as Record<string, unknown>).note && (
@@ -1005,7 +963,35 @@ function BudgetImpactPreview({
     }
   }
 
-  const hasAnyOverdraft = budgetOverdraft || catOverdraft || subOverdraft;
+  const targetSection =
+    showSub
+      ? {
+          label: `Subcategory: ${subcategoryName ?? row.subcategory_id}`,
+          allocated: subAllocated,
+          reserved: subReserved,
+          consumed: subConsumed,
+          available: subAvailable,
+          overdraft: subOverdraft,
+        }
+      : showCat
+        ? {
+            label: `Category: ${categoryName ?? row.category_id}`,
+            allocated: catAllocated,
+            reserved: catReserved,
+            consumed: catConsumed,
+            available: catAvailable,
+            overdraft: catOverdraft,
+          }
+        : {
+            label: `Budget: ${budget.scope_node_name ? `${budget.scope_node_name} - ` : ""}${budget.name ?? ""}`,
+            allocated: budgetAllocated,
+            reserved: budgetReserved,
+            consumed: budgetConsumed,
+            available: budgetAvailable,
+            overdraft: budgetOverdraft,
+          };
+
+  const hasAnyOverdraft = targetSection.overdraft;
 
   return (
     <div
@@ -1023,43 +1009,15 @@ function BudgetImpactPreview({
       </div>
 
       <ImpactSection
-        label={`Budget: ${budget.scope_node_name ? `${budget.scope_node_name} - ` : ""}${budget.name ?? ""}`}
-        allocated={budgetAllocated}
-        reserved={budgetReserved}
-        consumed={budgetConsumed}
-        available={budgetAvailable}
+        label={targetSection.label}
+        allocated={targetSection.allocated}
+        reserved={targetSection.reserved}
+        consumed={targetSection.consumed}
+        available={targetSection.available}
         splitAmount={amount}
         currency={currency}
-        overdraft={budgetOverdraft}
+        overdraft={targetSection.overdraft}
       />
-
-      {showCat && (
-        <ImpactSection
-          label={`Category: ${categoryName ?? row.category_id}`}
-          allocated={catAllocated}
-          reserved={catReserved}
-          consumed={catConsumed}
-          available={catAvailable}
-          splitAmount={amount}
-          currency={currency}
-          overdraft={catOverdraft}
-          indent
-        />
-      )}
-
-      {showSub && (
-        <ImpactSection
-          label={`Subcategory: ${subcategoryName ?? row.subcategory_id}`}
-          allocated={subAllocated}
-          reserved={subReserved}
-          consumed={subConsumed}
-          available={subAvailable}
-          splitAmount={amount}
-          currency={currency}
-          overdraft={subOverdraft}
-          indent
-        />
-      )}
     </div>
   );
 }
@@ -2670,6 +2628,7 @@ export function ApprovalReviewDrawer({
             {isLoading ? (
               <ReviewSkeleton />
             ) : data ? (() => {
+              const businessTimeline = data.business_timeline ?? [];
               const tabs = [
                 ...(isAllocationStep ? (isRuntimeSplit ? ["split"] : ["allocation-entry"]) : []),
                 ...(hasAllocationTab ? ["allocation"] : []),
@@ -2708,7 +2667,7 @@ export function ApprovalReviewDrawer({
                             : tab === "documents"
                             ? `Docs${data.subject?.documents?.length ? ` (${data.subject.documents.length})` : ""}`
                             : tab === "timeline"
-                            ? `Events${data.timeline?.length ? ` (${data.timeline.length})` : ""}`
+                            ? `Events${businessTimeline.length ? ` (${businessTimeline.length})` : ""}`
                             : tab.charAt(0).toUpperCase() + tab.slice(1)}
                         </TabsTrigger>
                       ))}
@@ -2754,7 +2713,7 @@ export function ApprovalReviewDrawer({
                       <DocumentsTab subject={data.subject} />
                     </TabsContent>
                     <TabsContent value="timeline" className="p-4 m-0">
-                      <TimelineTab events={data.timeline} />
+                      <TimelineTab events={businessTimeline} />
                     </TabsContent>
                     <TabsContent value="workflow" className="p-4 m-0">
                       <WorkflowTab workflow={data.workflow} />

@@ -275,6 +275,14 @@ export interface ReviewTimelineEvent {
   created_at: string;
 }
 
+export interface ReviewBusinessTimelineEvent {
+  id: string;
+  label: string;
+  actor: ReviewUser | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+}
+
 // ── Runtime Split Allocation ──────────────────────────────────────────────────
 
 export type InvoiceAllocationStatus =
@@ -565,6 +573,7 @@ export interface TaskReviewData {
   subject: ReviewSubject;
   workflow: ReviewWorkflow;
   timeline: ReviewTimelineEvent[];
+  business_timeline?: ReviewBusinessTimelineEvent[];
   allocation_context?: AllocationContext | null;
   branch_allocation?: AllocationContextLine | null;
   allocation_audit?: AllocationAudit | null;

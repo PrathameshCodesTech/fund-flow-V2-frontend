@@ -7,6 +7,7 @@
  */
 
 import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { useMyVendor } from "@/lib/hooks/useV2Vendor";
 import {
@@ -85,6 +86,12 @@ function getChangedInvoiceFields(
   });
 }
 
+function displayInvoiceField(value: string | number | null | undefined): string {
+  const text = String(value ?? "").trim();
+  if (!text || text === "â€”" || text === "—") return "-";
+  return text;
+}
+
 function InvoiceFormFields({
   form,
   onChange,
@@ -113,7 +120,7 @@ function InvoiceFormFields({
       <div>
         <label className={invoiceLblCls}>Your Invoice Reference <span className="text-destructive">*</span>{changeBadge("vendor_invoice_number")}</label>
         {readOnly ? (
-          <p className="text-sm py-2">{form.vendor_invoice_number || "â€”"}</p>
+          <p className="text-sm py-2">{displayInvoiceField(form.vendor_invoice_number)}</p>
         ) : (
           <input
             type="text"
@@ -126,9 +133,9 @@ function InvoiceFormFields({
       </div>
       {showPo && (
         <div>
-          <label className={invoiceLblCls}>PO Number <span className="text-destructive">*</span>{changeBadge("po_number")}</label>
+          <label className={invoiceLblCls}>PO Number <span className="text-muted-foreground font-normal">(optional)</span>{changeBadge("po_number")}</label>
           {readOnly ? (
-            <p className="text-sm py-2">{form.po_number || "â€”"}</p>
+            <p className="text-sm py-2">{displayInvoiceField(form.po_number)}</p>
           ) : (
             <input
               type="text"
@@ -145,7 +152,7 @@ function InvoiceFormFields({
         <div>
           <label className={invoiceLblCls}>Invoice Date <span className="text-destructive">*</span>{changeBadge("invoice_date")}</label>
           {readOnly ? (
-            <p className="text-sm py-2">{form.invoice_date || "â€”"}</p>
+            <p className="text-sm py-2">{displayInvoiceField(form.invoice_date)}</p>
           ) : (
             <input
               type="date"
@@ -160,7 +167,7 @@ function InvoiceFormFields({
       <div>
         <label className={invoiceLblCls}>Currency <span className="text-destructive">*</span>{changeBadge("currency")}</label>
         {readOnly ? (
-          <p className="text-sm py-2">{form.currency || "â€”"}</p>
+          <p className="text-sm py-2">{displayInvoiceField(form.currency)}</p>
         ) : (
           <input
             type="text"
@@ -176,7 +183,7 @@ function InvoiceFormFields({
         <div>
           <label className={invoiceLblCls}>Subtotal{changeBadge("subtotal_amount")}</label>
           {readOnly ? (
-            <p className="text-sm py-2">{form.subtotal_amount || "â€”"}</p>
+            <p className="text-sm py-2">{displayInvoiceField(form.subtotal_amount)}</p>
           ) : (
             <input
               type="number"
@@ -191,7 +198,7 @@ function InvoiceFormFields({
         <div>
           <label className={invoiceLblCls}>Tax{changeBadge("tax_amount")}</label>
           {readOnly ? (
-            <p className="text-sm py-2">{form.tax_amount || "â€”"}</p>
+            <p className="text-sm py-2">{displayInvoiceField(form.tax_amount)}</p>
           ) : (
             <input
               type="number"
@@ -206,7 +213,7 @@ function InvoiceFormFields({
         <div>
           <label className={invoiceLblCls}>Total <span className="text-destructive">*</span>{changeBadge("total_amount")}</label>
           {readOnly ? (
-            <p className="text-sm py-2 font-medium">{form.total_amount || "â€”"}</p>
+            <p className="text-sm py-2 font-medium">{displayInvoiceField(form.total_amount)}</p>
           ) : (
             <input
               type="number"
@@ -223,7 +230,7 @@ function InvoiceFormFields({
       <div>
         <label className={invoiceLblCls}>Description{changeBadge("description")}</label>
         {readOnly ? (
-          <p className="text-sm py-2 whitespace-pre-wrap">{form.description || "â€”"}</p>
+          <p className="text-sm py-2 whitespace-pre-wrap">{displayInvoiceField(form.description)}</p>
         ) : (
           <textarea
             value={form.description || ""}
@@ -237,7 +244,7 @@ function InvoiceFormFields({
   );
 }
 
-function validatePreSubmit(form: NormalizedInvoiceData, sendToOptionId: string, vendor: Vendor): Record<string, string> {
+function validatePreSubmit(form: NormalizedInvoiceData, sendToOptionId: string): Record<string, string> {
   const errs: Record<string, string> = {};
   if (!sendToOptionId) errs.send_to_option_id = "Please select a Send To route.";
   if (!form.vendor_invoice_number?.trim()) errs.vendor_invoice_number = "Required";
@@ -245,7 +252,6 @@ function validatePreSubmit(form: NormalizedInvoiceData, sendToOptionId: string, 
   if (!form.currency?.trim()) errs.currency = "Required";
   const total = parseFloat(form.total_amount || "0") || (parseFloat(form.subtotal_amount || "0") + parseFloat(form.tax_amount || "0"));
   if (!total || total <= 0) errs.total_amount = "Must be greater than zero";
-  if (vendor.po_mandate_enabled && !form.po_number?.trim()) errs.po_number = "PO number required for this vendor";
   return errs;
 }
 
@@ -445,10 +451,9 @@ function PortalHeader({ vendorName, userName, onLogout }: { vendorName: string; 
       <div className="max-w-4xl mx-auto flex items-center justify-between gap-4">
         {/* Brand + vendor info */}
         <div className="flex items-center gap-4 min-w-0">
-          {/* VIMS logo */}
-          <div className="flex items-center gap-2 shrink-0 pr-4 border-r border-border">
-            <img src="/vims-brand.png" alt="VIMS" className="h-9 w-auto object-contain" />
-            <span className="hidden sm:block text-base font-extrabold text-primary tracking-tight">VIMS</span>
+          {/* Logo */}
+          <div className="shrink-0 pr-4 border-r border-border">
+            <img src="/hp.jpg" alt="Horizon Industrial Parks" className="h-10 w-auto object-contain" />
           </div>
           {/* Vendor identity */}
           <div className="min-w-0">
@@ -877,7 +882,7 @@ function SubmissionDetailPanel({
             form={form}
             onChange={handleFieldChange}
             validationErrors={validationErrors}
-            showPo={false}
+            showPo
             readOnly={isReadOnly}
           />
         </div>
@@ -1027,9 +1032,6 @@ function SubmitInvoiceTab({ vendor }: { vendor: Vendor }) {
     } else if (!Number.isFinite(total) || total <= 0) {
       errs.total_amount = "Total amount must be greater than zero.";
     }
-    if (vendor.po_mandate_enabled && !data.po_number?.trim()) {
-      errs.po_number = "PO number is required for this vendor.";
-    }
     setValidationErrors(errs);
     return Object.keys(errs).length === 0;
   }
@@ -1093,7 +1095,7 @@ function SubmitInvoiceTab({ vendor }: { vendor: Vendor }) {
 
   async function handleSubmitForReview() {
     if (!submissionId) return;
-    const preErrors = validatePreSubmit(form, sendToOptionId, vendor);
+    const preErrors = validatePreSubmit(form, sendToOptionId);
     if (Object.keys(preErrors).length > 0) {
       setValidationErrors(preErrors);
       setSubmitError("Please fix the highlighted invoice fields before submitting.");
@@ -1225,11 +1227,7 @@ function SubmitInvoiceTab({ vendor }: { vendor: Vendor }) {
               <AlertCircle className="w-4 h-4 shrink-0" />
               Vendor billing scope is not configured. Contact support.
             </div>
-          ) : (
-            <div className="text-sm font-medium text-foreground">
-              {vendor.scope_node_name || vendor.scope_node}
-            </div>
-          )}
+          ) : null}
         </div>
 
         <div>
@@ -1325,7 +1323,7 @@ function SubmitInvoiceTab({ vendor }: { vendor: Vendor }) {
           form={form}
           onChange={handleFieldChange}
           validationErrors={validationErrors}
-          showPo={vendor.po_mandate_enabled}
+          showPo
           changedFields={changedFields}
         />
 
@@ -1520,6 +1518,7 @@ function MyProfileTab({ vendor: _vendor }: { vendor: Vendor }) {
   });
 
   const snapshot = profileQ.data?.snapshot ?? {};
+  const documents = profileQ.data?.documents ?? [];
 
   if (profileQ.isLoading) {
     return (
@@ -1543,6 +1542,30 @@ function MyProfileTab({ vendor: _vendor }: { vendor: Vendor }) {
           For updates, contact the internal support team.
         </p>
       </div>
+
+      {documents.length > 0 && (
+        <ProfileSection title="Documents">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {documents.map((doc) => (
+              <a
+                key={doc.id}
+                href={doc.file_url || "#"}
+                target="_blank"
+                rel="noreferrer"
+                className={`flex items-center gap-3 rounded-lg border border-border bg-secondary/20 p-3 text-sm transition-colors ${
+                  doc.file_url ? "hover:bg-secondary/40" : "pointer-events-none opacity-70"
+                }`}
+              >
+                <Paperclip className="w-4 h-4 text-muted-foreground shrink-0" />
+                <div className="min-w-0">
+                  <p className="font-medium text-foreground truncate">{doc.title || doc.file_name}</p>
+                  <p className="text-xs text-muted-foreground truncate">{doc.file_name}</p>
+                </div>
+              </a>
+            ))}
+          </div>
+        </ProfileSection>
+      )}
 
       {/* Standard sections */}
       {PROFILE_SECTIONS.map((section) => (
@@ -1667,7 +1690,7 @@ function NotConfiguredState({ userName, onLogout }: { userName: string; onLogout
           <div className="mt-2 p-4 rounded-xl bg-muted/40 border border-border text-left max-w-sm w-full">
             <p className="text-xs font-medium text-foreground mb-2">What your admin needs to do:</p>
             <ul className="text-xs text-muted-foreground space-y-1.5 list-disc list-inside">
-              <li>Ensure your vendor is registered in VIMS</li>
+              <li>Ensure your vendor is registered in Horizon Industrial Parks</li>
               <li>Link your user account to that vendor via Django Admin</li>
               <li>Ask you to refresh this page once done</li>
             </ul>

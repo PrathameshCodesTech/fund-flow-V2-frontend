@@ -30,6 +30,7 @@ export interface FinanceHandoff {
   subject_type: string;
   subject_id: string;
   subject_name: string;
+  vendor_name: string | null;
   status: FinanceHandoffStatus;
   export_file: string | null;
   submitted_by: string | null;
@@ -64,6 +65,7 @@ export interface PublicFinanceToken {
   subject_type: string;
   subject_name: string;
   handoff_status: string;
+  reject_token?: string | null;
   // Rich invoice fields (present when module === "invoice")
   handoff?: InvoiceFinanceHandoff;
   invoice?: InvoiceFinanceData;
@@ -97,6 +99,7 @@ export interface InvoiceFinanceData {
   description: string | null;
   scope_node_id: number;
   scope_node_name: string;
+  can_record_payment?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -109,12 +112,33 @@ export interface InvoiceFinanceVendor {
   gstin: string | null;
   pan: string | null;
   sap_vendor_id: string | null;
+  preferred_payment_mode?: string | null;
+  beneficiary_name?: string | null;
+  beneficiary_account_number?: string | null;
+  bank_name?: string | null;
+  bank_address?: string | null;
+  bank_email?: string | null;
+  account_number?: string | null;
+  bank_account_number?: string | null;
+  bank_account_type?: string | null;
+  ifsc?: string | null;
+  micr_code?: string | null;
+  neft_code?: string | null;
+  bank_branch_address_line1?: string | null;
+  bank_branch_address_line2?: string | null;
+  bank_branch_city?: string | null;
+  bank_branch_state?: string | null;
+  bank_branch_country?: string | null;
+  bank_branch_pincode?: string | null;
+  bank_phone?: string | null;
+  bank_fax?: string | null;
 }
 
 export interface InvoiceFinanceDocument {
   id: number;
   file_name: string;
   document_type: string;
+  document_group: "invoice" | "vendor";
   uploaded_at: string | null;
   url: string | null;
 }
@@ -178,4 +202,26 @@ export interface FinanceApproveRequest {
 
 export interface FinanceRejectRequest {
   note?: string;
+}
+
+// ── Finance Decision ───────────────────────────────────────────────────────────
+
+export type FinanceDecisionType = "approved" | "rejected";
+
+export interface FinanceDecision {
+  id: number;
+  handoff_id: number;
+  decision: FinanceDecisionType;
+  reference_id: string | null;
+  note: string | null;
+  decided_by_email: string | null;
+  decided_at: string;
+  created_at: string;
+}
+
+// ── Finance Handoff Response (for approve/reject) ─────────────────────────────
+
+export interface FinanceHandoffResponse {
+  handoff: FinanceHandoff;
+  decision: FinanceDecision;
 }

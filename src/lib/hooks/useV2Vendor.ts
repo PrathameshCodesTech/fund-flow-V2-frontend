@@ -189,7 +189,7 @@ export function useUpdateVendor() {
       data,
     }: {
       id: string;
-      data: Partial<Pick<Vendor, "email" | "phone" | "po_mandate_enabled">>;
+      data: Partial<Pick<Vendor, "email" | "phone">>;
     }) => updateVendor(id, data),
     onSuccess: (_data, { id }) => {
       queryClient.invalidateQueries({ queryKey: ["v2", "vendor", "vendors"] });

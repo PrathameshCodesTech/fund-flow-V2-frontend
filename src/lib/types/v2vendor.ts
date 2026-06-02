@@ -39,8 +39,8 @@ export const SUBMISSION_STATUS_LABELS: Record<SubmissionStatus, string> = {
   finance_approved: "Finance Approved",
   finance_rejected: "Finance Rejected",
   reopened: "Reopened",
-  marketing_pending: "Marketing Pending",
-  marketing_approved: "Marketing Approved",
+  marketing_pending: "Approval Pending",
+  marketing_approved: "Approved",
   activated: "Activated",
   rejected: "Rejected",
 };
@@ -61,7 +61,7 @@ export type OperationalStatus =
 
 export const OPERATIONAL_STATUS_LABELS: Record<OperationalStatus, string> = {
   inactive: "Inactive",
-  waiting_marketing_approval: "Waiting Marketing",
+  waiting_marketing_approval: "Waiting Approval",
   active: "Active",
   suspended: "Suspended",
 };
@@ -74,8 +74,6 @@ export const VENDOR_ATTACHMENT_DOC_TYPES = [
   { value: "cancelled_cheque", label: "Cancelled Cheque" },
   { value: "pan_copy", label: "PAN Copy" },
   { value: "gst_certificate", label: "GST Certificate" },
-  { value: "bank_proof", label: "Bank Proof / Statement" },
-  { value: "supporting_document", label: "Supporting Document" },
 ] as const;
 
 export type VendorAttachmentDocType = (typeof VENDOR_ATTACHMENT_DOC_TYPES)[number]["value"];
@@ -130,6 +128,11 @@ export interface VendorOnboardingSubmission {
   normalized_ifsc: string | null;
   normalized_micr_code: string | null;
   normalized_neft_code: string | null;
+  // New VRF bank detail fields
+  normalized_beneficiary_account_number: string | null;
+  normalized_bank_address: string | null;
+  normalized_bank_email: string | null;
+  normalized_bank_account_number: string | null;
   // Bank branch contact
   normalized_bank_branch_address_line1: string | null;
   normalized_bank_branch_address_line2: string | null;
@@ -241,6 +244,10 @@ export interface Vendor {
   ifsc: string;
   micr_code: string;
   neft_code: string;
+  beneficiary_account_number: string;
+  bank_address: string;
+  bank_email: string;
+  bank_account_number: string;
   bank_branch_address_line1: string;
   bank_branch_address_line2: string;
   bank_branch_city: string;
@@ -354,6 +361,7 @@ export interface VendorProfileSnapshot {
   profile_change_pending: boolean;
   profile_hold_reason: string;
   snapshot: Record<string, unknown>;
+  documents: VendorAttachment[];
 }
 
 // ── Public finance token metadata ────────────────────────────────────────────
@@ -364,6 +372,17 @@ export interface PublicFinanceAttachment {
   file_name: string;
   document_type: string;
   download_url: string | null;
+}
+
+export interface VendorFinanceDecision {
+  id: number;
+  submission: number;
+  decision: "approved" | "rejected";
+  sap_vendor_id: string;
+  note: string;
+  acted_via_token: number | null;
+  acted_at: string;
+  created_at: string;
 }
 
 export interface PublicFinanceToken {
@@ -400,6 +419,10 @@ export interface PublicFinanceToken {
   ifsc: string | null;
   micr_code: string | null;
   neft_code: string | null;
+  beneficiary_account_number: string | null;
+  bank_address: string | null;
+  bank_email: string | null;
+  bank_account_number: string | null;
   bank_branch_address_line1: string | null;
   bank_branch_address_line2: string | null;
   bank_branch_city: string | null;
@@ -445,6 +468,8 @@ export interface PublicFinanceToken {
   source_excel_download_url: string | null;
   attachments: PublicFinanceAttachment[];
   reject_token: string | null;
+  latest_finance_decision: VendorFinanceDecision | null;
+  finance_decision_history: VendorFinanceDecision[];
 }
 
 // ── Request shapes ────────────────────────────────────────────────────────────
@@ -461,9 +486,7 @@ export interface ReopenSubmissionRequest {
   note?: string;
 }
 
-export interface MarketingApproveRequest {
-  po_mandate_enabled?: boolean;
-}
+export type MarketingApproveRequest = Record<string, never>;
 
 export interface MarketingRejectRequest {
   note?: string;

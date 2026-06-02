@@ -66,6 +66,10 @@ export const NAV_ITEMS: NavItem[] = [
     label: "Manual Expenses", to: "/manual-expenses", icon: IndianRupee, group: "Operations",
     requiredCapability: "budget.view",
   },
+  {
+    label: "Finance Reviews", to: "/finance", icon: Landmark, group: "Operations",
+    requiredCapability: "reporting.view_finance",
+  },
   // ── Planning ────────────────────────────────────────────────────────────────
   {
     label: "Budgets", to: "/budgets", icon: Wallet, group: "Planning",
@@ -114,6 +118,12 @@ const ROUTE_ACCESS: Record<string, RouteAccess> = {
   "/workflow-drafts/:instanceId/assign": "workflow.task.view",
   // ── Portal routes ──────────────────────────────────────────────────────────
   "/vendor-portal":              "portal.vendor",
+  // ── Finance portal routes ────────────────────────────────────────────────────
+  "/finance":                    "reporting.view_finance",
+  "/finance/invoices":           "reporting.view_finance",
+  "/finance/invoices/:id":       "reporting.view_finance",
+  "/finance/vendors":            "reporting.view_finance",
+  "/finance/vendors/:id":        "reporting.view_finance",
 };
 
 /** Routes that bypass all guards (public token pages). */

@@ -185,8 +185,8 @@ export function V2Shell({
           >
             <div className="flex items-center justify-between border-b border-border px-4 py-3 lg:hidden">
               <div className="flex items-center gap-2">
-                <img src="/vims-brand.png" alt="VIMS" className="h-7 w-auto object-contain" />
-                <span className="text-sm font-bold text-primary">VIMS</span>
+                <img src="/hp.jpg" alt="Horizon Industrial Parks" className="h-8 w-auto object-contain" />
+                <span className="text-sm font-bold text-primary">Horizon Industrial Parks</span>
               </div>
               <button
                 onClick={() => setSidebarOpen(false)}

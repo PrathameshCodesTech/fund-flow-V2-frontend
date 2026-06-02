@@ -26,11 +26,13 @@ import {
   submitManual,
   submitExcel,
   addAttachment,
+  removePublicAttachment,
   finalizeInvitation,
 } from "@/lib/api/v2vendor";
 import type {
   VendorInvitation,
   VendorOnboardingSubmission,
+  VendorAttachment,
   ContactPerson,
 } from "@/lib/types/v2vendor";
 import { ApiError } from "@/lib/api/client";
@@ -50,7 +52,6 @@ import {
   Loader2,
   CheckCircle2,
   XCircle,
-  Plus,
   X,
   ArrowLeft,
   RefreshCw,
@@ -58,6 +59,7 @@ import {
   FileText,
   Send,
   Download,
+  Trash2,
 } from "lucide-react";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -102,52 +104,70 @@ interface TaxRegistrationBlock {
 }
 
 interface ManualFormState {
+  // Section 1: Vendor Information
   title: string;
   vendor_name: string;
   vendor_type: string;
-  email: string;
-  phone: string;
-  gst_registered: boolean;
+  gst_registration: "registered" | "unregistered" | "";
   gstin: string;
-  pan: string;
+  // Section 2: Supplying / Billing Address
   address_line1: string;
   address_line2: string;
   address_line3: string;
   city: string;
+  pincode: string;
   state: string;
   country: string;
-  pincode: string;
+  phone: string;
+  fax: string;
+  email: string;
   region: string;
   head_office_no: string;
-  fax: string;
+  // Section 3: Tax Registration Nos (moved up)
+  tax_registration_details: TaxRegistrationBlock;
+  pan: string;
+  // Section 4: Head Office Address
+  head_office_address: HeadOfficeAddressBlock;
+  // Section 5: Contact Persons
+  contact_persons: [ContactPersonEntry, ContactPersonEntry];
+  // Section 6: Payment Details
   preferred_payment_mode: string;
-  beneficiary_name: string;
+  // Section 7: Bank Details
   bank_name: string;
-  account_number: string;
-  bank_account_type: string;
-  ifsc: string;
-  micr_code: string;
-  neft_code: string;
+  bank_address: string;
   bank_branch_address_line1: string;
   bank_branch_address_line2: string;
   bank_branch_city: string;
+  bank_branch_pincode: string;
   bank_branch_state: string;
   bank_branch_country: string;
-  bank_branch_pincode: string;
   bank_phone: string;
   bank_fax: string;
-  contact_persons: [ContactPersonEntry, ContactPersonEntry];
-  head_office_address: HeadOfficeAddressBlock;
-  tax_registration_details: TaxRegistrationBlock;
+  beneficiary_name: string;
+  beneficiary_account_number: string;
+  bank_account_number: string;
+  account_number: string;
+  bank_account_type: string;
+  micr_code: string;
+  neft_code: string;
+  ifsc: string;
+  bank_email: string;
+  // Section 8: MSME Declaration
   msme_registered: boolean;
   msme_registration_number: string;
   msme_enterprise_type: "" | "micro" | "small" | "medium";
   authorized_signatory_name: string;
+  // Legacy compat
+  gst_registered: boolean;
 }
 
 type SectionKey = keyof ManualFormState;
 
-const EDITABLE_SUBMISSION_STATUSES = new Set(["draft", "reopened"]);
+const EDITABLE_SUBMISSION_STATUSES = new Set([
+  "draft",
+  "reopened",
+  "finance_rejected",
+]);
 
 const emptyContactPerson = (): ContactPersonEntry => ({
   type: "general_queries",
@@ -179,77 +199,110 @@ const emptyTaxRegistration = (): TaxRegistrationBlock => ({
 });
 
 const emptyForm = (): ManualFormState => ({
+  // Section 1: Vendor Information
   title: "",
   vendor_name: "",
   vendor_type: "",
-  email: "",
-  phone: "",
-  gst_registered: false,
+  gst_registration: "",
   gstin: "",
-  pan: "",
+  // Section 2: Supplying / Billing Address
   address_line1: "",
   address_line2: "",
   address_line3: "",
   city: "",
+  pincode: "",
   state: "",
   country: "India",
-  pincode: "",
+  phone: "",
+  fax: "",
+  email: "",
   region: "",
   head_office_no: "",
-  fax: "",
+  // Section 3: Tax Registration Nos
+  tax_registration_details: emptyTaxRegistration(),
+  pan: "",
+  // Section 4: Head Office Address
+  head_office_address: emptyHeadOfficeAddress(),
+  // Section 5: Contact Persons
+  contact_persons: [emptyContactPerson(), emptyContactPerson()],
+  // Section 6: Payment Details
   preferred_payment_mode: "",
-  beneficiary_name: "",
+  // Section 7: Bank Details
   bank_name: "",
-  account_number: "",
-  bank_account_type: "",
-  ifsc: "",
-  micr_code: "",
-  neft_code: "",
+  bank_address: "",
   bank_branch_address_line1: "",
   bank_branch_address_line2: "",
   bank_branch_city: "",
+  bank_branch_pincode: "",
   bank_branch_state: "",
   bank_branch_country: "India",
-  bank_branch_pincode: "",
   bank_phone: "",
   bank_fax: "",
-  contact_persons: [emptyContactPerson(), emptyContactPerson()],
-  head_office_address: emptyHeadOfficeAddress(),
-  tax_registration_details: emptyTaxRegistration(),
+  beneficiary_name: "",
+  beneficiary_account_number: "",
+  bank_account_number: "",
+  account_number: "",
+  bank_account_type: "",
+  micr_code: "",
+  neft_code: "",
+  ifsc: "",
+  bank_email: "",
+  // Section 8: MSME Declaration
   msme_registered: false,
   msme_registration_number: "",
   msme_enterprise_type: "",
   authorized_signatory_name: "",
+  // Legacy compat
+  gst_registered: false,
 });
 
 function buildPayload(form: ManualFormState): Record<string, unknown> {
+  // Derive gst_registered from gst_registration dropdown
+  const gstRegistered = form.gst_registration === "registered";
+
   return {
+    // Section 1: Vendor Information
     title: form.title,
     vendor_name: form.vendor_name,
     vendor_type: form.vendor_type,
-    email: form.email,
-    phone: form.phone,
-    fax: form.fax,
-    gst_registered: form.gst_registered,
+    gst_registered: gstRegistered,
     gstin: form.gstin,
-    pan: form.pan,
-    region: form.region,
-    head_office_no: form.head_office_no,
+    // Section 2: Supplying / Billing Address
     address_line1: form.address_line1,
     address_line2: form.address_line2,
     address_line3: form.address_line3,
     city: form.city,
+    pincode: form.pincode,
     state: form.state,
     country: form.country,
-    pincode: form.pincode,
+    phone: form.phone,
+    fax: form.fax,
+    email: form.email,
+    region: form.region,
+    head_office_no: form.head_office_no,
+    // Section 3: Tax Registration Nos
+    pan: form.pan,
+    tax_registration_details: form.tax_registration_details,
+    // Section 4: Head Office Address
+    head_office_address: form.head_office_address,
+    // Section 5: Contact Persons
+    contact_persons: form.contact_persons.filter(
+      (cp) => cp.name.trim() || cp.email.trim()
+    ),
+    // Section 6: Payment Details
     preferred_payment_mode: form.preferred_payment_mode,
-    beneficiary_name: form.beneficiary_name,
+    // Section 7: Bank Details - mapped to backend normalized fields
     bank_name: form.bank_name,
-    account_number: form.account_number,
+    bank_address: form.bank_address,
+    beneficiary_name: form.beneficiary_name,
+    beneficiary_account_number: form.beneficiary_account_number,
+    bank_account_number: form.bank_account_number,
+    account_number: form.account_number || form.bank_account_number, // backward compat
     bank_account_type: form.bank_account_type,
-    ifsc: form.ifsc,
     micr_code: form.micr_code,
     neft_code: form.neft_code,
+    ifsc: form.ifsc,
+    bank_email: form.bank_email,
     bank_branch_address_line1: form.bank_branch_address_line1,
     bank_branch_address_line2: form.bank_branch_address_line2,
     bank_branch_city: form.bank_branch_city,
@@ -258,15 +311,11 @@ function buildPayload(form: ManualFormState): Record<string, unknown> {
     bank_branch_pincode: form.bank_branch_pincode,
     bank_phone: form.bank_phone,
     bank_fax: form.bank_fax,
-    authorized_signatory_name: form.authorized_signatory_name,
+    // Section 8: MSME Declaration
     msme_registered: form.msme_registered,
     msme_registration_number: form.msme_registration_number,
     msme_enterprise_type: form.msme_enterprise_type,
-    contact_persons: form.contact_persons.filter(
-      (cp) => cp.name.trim() || cp.email.trim()
-    ),
-    head_office_address: form.head_office_address,
-    tax_registration_details: form.tax_registration_details,
+    authorized_signatory_name: form.authorized_signatory_name,
   };
 }
 
@@ -385,42 +434,43 @@ function ManualStep({
   useEffect(() => {
     if (hydrated || !initialSubmission) return;
     const s = initialSubmission;
+    // Derive gst_registration from boolean
+    const gstReg: ManualFormState["gst_registration"] =
+      s.normalized_gst_registered === true ? "registered" :
+      s.normalized_gst_registered === false ? "unregistered" : "";
+
     setForm({
+      // Section 1: Vendor Information
       title: s.normalized_title ?? "",
       vendor_name: s.normalized_vendor_name ?? "",
       vendor_type: s.normalized_vendor_type ?? "",
-      email: s.normalized_email ?? "",
-      phone: s.normalized_phone ?? "",
-      gst_registered: s.normalized_gst_registered ?? false,
+      gst_registration: gstReg,
       gstin: s.normalized_gstin ?? "",
-      pan: s.normalized_pan ?? "",
+      // Section 2: Supplying / Billing Address
       address_line1: s.normalized_address_line1 ?? "",
       address_line2: s.normalized_address_line2 ?? "",
       address_line3: s.normalized_address_line3 ?? "",
       city: s.normalized_city ?? "",
+      pincode: s.normalized_pincode ?? "",
       state: s.normalized_state ?? "",
       country: s.normalized_country ?? "India",
-      pincode: s.normalized_pincode ?? "",
+      phone: s.normalized_phone ?? "",
+      fax: s.normalized_fax ?? "",
+      email: s.normalized_email ?? "",
       region: s.normalized_region ?? "",
       head_office_no: s.normalized_head_office_no ?? "",
-      fax: s.normalized_fax ?? "",
-      preferred_payment_mode: s.normalized_preferred_payment_mode ?? "",
-      beneficiary_name: s.normalized_beneficiary_name ?? "",
-      bank_name: s.normalized_bank_name ?? "",
-      account_number: s.normalized_account_number ?? "",
-      bank_account_type: s.normalized_bank_account_type ?? "",
-      ifsc: s.normalized_ifsc ?? "",
-      micr_code: s.normalized_micr_code ?? "",
-      neft_code: s.normalized_neft_code ?? "",
-      bank_branch_address_line1: s.normalized_bank_branch_address_line1 ?? "",
-      bank_branch_address_line2: s.normalized_bank_branch_address_line2 ?? "",
-      bank_branch_city: s.normalized_bank_branch_city ?? "",
-      bank_branch_state: s.normalized_bank_branch_state ?? "",
-      bank_branch_country: s.normalized_bank_branch_country ?? "India",
-      bank_branch_pincode: s.normalized_bank_branch_pincode ?? "",
-      bank_phone: s.normalized_bank_phone ?? "",
-      bank_fax: s.normalized_bank_fax ?? "",
-      contact_persons: hydrateContactPersons(s.contact_persons_json),
+      // Section 3: Tax Registration Nos
+      pan: s.normalized_pan ?? "",
+      tax_registration_details: {
+        tax_registration_nos: s.tax_registration_details_json?.tax_registration_nos ?? "",
+        tin_no: s.tax_registration_details_json?.tin_no ?? "",
+        cst_no: s.tax_registration_details_json?.cst_no ?? "",
+        lst_no: s.tax_registration_details_json?.lst_no ?? "",
+        esic_reg_no: s.tax_registration_details_json?.esic_reg_no ?? "",
+        pan_ref_no: s.tax_registration_details_json?.pan_ref_no ?? "",
+        ppf_no: s.tax_registration_details_json?.ppf_no ?? "",
+      },
+      // Section 4: Head Office Address
       head_office_address: {
         address_line1: s.head_office_address_json?.address_line1 ?? "",
         address_line2: s.head_office_address_json?.address_line2 ?? "",
@@ -431,20 +481,38 @@ function ManualStep({
         phone: s.head_office_address_json?.phone ?? "",
         fax: s.head_office_address_json?.fax ?? "",
       },
-      tax_registration_details: {
-        tax_registration_nos: s.tax_registration_details_json?.tax_registration_nos ?? "",
-        tin_no: s.tax_registration_details_json?.tin_no ?? "",
-        cst_no: s.tax_registration_details_json?.cst_no ?? "",
-        lst_no: s.tax_registration_details_json?.lst_no ?? "",
-        esic_reg_no: s.tax_registration_details_json?.esic_reg_no ?? "",
-        pan_ref_no: s.tax_registration_details_json?.pan_ref_no ?? "",
-        ppf_no: s.tax_registration_details_json?.ppf_no ?? "",
-      },
+      // Section 5: Contact Persons
+      contact_persons: hydrateContactPersons(s.contact_persons_json),
+      // Section 6: Payment Details
+      preferred_payment_mode: s.normalized_preferred_payment_mode ?? "",
+      // Section 7: Bank Details
+      bank_name: s.normalized_bank_name ?? "",
+      bank_address: s.normalized_bank_address ?? "",
+      bank_branch_address_line1: s.normalized_bank_branch_address_line1 ?? "",
+      bank_branch_address_line2: s.normalized_bank_branch_address_line2 ?? "",
+      bank_branch_city: s.normalized_bank_branch_city ?? "",
+      bank_branch_pincode: s.normalized_bank_branch_pincode ?? "",
+      bank_branch_state: s.normalized_bank_branch_state ?? "",
+      bank_branch_country: s.normalized_bank_branch_country ?? "India",
+      bank_phone: s.normalized_bank_phone ?? "",
+      bank_fax: s.normalized_bank_fax ?? "",
+      beneficiary_name: s.normalized_beneficiary_name ?? "",
+      beneficiary_account_number: s.normalized_beneficiary_account_number ?? "",
+      bank_account_number: s.normalized_bank_account_number ?? "",
+      account_number: s.normalized_account_number ?? "",
+      bank_account_type: s.normalized_bank_account_type ?? "",
+      micr_code: s.normalized_micr_code ?? "",
+      neft_code: s.normalized_neft_code ?? "",
+      ifsc: s.normalized_ifsc ?? "",
+      bank_email: s.normalized_bank_email ?? "",
+      // Section 8: MSME Declaration
       msme_registered: s.normalized_msme_registered ?? false,
       msme_registration_number: s.normalized_msme_registration_number ?? "",
       msme_enterprise_type:
         (s.normalized_msme_enterprise_type as ManualFormState["msme_enterprise_type"]) ?? "",
       authorized_signatory_name: s.normalized_authorized_signatory_name ?? "",
+      // Legacy compat
+      gst_registered: s.normalized_gst_registered ?? false,
     });
     setHydrated(true);
   }, [initialSubmission, hydrated]);
@@ -504,36 +572,31 @@ function ManualStep({
             <span> — {invitation.vendor_name_hint}</span>
           )}
         </p>
-        <p className="text-xs text-muted-foreground mt-0.5">
-          Scope: {invitation.scope_node_name}
-        </p>
       </div>
 
       {/* Optional top banner (e.g. workbook info for review_details) */}
       {topBanner}
 
-      {/* ── SECTION 1: BUSINESS DETAILS ─────────────────────────────────── */}
+      {/* ── SECTION 1: VENDOR INFORMATION ─────────────────────────────────── */}
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-semibold tracking-wide uppercase text-muted-foreground">
-            Section 1 — Business Details
+            Section 1 — Vendor Information
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             <div className="space-y-1">
-              <Label htmlFor="title">Title</Label>
+              <Label htmlFor="title">Title *</Label>
               <Select value={form.title} onValueChange={(v) => set("title", v)}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="Company">Company</SelectItem>
-                  <SelectItem value="Proprietorship">Proprietorship</SelectItem>
-                  <SelectItem value="Partnership">Partnership</SelectItem>
-                  <SelectItem value="LLP">LLP</SelectItem>
-                  <SelectItem value="Individual">Individual</SelectItem>
-                  <SelectItem value="Other">Other</SelectItem>
+                  <SelectItem value="Mr.">Mr.</SelectItem>
+                  <SelectItem value="Mrs.">Mrs.</SelectItem>
+                  <SelectItem value="M/s">M/s</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -547,7 +610,7 @@ function ManualStep({
               />
             </div>
             <div className="space-y-1">
-              <Label htmlFor="vendor_type">Vendor Type *</Label>
+              <Label htmlFor="vendor_type">Type of Vendor *</Label>
               <Select
                 value={form.vendor_type}
                 onValueChange={(v) => set("vendor_type", v)}
@@ -556,99 +619,49 @@ function ManualStep({
                   <SelectValue placeholder="Select type" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Supplier">Supplier</SelectItem>
-                  <SelectItem value="Agency">Agency</SelectItem>
-                  <SelectItem value="Contractor">Contractor</SelectItem>
-                  <SelectItem value="Consultant">Consultant</SelectItem>
-                  <SelectItem value="Stockiest">Stockiest</SelectItem>
-                  <SelectItem value="Channel Partner">Channel Partner</SelectItem>
-                  <SelectItem value="Other">Other</SelectItem>
+                  <SelectItem value="Person">Person</SelectItem>
+                  <SelectItem value="Organisation">Organisation</SelectItem>
+                  <SelectItem value="Group">Group</SelectItem>
+                  <SelectItem value="MSME">MSME</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-1">
-              <Label htmlFor="email">Email *</Label>
-              <Input
-                id="email"
-                type="email"
-                value={form.email}
-                onChange={(e) => set("email", e.target.value)}
-                placeholder="contact@company.com"
-              />
+              <Label htmlFor="gst_registration">GST Registration *</Label>
+              <Select
+                value={form.gst_registration}
+                onValueChange={(v) => set("gst_registration", v as ManualFormState["gst_registration"])}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="registered">Registered</SelectItem>
+                  <SelectItem value="unregistered">Un-Registered</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-            <div className="space-y-1">
-              <Label htmlFor="phone">Phone</Label>
-              <Input
-                id="phone"
-                value={form.phone}
-                onChange={(e) => set("phone", e.target.value)}
-                placeholder="+91 98765 43210"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="region">Region</Label>
-              <Input
-                id="region"
-                value={form.region}
-                onChange={(e) => set("region", e.target.value)}
-                placeholder="e.g. West, East, North, South"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="head_office_no">Head Office / Site No.</Label>
-              <Input
-                id="head_office_no"
-                value={form.head_office_no}
-                onChange={(e) => set("head_office_no", e.target.value)}
-                placeholder="e.g. HO-001"
-              />
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <input
-              type="checkbox"
-              id="gst_registered"
-              checked={form.gst_registered}
-              onChange={(e) => set("gst_registered", e.target.checked)}
-              className="rounded border-border"
-            />
-            <Label htmlFor="gst_registered" className="text-sm font-normal">
-              GST Registered
-            </Label>
-          </div>
-
-          {form.gst_registered && (
-            <div className="space-y-1">
-              <Label htmlFor="gstin">GSTIN *</Label>
-              <Input
-                id="gstin"
-                value={form.gstin}
-                onChange={(e) => set("gstin", e.target.value.toUpperCase())}
-                placeholder="27AAACZ1234F1Z5"
-                maxLength={15}
-              />
-            </div>
-          )}
-
-          <div className="space-y-1">
-            <Label htmlFor="pan">PAN *</Label>
-            <Input
-              id="pan"
-              value={form.pan}
-              onChange={(e) => set("pan", e.target.value.toUpperCase())}
-              placeholder="AAAPL1234C"
-              maxLength={10}
-            />
+            {form.gst_registration === "registered" && (
+              <div className="space-y-1">
+                <Label htmlFor="gstin">GSTIN Number *</Label>
+                <Input
+                  id="gstin"
+                  value={form.gstin}
+                  onChange={(e) => set("gstin", e.target.value.toUpperCase())}
+                  placeholder="27AAACZ1234F1Z5"
+                  maxLength={15}
+                />
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
 
-      {/* ── SECTION 2: BILLING ADDRESS ───────────────────────────────────── */}
+      {/* ── SECTION 2: SUPPLYING / BILLING ADDRESS ───────────────────────────────────── */}
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-semibold tracking-wide uppercase text-muted-foreground">
-            Section 2 — Billing Address
+            Section 2 — Supplying / Billing Address
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -686,6 +699,14 @@ function ManualStep({
               />
             </div>
             <div className="space-y-1">
+              <Label>Pin Code *</Label>
+              <Input
+                value={form.pincode}
+                onChange={(e) => set("pincode", e.target.value)}
+                placeholder="400001"
+              />
+            </div>
+            <div className="space-y-1">
               <Label>State *</Label>
               <Input
                 value={form.state}
@@ -694,348 +715,69 @@ function ManualStep({
               />
             </div>
             <div className="space-y-1">
-              <Label>Country</Label>
+              <Label>Country *</Label>
               <Input
                 value={form.country}
                 onChange={(e) => set("country", e.target.value)}
               />
             </div>
             <div className="space-y-1">
-              <Label>Pincode *</Label>
+              <Label>Phone no</Label>
               <Input
-                value={form.pincode}
-                onChange={(e) => set("pincode", e.target.value)}
-                placeholder="400001"
+                value={form.phone}
+                onChange={(e) => set("phone", e.target.value)}
+                placeholder="+91 98765 43210"
               />
             </div>
             <div className="space-y-1">
-              <Label>Fax</Label>
+              <Label>Fax no</Label>
               <Input
                 value={form.fax}
                 onChange={(e) => set("fax", e.target.value)}
                 placeholder="+91 ..."
               />
             </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* ── SECTION 3: PAYMENT DETAILS ──────────────────────────────────── */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-semibold tracking-wide uppercase text-muted-foreground">
-            Section 3 — Payment Details
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-1">
-            <Label>Preferred Payment Mode</Label>
-            <Select
-              value={form.preferred_payment_mode}
-              onValueChange={(v) => set("preferred_payment_mode", v)}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select mode" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="RTGS">RTGS</SelectItem>
-                <SelectItem value="NEFT">NEFT</SelectItem>
-                <SelectItem value="IMPS">IMPS</SelectItem>
-                <SelectItem value="Cheque">Cheque</SelectItem>
-                <SelectItem value="LC">Letter of Credit</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1">
-              <Label>Beneficiary Name *</Label>
+              <Label>Email Id *</Label>
               <Input
-                value={form.beneficiary_name}
-                onChange={(e) => set("beneficiary_name", e.target.value)}
-                placeholder="Name as per bank records"
+                value={form.email || invitation.vendor_email}
+                readOnly
+                disabled
+                className="bg-muted cursor-not-allowed"
+              />
+              <p className="text-xs text-muted-foreground">Prefilled from invitation (read-only)</p>
+            </div>
+            <div className="space-y-1">
+              <Label>Region</Label>
+              <Input
+                value={form.region}
+                onChange={(e) => set("region", e.target.value)}
+                placeholder="e.g. West, East, North, South"
               />
             </div>
             <div className="space-y-1">
-              <Label>Bank Name *</Label>
+              <Label>Head Office no</Label>
               <Input
-                value={form.bank_name}
-                onChange={(e) => set("bank_name", e.target.value)}
-                placeholder="e.g. HDFC Bank"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label>Account Number *</Label>
-              <Input
-                value={form.account_number}
-                onChange={(e) => set("account_number", e.target.value)}
-                placeholder="1234567890"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label>Account Type</Label>
-              <Select
-                value={form.bank_account_type}
-                onValueChange={(v) => set("bank_account_type", v)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select type" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Savings">Savings</SelectItem>
-                  <SelectItem value="Current">Current</SelectItem>
-                  <SelectItem value="OD">Overdraft (OD)</SelectItem>
-                  <SelectItem value="CC">Cash Credit (CC)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label>IFSC Code *</Label>
-              <Input
-                value={form.ifsc}
-                onChange={(e) => set("ifsc", e.target.value.toUpperCase())}
-                placeholder="HDFC0001234"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label>MICR Code</Label>
-              <Input
-                value={form.micr_code}
-                onChange={(e) => set("micr_code", e.target.value)}
-                placeholder="400123456"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label>NEFT Code</Label>
-              <Input
-                value={form.neft_code}
-                onChange={(e) => set("neft_code", e.target.value)}
-                placeholder="NEFT code"
-              />
-            </div>
-          </div>
-
-          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide pt-2 pb-1">
-            Bank Branch Contact
-          </p>
-          <div className="space-y-1">
-            <Label>Branch Address Line 1</Label>
-            <Input
-              value={form.bank_branch_address_line1}
-              onChange={(e) => set("bank_branch_address_line1", e.target.value)}
-              placeholder="Street / area"
-            />
-          </div>
-          <div className="space-y-1">
-            <Label>Branch Address Line 2</Label>
-            <Input
-              value={form.bank_branch_address_line2}
-              onChange={(e) => set("bank_branch_address_line2", e.target.value)}
-              placeholder="Building / floor"
-            />
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-1">
-              <Label>Branch City</Label>
-              <Input
-                value={form.bank_branch_city}
-                onChange={(e) => set("bank_branch_city", e.target.value)}
-                placeholder="City"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label>Branch State</Label>
-              <Input
-                value={form.bank_branch_state}
-                onChange={(e) => set("bank_branch_state", e.target.value)}
-                placeholder="State"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label>Branch Country</Label>
-              <Input
-                value={form.bank_branch_country}
-                onChange={(e) => set("bank_branch_country", e.target.value)}
-              />
-            </div>
-            <div className="space-y-1">
-              <Label>Branch Pincode</Label>
-              <Input
-                value={form.bank_branch_pincode}
-                onChange={(e) => set("bank_branch_pincode", e.target.value)}
-                placeholder="400001"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label>Branch Phone</Label>
-              <Input
-                value={form.bank_phone}
-                onChange={(e) => set("bank_phone", e.target.value)}
-                placeholder="+91 ..."
-              />
-            </div>
-            <div className="space-y-1">
-              <Label>Branch Fax</Label>
-              <Input
-                value={form.bank_fax}
-                onChange={(e) => set("bank_fax", e.target.value)}
-                placeholder="+91 ..."
+                value={form.head_office_no}
+                onChange={(e) => set("head_office_no", e.target.value)}
+                placeholder="e.g. HO-001"
               />
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* ── SECTION 4: CONTACT PERSONS ───────────────────────────────────── */}
+      {/* ── SECTION 3: TAX REGISTRATION NOS ─────────────────────────── */}
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-semibold tracking-wide uppercase text-muted-foreground">
-            Section 4 — Contact Persons
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {form.contact_persons.map((cp, idx) => (
-            <div key={idx} className="rounded-lg border border-border p-4 space-y-3">
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                Contact {idx + 1}
-                <span className="ml-2 normal-case font-normal">
-                  ({cp.type === "general_queries" ? "General Queries" : "Secondary"})
-                </span>
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <Label>Name *</Label>
-                  <Input
-                    value={cp.name}
-                    onChange={(e) => setContactPerson(idx, "name", e.target.value)}
-                    placeholder="Full name"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label>Designation</Label>
-                  <Input
-                    value={cp.designation}
-                    onChange={(e) => setContactPerson(idx, "designation", e.target.value)}
-                    placeholder="e.g. Finance Manager"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label>Email *</Label>
-                  <Input
-                    type="email"
-                    value={cp.email}
-                    onChange={(e) => setContactPerson(idx, "email", e.target.value)}
-                    placeholder="contact@company.com"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label>Telephone</Label>
-                  <Input
-                    value={cp.telephone}
-                    onChange={(e) => setContactPerson(idx, "telephone", e.target.value)}
-                    placeholder="+91 ..."
-                  />
-                </div>
-              </div>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
-
-      {/* ── SECTION 5: HEAD OFFICE ADDRESS ───────────────────────────────── */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-semibold tracking-wide uppercase text-muted-foreground">
-            Section 5 — Head Office Address
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-1">
-            <Label>Address Line 1</Label>
-            <Input
-              value={form.head_office_address.address_line1}
-              onChange={(e) => setHeadOffice("address_line1", e.target.value)}
-              placeholder="Street / area address"
-            />
-          </div>
-          <div className="space-y-1">
-            <Label>Address Line 2</Label>
-            <Input
-              value={form.head_office_address.address_line2}
-              onChange={(e) => setHeadOffice("address_line2", e.target.value)}
-              placeholder="Building / floor / locality"
-            />
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-1">
-              <Label>City</Label>
-              <Input
-                value={form.head_office_address.city}
-                onChange={(e) => setHeadOffice("city", e.target.value)}
-                placeholder="City"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label>State</Label>
-              <Input
-                value={form.head_office_address.state}
-                onChange={(e) => setHeadOffice("state", e.target.value)}
-                placeholder="State"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label>Country</Label>
-              <Input
-                value={form.head_office_address.country}
-                onChange={(e) => setHeadOffice("country", e.target.value)}
-              />
-            </div>
-            <div className="space-y-1">
-              <Label>Pincode</Label>
-              <Input
-                value={form.head_office_address.pincode}
-                onChange={(e) => setHeadOffice("pincode", e.target.value)}
-                placeholder="400001"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label>Phone</Label>
-              <Input
-                value={form.head_office_address.phone}
-                onChange={(e) => setHeadOffice("phone", e.target.value)}
-                placeholder="+91 ..."
-              />
-            </div>
-            <div className="space-y-1">
-              <Label>Fax</Label>
-              <Input
-                value={form.head_office_address.fax}
-                onChange={(e) => setHeadOffice("fax", e.target.value)}
-                placeholder="+91 ..."
-              />
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* ── SECTION 6: TAX REGISTRATION DETAILS ─────────────────────────── */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-semibold tracking-wide uppercase text-muted-foreground">
-            Section 6 — Tax Registration Details
+            Section 3 — Tax Registration Nos
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1">
-              <Label>Tax Registration Nos.</Label>
-              <Input
-                value={form.tax_registration_details.tax_registration_nos}
-                onChange={(e) => setTaxReg("tax_registration_nos", e.target.value)}
-                placeholder="Tax registration numbers"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label>TIN No.</Label>
+              <Label>TIN NO</Label>
               <Input
                 value={form.tax_registration_details.tin_no}
                 onChange={(e) => setTaxReg("tin_no", e.target.value)}
@@ -1059,7 +801,16 @@ function ManualStep({
               />
             </div>
             <div className="space-y-1">
-              <Label>ESIC Reg. No.</Label>
+              <Label>PAN No. *</Label>
+              <Input
+                value={form.pan}
+                onChange={(e) => set("pan", e.target.value.toUpperCase())}
+                placeholder="AAAPL1234C"
+                maxLength={10}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>ESIC Reg NO</Label>
               <Input
                 value={form.tax_registration_details.esic_reg_no}
                 onChange={(e) => setTaxReg("esic_reg_no", e.target.value)}
@@ -1086,11 +837,350 @@ function ManualStep({
         </CardContent>
       </Card>
 
-      {/* ── SECTION 7: MSME DECLARATION ─────────────────────────────────── */}
+      {/* ── SECTION 4: HEAD OFFICE ADDRESS ───────────────────────────────── */}
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-semibold tracking-wide uppercase text-muted-foreground">
-            Section 7 — MSME Declaration
+            Section 4 — Head Office Address
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-1">
+            <Label>Address line 1</Label>
+            <Input
+              value={form.head_office_address.address_line1}
+              onChange={(e) => setHeadOffice("address_line1", e.target.value)}
+              placeholder="Street / area address"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label>Address line 2</Label>
+            <Input
+              value={form.head_office_address.address_line2}
+              onChange={(e) => setHeadOffice("address_line2", e.target.value)}
+              placeholder="Building / floor / locality"
+            />
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <Label>City</Label>
+              <Input
+                value={form.head_office_address.city}
+                onChange={(e) => setHeadOffice("city", e.target.value)}
+                placeholder="City"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>Pincode</Label>
+              <Input
+                value={form.head_office_address.pincode}
+                onChange={(e) => setHeadOffice("pincode", e.target.value)}
+                placeholder="400001"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>State</Label>
+              <Input
+                value={form.head_office_address.state}
+                onChange={(e) => setHeadOffice("state", e.target.value)}
+                placeholder="State"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>Country</Label>
+              <Input
+                value={form.head_office_address.country}
+                onChange={(e) => setHeadOffice("country", e.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>Phone no</Label>
+              <Input
+                value={form.head_office_address.phone}
+                onChange={(e) => setHeadOffice("phone", e.target.value)}
+                placeholder="+91 ..."
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>Fax no</Label>
+              <Input
+                value={form.head_office_address.fax}
+                onChange={(e) => setHeadOffice("fax", e.target.value)}
+                placeholder="+91 ..."
+              />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ── SECTION 5: CONTACT PERSONS ───────────────────────────────────── */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-semibold tracking-wide uppercase text-muted-foreground">
+            Section 5 — Contact Persons
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+            General Queries
+          </p>
+          {form.contact_persons.map((cp, idx) => (
+            <div key={idx} className="rounded-lg border border-border p-4 space-y-3">
+              <p className="text-xs font-medium text-muted-foreground">
+                Contact {idx + 1}
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label>Name {idx === 0 ? "*" : ""}</Label>
+                  <Input
+                    value={cp.name}
+                    onChange={(e) => setContactPerson(idx, "name", e.target.value)}
+                    placeholder="Full name"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label>Designation</Label>
+                  <Input
+                    value={cp.designation}
+                    onChange={(e) => setContactPerson(idx, "designation", e.target.value)}
+                    placeholder="e.g. Finance Manager"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label>Email Address</Label>
+                  <Input
+                    type="email"
+                    value={cp.email}
+                    onChange={(e) => setContactPerson(idx, "email", e.target.value)}
+                    placeholder="contact@company.com"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label>Telephone</Label>
+                  <Input
+                    value={cp.telephone}
+                    onChange={(e) => setContactPerson(idx, "telephone", e.target.value)}
+                    placeholder="+91 ..."
+                  />
+                </div>
+              </div>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
+      {/* ── SECTION 6: PAYMENT DETAILS ──────────────────────────────────── */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-semibold tracking-wide uppercase text-muted-foreground">
+            Section 6 — Payment Details
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-1">
+            <Label>Preffered Payment Mode *</Label>
+            <Select
+              value={form.preferred_payment_mode}
+              onValueChange={(v) => set("preferred_payment_mode", v)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select mode" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="RTGS">RTGS</SelectItem>
+                <SelectItem value="NEFT">NEFT</SelectItem>
+                <SelectItem value="IMPS">IMPS</SelectItem>
+                <SelectItem value="Cheque">Cheque</SelectItem>
+                <SelectItem value="LC">Letter of Credit</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ── SECTION 7: BANK DETAILS ──────────────────────────────────── */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-semibold tracking-wide uppercase text-muted-foreground">
+            Section 7 — Bank Details
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <Label>Bank Name</Label>
+              <Input
+                value={form.bank_name}
+                onChange={(e) => set("bank_name", e.target.value)}
+                placeholder="e.g. HDFC Bank"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>Bank Address</Label>
+              <Input
+                value={form.bank_address}
+                onChange={(e) => set("bank_address", e.target.value)}
+                placeholder="Bank address"
+              />
+            </div>
+          </div>
+
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide pt-2 pb-1">
+            Bank Branch Address
+          </p>
+          <div className="space-y-1">
+            <Label>Address line</Label>
+            <Input
+              value={form.bank_branch_address_line1}
+              onChange={(e) => set("bank_branch_address_line1", e.target.value)}
+              placeholder="Street / area"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label>Address line2</Label>
+            <Input
+              value={form.bank_branch_address_line2}
+              onChange={(e) => set("bank_branch_address_line2", e.target.value)}
+              placeholder="Building / floor"
+            />
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <Label>City</Label>
+              <Input
+                value={form.bank_branch_city}
+                onChange={(e) => set("bank_branch_city", e.target.value)}
+                placeholder="City"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>Pin code</Label>
+              <Input
+                value={form.bank_branch_pincode}
+                onChange={(e) => set("bank_branch_pincode", e.target.value)}
+                placeholder="400001"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>State</Label>
+              <Input
+                value={form.bank_branch_state}
+                onChange={(e) => set("bank_branch_state", e.target.value)}
+                placeholder="State"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>Country</Label>
+              <Input
+                value={form.bank_branch_country}
+                onChange={(e) => set("bank_branch_country", e.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>Phone No</Label>
+              <Input
+                value={form.bank_phone}
+                onChange={(e) => set("bank_phone", e.target.value)}
+                placeholder="+91 ..."
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>Fax No</Label>
+              <Input
+                value={form.bank_fax}
+                onChange={(e) => set("bank_fax", e.target.value)}
+                placeholder="+91 ..."
+              />
+            </div>
+          </div>
+
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide pt-2 pb-1">
+            Account Details
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <Label>Beneficiary Name</Label>
+              <Input
+                value={form.beneficiary_name}
+                onChange={(e) => set("beneficiary_name", e.target.value)}
+                placeholder="Name as per bank records"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>Beneficiary Account No</Label>
+              <Input
+                value={form.beneficiary_account_number}
+                onChange={(e) => set("beneficiary_account_number", e.target.value)}
+                placeholder="Account number"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>Bank Account No</Label>
+              <Input
+                value={form.bank_account_number}
+                onChange={(e) => set("bank_account_number", e.target.value)}
+                placeholder="1234567890"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>Bank account type</Label>
+              <Select
+                value={form.bank_account_type}
+                onValueChange={(v) => set("bank_account_type", v)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Savings">Savings</SelectItem>
+                  <SelectItem value="Current">Current</SelectItem>
+                  <SelectItem value="OD">Overdraft (OD)</SelectItem>
+                  <SelectItem value="CC">Cash Credit (CC)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label>Bank MICR code</Label>
+              <Input
+                value={form.micr_code}
+                onChange={(e) => set("micr_code", e.target.value)}
+                placeholder="400123456"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>NEFT code</Label>
+              <Input
+                value={form.neft_code}
+                onChange={(e) => set("neft_code", e.target.value)}
+                placeholder="NEFT code"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>IFSC code</Label>
+              <Input
+                value={form.ifsc}
+                onChange={(e) => set("ifsc", e.target.value.toUpperCase())}
+                placeholder="HDFC0001234"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>Email Address</Label>
+              <Input
+                type="email"
+                value={form.bank_email}
+                onChange={(e) => set("bank_email", e.target.value)}
+                placeholder="bank@email.com"
+              />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ── SECTION 8: MSME DECLARATION ─────────────────────────────────── */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-semibold tracking-wide uppercase text-muted-foreground">
+            Section 8 — MSME Declaration
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -1217,9 +1307,6 @@ function UploadTemplateStep({
         <p className="text-sm">
           Invitation for <strong>{invitation.vendor_email}</strong>
         </p>
-        <p className="text-xs text-muted-foreground mt-1">
-          Scope: {invitation.scope_node_name}
-        </p>
       </div>
 
       <Card>
@@ -1326,15 +1413,57 @@ function UploadTemplateStep({
 
 // ── Attachments step ──────────────────────────────────────────────────────────
 
-const ATTACHMENT_DOC_TYPES = [
-  { value: "msme_declaration_form", label: "MSME Declaration Form" },
-  { value: "msme_registration_certificate", label: "MSME Registration Certificate (UDYAM)" },
-  { value: "cancelled_cheque", label: "Cancelled Cheque" },
-  { value: "pan_copy", label: "PAN Copy" },
-  { value: "gst_certificate", label: "GST Certificate" },
-  { value: "bank_proof", label: "Bank Proof / Statement" },
-  { value: "supporting_document", label: "Supporting Document" },
-];
+const BASE_ATTACHMENT_REQUIREMENTS = [
+  { value: "gst_certificate", label: "GST Certificate", description: "Upload the GST registration certificate." },
+  { value: "pan_copy", label: "PAN Copy", description: "Upload the vendor PAN card or PAN allotment document." },
+  { value: "cancelled_cheque", label: "Cancelled Cheque", description: "Upload a cancelled cheque for bank verification." },
+] as const;
+
+const MSME_ATTACHMENT_REQUIREMENTS = [
+  { value: "msme_declaration_form", label: "MSME Declaration Form", description: "Required only when MSME Registered is Yes." },
+  { value: "msme_registration_certificate", label: "MSME Registration Certificate (UDYAM)", description: "Required only when MSME Registered is Yes." },
+] as const;
+
+type AttachmentRequirement =
+  | (typeof BASE_ATTACHMENT_REQUIREMENTS)[number]
+  | (typeof MSME_ATTACHMENT_REQUIREMENTS)[number];
+
+// Helper to map raw document_type to friendly label
+const DOC_TYPE_LABELS: Record<string, string> = {
+  gst_certificate: "GST Certificate",
+  pan_copy: "PAN Copy",
+  cancelled_cheque: "Cancelled Cheque",
+  msme_declaration_form: "MSME Declaration Form",
+  msme_registration_certificate: "MSME Registration Certificate (UDYAM)",
+};
+
+function getDocTypeLabel(docType: string): string {
+  return DOC_TYPE_LABELS[docType] ?? docType;
+}
+
+type OnboardingAttachment = Pick<
+  VendorAttachment,
+  "id" | "title" | "file_name" | "document_type"
+>;
+
+function normalizeOnboardingAttachments(
+  attachments: OnboardingAttachment[],
+): OnboardingAttachment[] {
+  const seenDocumentTypes = new Set<string>();
+  const normalized: OnboardingAttachment[] = [];
+
+  for (const attachment of attachments) {
+    if (!attachment.document_type) {
+      normalized.push(attachment);
+      continue;
+    }
+    if (seenDocumentTypes.has(attachment.document_type)) continue;
+    seenDocumentTypes.add(attachment.document_type);
+    normalized.push(attachment);
+  }
+
+  return normalized;
+}
 
 function AttachmentsStep({
   attachments,
@@ -1343,30 +1472,58 @@ function AttachmentsStep({
   onBack,
   onContinue,
   isAdding,
+  isRemoving,
   error,
+  msmeRegistered,
 }: {
-  attachments: { title: string; file_name: string; document_type: string }[];
+  attachments: OnboardingAttachment[];
   onAdd: (file: File, title: string, documentType: string) => void;
-  onRemove: (idx: number) => void;
+  onRemove: (attachment: OnboardingAttachment) => void;
   onBack: () => void;
   onContinue: () => void;
   isAdding: boolean;
+  isRemoving: boolean;
   error: string | null;
+  msmeRegistered: boolean;
 }) {
-  const [title, setTitle] = useState("");
-  const [docType, setDocType] = useState("");
-  const [file, setFile] = useState<File | null>(null);
+  const [filesByType, setFilesByType] = useState<Record<string, File | null>>({});
   const [localError, setLocalError] = useState<string | null>(null);
+  const requirements: AttachmentRequirement[] = [
+    ...BASE_ATTACHMENT_REQUIREMENTS,
+    ...(msmeRegistered ? MSME_ATTACHMENT_REQUIREMENTS : []),
+  ];
+  const uploadedByType = new Map<string, OnboardingAttachment>();
+  for (const attachment of attachments) {
+    if (attachment.document_type && !uploadedByType.has(attachment.document_type)) {
+      uploadedByType.set(attachment.document_type, attachment);
+    }
+  }
+  const missingRequirements = requirements.filter(
+    (requirement) => !uploadedByType.has(requirement.value)
+  );
 
-  const handleAdd = () => {
-    if (!title.trim()) { setLocalError("Title is required."); return; }
-    if (!file) { setLocalError("Please select a file."); return; }
-    if (!docType) { setLocalError("Please select a document type."); return; }
+  const handleAdd = (requirement: AttachmentRequirement) => {
+    const file = filesByType[requirement.value];
+    if (!file) {
+      setLocalError(`Please attach ${requirement.label}.`);
+      return;
+    }
     setLocalError(null);
-    onAdd(file, title.trim(), docType);
-    setTitle("");
-    setDocType("");
-    setFile(null);
+    onAdd(file, requirement.label, requirement.value);
+    setFilesByType((prev) => ({ ...prev, [requirement.value]: null }));
+  };
+
+  const handleContinue = () => {
+    if (missingRequirements.length > 0) {
+      setLocalError(
+        `Please upload required documents: ${missingRequirements
+          .map((requirement) => requirement.label)
+          .join(", ")}.`
+      );
+      return;
+    }
+    setLocalError(null);
+    onContinue();
   };
 
   return (
@@ -1377,157 +1534,136 @@ function AttachmentsStep({
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            Attach supporting documents such as GST Certificate, PAN Card, Bank
-            Letter, or MSME Certificate. Accepted: PDF, JPG, PNG, Excel, Word
-            (max 10 MB each).
+            Upload each required document below. Attachments are saved to this
+            draft as soon as you upload them. Accepted: PDF, JPG, PNG, Excel,
+            Word, text, or CSV (max 10 MB each).
           </p>
-
-          {attachments.length > 0 && (
-            <div className="space-y-2">
-              {attachments.map((att, i) => (
-                <div
-                  key={i}
-                  className="flex items-center gap-2 p-2.5 rounded-lg border border-border bg-secondary/20"
-                >
-                  <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{att.title}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {att.document_type || "Uncategorized"} — {att.file_name}
-                    </p>
+          <div className="space-y-3">
+            {requirements.map((requirement) => {
+              const uploaded = uploadedByType.get(requirement.value);
+              const selectedFile = filesByType[requirement.value];
+              return (
+                <div key={requirement.value} className="rounded-lg border border-border p-4 space-y-3">
+                  <div className="flex items-start gap-3">
+                    {uploaded ? (
+                      <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0 mt-0.5" />
+                    ) : (
+                      <FileText className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium">{requirement.label} *</p>
+                      <p className="text-xs text-muted-foreground">{requirement.description}</p>
+                      {uploaded && (
+                        <p className="mt-1 text-xs text-muted-foreground truncate">
+                          Uploaded: {uploaded.file_name}
+                        </p>
+                      )}
+                      {requirement.value === "msme_declaration_form" && (
+                        <a
+                          href="/templates/msme-declaration-form.docx"
+                          download="msme-declaration-form.docx"
+                          className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
+                        >
+                          <Download className="h-3.5 w-3.5" />
+                          Download MSME Word format
+                        </a>
+                      )}
+                    </div>
                   </div>
-                  <button
-                    onClick={() => onRemove(i)}
-                    className="text-muted-foreground hover:text-destructive shrink-0"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
+                  {selectedFile && (
+                    <div className="flex items-center gap-3 rounded-md border border-border bg-secondary/30 p-2.5">
+                      <FileText className="h-4 w-4 text-primary shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{selectedFile.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setFilesByType((prev) => ({ ...prev, [requirement.value]: null }))}
+                        className="text-muted-foreground hover:text-destructive"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  )}
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <Button asChild variant="outline" size="sm" className="gap-1.5">
+                      <label>
+                        <Upload className="h-3.5 w-3.5" />
+                        Choose File
+                        <input
+                          type="file"
+                          accept=".pdf,.jpg,.jpeg,.png,.xlsx,.xls,.doc,.docx,.txt,.csv"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0] ?? null;
+                            setFilesByType((prev) => ({ ...prev, [requirement.value]: file }));
+                          }}
+                        />
+                      </label>
+                    </Button>
+                    <Button
+                      variant={uploaded ? "secondary" : "default"}
+                      size="sm"
+                      onClick={() => handleAdd(requirement)}
+                      disabled={!selectedFile || isAdding || isRemoving}
+                      className="gap-1.5"
+                    >
+                      {isAdding ? (
+                        <>
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          Uploading
+                        </>
+                      ) : uploaded ? (
+                        "Replace Uploaded File"
+                      ) : (
+                        "Upload & Save Draft"
+                      )}
+                    </Button>
+                    {uploaded && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => onRemove(uploaded)}
+                        disabled={isAdding || isRemoving}
+                        className="gap-1.5 text-destructive hover:text-destructive"
+                      >
+                        {isRemoving ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-3.5 w-3.5" />
+                        )}
+                        Remove
+                      </Button>
+                    )}
+                  </div>
                 </div>
-              ))}
-            </div>
-          )}
-
-          {file ? (
-            <div className="flex items-center gap-3 p-3 rounded-lg bg-secondary/30 border border-border">
-              <FileText className="h-5 w-5 text-primary shrink-0" />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">{file.name}</p>
-                <p className="text-xs text-muted-foreground">
-                  {(file.size / 1024 / 1024).toFixed(2)} MB
-                </p>
-              </div>
-              <button
-                onClick={() => setFile(null)}
-                className="text-muted-foreground hover:text-destructive"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-          ) : (
-            <label className="flex flex-col items-center justify-center gap-2 px-6 py-8 rounded-xl border-2 border-dashed border-border cursor-pointer hover:border-primary/50 transition-colors bg-secondary/20">
-              <Upload className="h-6 w-6 text-muted-foreground" />
-              <span className="text-sm text-muted-foreground">
-                Click to select document file
-              </span>
-              <span className="text-xs text-muted-foreground">
-                PDF, JPG, PNG, XLSX, DOC, CSV — max 10 MB
-              </span>
-              <input
-                type="file"
-                accept=".pdf,.jpg,.jpeg,.png,.xlsx,.xls,.doc,.docx,.txt,.csv"
-                className="hidden"
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) {
-                    setFile(f);
-                    if (!title) setTitle(f.name.replace(/\.[^/.]+$/, ""));
-                  }
-                }}
-              />
-            </label>
-          )}
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <Label>Title *</Label>
-              <Input
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="e.g. GST Certificate"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label>Document Type</Label>
-              <Select value={docType} onValueChange={setDocType}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select type" />
-                </SelectTrigger>
-                <SelectContent>
-                  {ATTACHMENT_DOC_TYPES.map((t) => (
-                    <SelectItem key={t.value} value={t.value}>
-                      {t.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+              );
+            })}
           </div>
-
-          {localError && (
-            <p className="text-sm text-destructive">{localError}</p>
-          )}
-
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleAdd}
-            disabled={!file || !title.trim() || !docType || isAdding}
-            className="gap-1.5"
-          >
-            {isAdding ? (
-              <>
-                <Loader2 className="h-3.5 w-3.5 animate-spin" /> Uploading…
-              </>
-            ) : (
-              <>
-                <Plus className="h-3.5 w-3.5" /> Upload Attachment
-              </>
-            )}
-          </Button>
+          {localError && <p className="text-sm text-destructive">{localError}</p>}
         </CardContent>
       </Card>
-
       {error && (
         <p className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
           {error}
         </p>
       )}
-
       <div className="flex flex-col-reverse gap-3 sm:flex-row">
-        <Button
-          variant="outline"
-          onClick={onBack}
-          className="w-full sm:w-auto"
-        >
+        <Button variant="outline" onClick={onBack} className="w-full sm:w-auto">
           <ArrowLeft className="mr-1.5 h-4 w-4" />
           Back
         </Button>
-        <Button onClick={onContinue} className="w-full sm:flex-1">
+        <Button onClick={handleContinue} className="w-full sm:flex-1">
           Continue to Review &amp; Finalize
         </Button>
       </div>
-
-      {attachments.length === 0 && (
-        <p className="text-xs text-center text-muted-foreground">
-          You can continue without attachments — they can be noted during finance
-          review if needed.
-        </p>
-      )}
     </div>
   );
 }
-
-// ── Finalize review step ──────────────────────────────────────────────────────
 
 function ReviewField({
   label,
@@ -1556,7 +1692,7 @@ function FinalizeReviewStep({
   error,
 }: {
   submission: VendorOnboardingSubmission;
-  attachments: { title: string; file_name: string; document_type: string }[];
+  attachments: OnboardingAttachment[];
   onFinalize: () => void;
   onBack: () => void;
   isPending: boolean;
@@ -1770,7 +1906,7 @@ function FinalizeReviewStep({
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate">{att.title}</p>
                     <p className="text-xs text-muted-foreground">
-                      {att.document_type || "Uncategorized"} — {att.file_name}
+                      {att.document_type ? getDocTypeLabel(att.document_type) : "Uncategorized"} — {att.file_name}
                     </p>
                   </div>
                 </div>
@@ -1906,9 +2042,7 @@ export default function VendorOnboardingPage() {
 
   const [mode, setMode] = useState<Mode>("loading");
   const [modeReady, setModeReady] = useState(false);
-  const [attachments, setAttachments] = useState<
-    { title: string; file_name: string; document_type: string }[]
-  >([]);
+  const [attachments, setAttachments] = useState<OnboardingAttachment[]>([]);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [currentSubmission, setCurrentSubmission] =
     useState<VendorOnboardingSubmission | null>(null);
@@ -1931,13 +2065,14 @@ export default function VendorOnboardingPage() {
         setCurrentSubmission(s);
         // Restore any attachments the vendor already uploaded in a previous session.
         if (s.attachments && s.attachments.length > 0) {
-          setAttachments(
+          setAttachments(normalizeOnboardingAttachments(
             s.attachments.map((a) => ({
+              id: a.id,
               title: a.title,
               file_name: a.file_name,
               document_type: a.document_type,
             }))
-          );
+          ));
         }
         if (!EDITABLE_SUBMISSION_STATUSES.has(s.status)) {
           setMode("submitted");
@@ -1970,6 +2105,11 @@ export default function VendorOnboardingPage() {
       title: string;
       documentType: string;
     }) => addAttachment(token!, file, title, documentType),
+  });
+
+  const removeAttachmentMutation = useMutation({
+    mutationFn: (attachmentId: string) =>
+      removePublicAttachment(token!, attachmentId),
   });
 
   const finalizeMutation = useMutation({
@@ -2030,22 +2170,24 @@ export default function VendorOnboardingPage() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background p-6">
         <div className="max-w-lg w-full space-y-6">
-          <div className="text-center">
-            <div className="flex justify-center mb-4">
+          <div className="text-center space-y-3">
+            <div className="flex justify-center mb-1">
               <img
-                src="/vims-brand.png"
-                alt="VIMS"
-                className="h-14 w-auto object-contain"
+                src="/hp.jpg"
+                alt="Horizon Industrial Parks"
+                className="h-12 w-auto object-contain"
               />
             </div>
-            <h1 className="text-2xl font-bold text-foreground">
-              Vendor Onboarding
-            </h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              Invitation for <strong>{invitation.vendor_email}</strong>
-            </p>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Scope: {invitation.scope_node_name}
+            <div>
+              <h1 className="text-xl font-semibold text-foreground">
+                Vendor Onboarding
+              </h1>
+              <p className="text-sm text-muted-foreground mt-0.5">
+                Complete your registration to start working with us
+              </p>
+            </div>
+            <p className="text-sm font-medium text-primary">
+              {invitation.vendor_email}
             </p>
           </div>
 
@@ -2333,10 +2475,15 @@ export default function VendorOnboardingPage() {
                 addAttachmentMutation.mutate(
                   { file, title, documentType },
                   {
-                    onSuccess: () => {
+                    onSuccess: (attachment) => {
                       setAttachments((prev) => [
-                        ...prev,
-                        { title, file_name: file.name, document_type: documentType },
+                        ...prev.filter((att) => att.document_type !== documentType),
+                        {
+                          id: attachment.id,
+                          title: attachment.title,
+                          file_name: attachment.file_name,
+                          document_type: attachment.document_type,
+                        },
                       ]);
                     },
                     onError: (err) =>
@@ -2346,9 +2493,22 @@ export default function VendorOnboardingPage() {
                   }
                 );
               }}
-              onRemove={(idx) =>
-                setAttachments((prev) => prev.filter((_, i) => i !== idx))
-              }
+              onRemove={(attachment) => {
+                setSubmitError(null);
+                removeAttachmentMutation.mutate(attachment.id, {
+                  onSuccess: () => {
+                    setAttachments((prev) =>
+                      prev.filter(
+                        (att) => att.document_type !== attachment.document_type
+                      )
+                    );
+                  },
+                  onError: (err) =>
+                    setSubmitError(
+                      generalApiError(err) ?? "Failed to remove attachment"
+                    ),
+                });
+              }}
               onBack={() => {
                 setSubmitError(null);
                 setMode(
@@ -2362,7 +2522,9 @@ export default function VendorOnboardingPage() {
                 setMode("finalize_review");
               }}
               isAdding={addAttachmentMutation.isPending}
+              isRemoving={removeAttachmentMutation.isPending}
               error={submitError}
+              msmeRegistered={currentSubmission?.normalized_msme_registered === true}
             />
           )}
 

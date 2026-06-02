@@ -396,17 +396,10 @@ function CampaignFormDialog({
           <input type="hidden" {...register("campaign_type")} value={selectedCampaignType} />
           <input type="hidden" {...register("currency")} value={selectedCurrency} />
 
-          <div className="space-y-1.5">
-            <span className="text-[10px] font-bold tracking-widest uppercase text-muted-foreground/50">Context</span>
-            <div className="text-sm font-bold tracking-wide text-muted-foreground">
-              Horizon / Marketing
-            </div>
-            {errors.scope_node && (
-              <p className="text-xs text-destructive">{String(errors.scope_node.message)}</p>
-            )}
-            {/* Hidden field to submit the value */}
-            <input type="hidden" {...register("scope_node", { required: "Required" })} value={selectedScopeNode} />
-          </div>
+          {errors.scope_node && (
+            <p className="text-xs text-destructive">{String(errors.scope_node.message)}</p>
+          )}
+          <input type="hidden" {...register("scope_node", { required: "Required" })} value={selectedScopeNode} />
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
@@ -1241,18 +1234,7 @@ const CampaignsPage = () => {
     <V2Shell
       title="Campaigns"
       titleIcon={<Megaphone className="h-5 w-5 text-muted-foreground" />}
-      orgSelector={
-        orgsLoading ? (
-          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-        ) : selectedOrg ? (
-          <div className="flex items-center gap-3">
-            <span className="text-[10px] font-bold tracking-widest uppercase text-muted-foreground/50">Context</span>
-            <span className="text-sm font-bold tracking-wide text-muted-foreground">
-              {selectedOrg.name}
-            </span>
-          </div>
-        ) : null
-      }
+      orgSelector={orgsLoading ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /> : null}
       unitSelector={
         nodesLoading ? (
           <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
@@ -1330,13 +1312,6 @@ const CampaignsPage = () => {
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 Loading...
-              </div>
-            ) : selectedOrg && selectedNode ? (
-              <div className="flex items-center gap-3">
-                <span className="text-[10px] font-bold tracking-widest uppercase text-muted-foreground/50">Context</span>
-                <span className="text-sm font-bold tracking-wide text-muted-foreground">
-                  {selectedOrg.name} / {selectedBranchNode ? `${selectedRegionNode?.name ?? ""} / ${selectedBranchNode.name}` : selectedRegionNode?.name ?? selectedNode.name}
-                </span>
               </div>
             ) : null}
           </div>

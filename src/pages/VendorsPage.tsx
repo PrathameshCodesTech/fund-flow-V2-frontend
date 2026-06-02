@@ -245,16 +245,10 @@ function CreateInvitationDialog({
         >
           <input type="hidden" {...register("org")} value={orgId ?? ""} />
 
-          <div className="space-y-1.5">
-            <span className="text-[10px] font-bold tracking-widest uppercase text-muted-foreground/50">Context</span>
-            <input type="hidden" {...register("scope_node", { required: "Context is required" })} />
-            <div className="text-sm font-bold tracking-wide text-muted-foreground">
-              Horizon / {scopeNodes.find((node) => node.id === (workingNodeId && scopeNodes.some((node) => node.id === workingNodeId) ? workingNodeId : findPreferredOperationalNode(scopeNodes)?.id))?.name ?? "Marketing"}
-            </div>
-            {errors.scope_node && (
-              <p className="text-xs text-destructive">{errors.scope_node.message}</p>
-            )}
-          </div>
+          <input type="hidden" {...register("scope_node", { required: "Context is required" })} />
+          {errors.scope_node && (
+            <p className="text-xs text-destructive">{errors.scope_node.message}</p>
+          )}
 
           <div className="space-y-1.5">
             <Label htmlFor="vendor_email">Vendor Email</Label>
@@ -453,36 +447,26 @@ function ReopenSubmissionDialog({ submission }: { submission: VendorOnboardingSu
 
 function MarketingApproveDialog({ vendor }: { vendor: Vendor }) {
   const [open, setOpen] = useState(false);
-  const [poMandate, setPoMandate] = useState(false);
   const approve = useMarketingApprove();
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button size="sm" variant="outline" className="gap-1.5 text-green-700 dark:text-green-300">
-          <CheckCircle className="h-4 w-4" /> Approve Marketing
+          <CheckCircle className="h-4 w-4" /> Approve Vendor
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Approve Vendor â€” Marketing</DialogTitle>
+          <DialogTitle>Approve Vendor</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            Approve <strong>{vendor.vendor_name}</strong> for marketing?
+            Approve <strong>{vendor.vendor_name}</strong>?
           </p>
-          <div className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              id="po-mandate"
-              checked={poMandate}
-              onChange={(e) => setPoMandate(e.target.checked)}
-              className="rounded border-border"
-            />
-            <Label htmlFor="po-mandate" className="text-sm font-normal">
-              Enable PO mandate
-            </Label>
-          </div>
+          <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
+            After approval, an activation email will be sent to the vendor so they can set up portal access.
+          </p>
           {approve.isError && (
             <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
               {approve.error instanceof ApiError ? approve.error.message : "Failed to approve"}
@@ -494,7 +478,7 @@ function MarketingApproveDialog({ vendor }: { vendor: Vendor }) {
           <Button
             onClick={() =>
               approve
-                .mutateAsync({ id: vendor.id, data: { po_mandate_enabled: poMandate } })
+                .mutateAsync({ id: vendor.id })
                 .then(() => setOpen(false))
                 .catch(() => {
                   // Error is rendered inside the dialog from the mutation state.
@@ -529,16 +513,19 @@ function MarketingRejectDialog({ vendor }: { vendor: Vendor }) {
     >
       <DialogTrigger asChild>
         <Button size="sm" variant="outline" className="gap-1.5 text-destructive">
-          <XCircle className="h-4 w-4" /> Reject Marketing
+          <XCircle className="h-4 w-4" /> Reject Vendor
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Reject Vendor â€” Marketing</DialogTitle>
+          <DialogTitle>Reject Vendor</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            Reject <strong>{vendor.vendor_name}</strong> for marketing?
+            Reject <strong>{vendor.vendor_name}</strong>?
+          </p>
+          <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+            Rejecting will stop onboarding for this vendor. No activation email will be sent.
           </p>
           <div className="space-y-1.5">
             <Label htmlFor="mkt-reject-note">Note</Label>
@@ -695,7 +682,7 @@ function InvitationsTab({
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate">{inv.vendor_email}</p>
                     <p className="text-xs text-muted-foreground truncate">
-                      {inv.vendor_name_hint || "â€”"}
+                      {inv.vendor_name_hint || "-"}
                     </p>
                   </div>
                   <InvStatusBadge status={inv.status} />
@@ -747,7 +734,7 @@ function SubmissionsTab({
   const canSendToFinance = selected?.status === "reopened";
   // Note: under Option B (auto-send-to-finance), vendor finalize
   // automatically transitions submissions to sent_to_finance. The button
-  // remains for the reopen path (finance_rejected â†’ reopened â†’ re-send).
+  // remains for the reopen path (finance_rejected -> reopened -> re-send).
   const canReopen = selected?.status === "finance_rejected";
 
   return (
@@ -807,7 +794,7 @@ function SubmissionsTab({
                       {sub.normalized_vendor_name ?? sub.id}
                     </p>
                     <p className="text-xs text-muted-foreground truncate">
-                      {sub.normalized_email ?? "â€”"}
+                      {sub.normalized_email ?? "-"}
                     </p>
                   </div>
                   <SubStatusBadge status={sub.status} />
@@ -824,7 +811,7 @@ function SubmissionsTab({
           <div className="p-4 space-y-4">
             <div className="flex items-start justify-between">
               <div>
-                <h2 className="text-sm font-semibold">{selected.normalized_vendor_name ?? "â€”"}</h2>
+                <h2 className="text-sm font-semibold">{selected.normalized_vendor_name ?? "-"}</h2>
                 <p className="text-xs text-muted-foreground">{selected.id}</p>
               </div>
               <SubStatusBadge status={selected.status} />
@@ -832,17 +819,17 @@ function SubmissionsTab({
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {[
-                { label: "Email", value: selected.normalized_email ?? "â€”" },
-                { label: "Phone", value: selected.normalized_phone ?? "â€”" },
-                { label: "Type", value: selected.normalized_vendor_type ?? "â€”" },
-                { label: "GST Registered", value: String(selected.normalized_gst_registered ?? "â€”") },
-                { label: "GSTIN", value: selected.normalized_gstin ?? "â€”" },
-                { label: "PAN", value: selected.normalized_pan ?? "â€”" },
-                { label: "City", value: selected.normalized_city ?? "â€”" },
-                { label: "State", value: selected.normalized_state ?? "â€”" },
-                { label: "Bank", value: selected.normalized_bank_name ?? "â€”" },
-                { label: "IFSC", value: selected.normalized_ifsc ?? "â€”" },
-                { label: "Account", value: selected.normalized_account_number ? "â€¢â€¢â€¢â€¢" + selected.normalized_account_number.slice(-4) : "â€”" },
+                { label: "Email", value: selected.normalized_email ?? "-" },
+                { label: "Phone", value: selected.normalized_phone ?? "-" },
+                { label: "Type", value: selected.normalized_vendor_type ?? "-" },
+                { label: "GST Registered", value: String(selected.normalized_gst_registered ?? "-") },
+                { label: "GSTIN", value: selected.normalized_gstin ?? "-" },
+                { label: "PAN", value: selected.normalized_pan ?? "-" },
+                { label: "City", value: selected.normalized_city ?? "-" },
+                { label: "State", value: selected.normalized_state ?? "-" },
+                { label: "Bank", value: selected.normalized_bank_name ?? "-" },
+                { label: "IFSC", value: selected.normalized_ifsc ?? "-" },
+                { label: "Account", value: selected.normalized_account_number ? "****" + selected.normalized_account_number.slice(-4) : "-" },
                 { label: "Mode", value: selected.submission_mode },
               ].map(({ label, value }) => (
                 <div key={label} className="rounded-lg border border-border bg-secondary/20 p-2.5">
@@ -947,7 +934,7 @@ function VendorRevisionReviewPanel({ vendor }: { vendor: Vendor }) {
   const detail = detailQ.data;
 
   if (revisionsQ.isLoading) {
-    return <div className="flex items-center gap-2 py-4 text-muted-foreground text-xs"><Loader2 className="w-3 h-3 animate-spin" /> Loading revisionsâ€¦</div>;
+    return <div className="flex items-center gap-2 py-4 text-muted-foreground text-xs"><Loader2 className="w-3 h-3 animate-spin" /> Loading revisions...</div>;
   }
 
   if (revisions.length === 0) {
@@ -981,7 +968,7 @@ function VendorRevisionReviewPanel({ vendor }: { vendor: Vendor }) {
       {detail && (
         <div className="rounded-lg border border-border bg-secondary/20 p-3 space-y-3">
           <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold">Revision #{detail.revision_number} â€” {PROFILE_REVISION_STATUS_LABELS[detail.status]}</p>
+            <p className="text-xs font-semibold">Revision #{detail.revision_number} - {PROFILE_REVISION_STATUS_LABELS[detail.status]}</p>
             <p className="text-[10px] text-muted-foreground">{detail.submitted_at ? new Date(detail.submitted_at).toLocaleDateString() : "Not submitted"}</p>
           </div>
 
@@ -990,13 +977,13 @@ function VendorRevisionReviewPanel({ vendor }: { vendor: Vendor }) {
             <div className="space-y-1.5">
               <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">Changes</p>
               {detail.changed_fields_json.map(field => {
-                const oldVal = String(detail.source_revision_snapshot_json[field] ?? "â€”");
-                const newVal = String(detail.proposed_snapshot_json[field] ?? "â€”");
+                const oldVal = String(detail.source_revision_snapshot_json[field] ?? "-");
+                const newVal = String(detail.proposed_snapshot_json[field] ?? "-");
                 return (
                   <div key={field} className="text-xs">
                     <span className="font-medium text-foreground capitalize">{field.replace(/_/g, " ")}: </span>
                     <span className="line-through text-muted-foreground">{oldVal}</span>
-                    <span className="mx-1 text-muted-foreground">â†’</span>
+                    <span className="mx-1 text-muted-foreground">-&gt;</span>
                     <span className="text-primary font-medium">{newVal}</span>
                   </div>
                 );
@@ -1137,10 +1124,10 @@ function VendorsTab({
             </Select>
             <Select value={mktStatus} onValueChange={setMktStatus}>
               <SelectTrigger className="flex-1">
-                <SelectValue placeholder="Marketing status" />
+                <SelectValue placeholder="Approval status" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Marketing: All</SelectItem>
+                <SelectItem value="all">Approval: All</SelectItem>
                 {Object.entries(MARKETING_STATUS_LABELS).map(([v, l]) => (
                   <SelectItem key={v} value={v}>{l}</SelectItem>
                 ))}
@@ -1173,7 +1160,7 @@ function VendorsTab({
                     <p className="text-xs text-muted-foreground truncate">{v.email}</p>
                   </div>
                   <div className="flex flex-col items-end gap-0.5">
-                    <Badge className={MKT_COLORS[v.marketing_status] ?? ""} variant="outline" title="Marketing status">
+                    <Badge className={MKT_COLORS[v.marketing_status] ?? ""} variant="outline" title="Approval status">
                       {MARKETING_STATUS_LABELS[v.marketing_status] ?? v.marketing_status}
                     </Badge>
                   </div>
@@ -1195,7 +1182,7 @@ function VendorsTab({
               </div>
               <div className="flex flex-col items-end gap-1">
                 <Badge className={MKT_COLORS[selected.marketing_status] ?? ""} variant="outline">
-                  Mkt: {MARKETING_STATUS_LABELS[selected.marketing_status]}
+                  Approval: {MARKETING_STATUS_LABELS[selected.marketing_status]}
                 </Badge>
                 <Badge className={OP_COLORS[selected.operational_status] ?? ""} variant="outline">
                   Op: {OPERATIONAL_STATUS_LABELS[selected.operational_status]}
@@ -1207,10 +1194,8 @@ function VendorsTab({
               {[
                 { label: "Email", value: selected.email },
                 { label: "Phone", value: selected.phone },
-                { label: "SAP Vendor ID", value: selected.sap_vendor_id ?? "â€”" },
-                { label: "PO Mandate", value: selected.po_mandate_enabled ? "Enabled" : "Disabled" },
-                { label: "Scope Node", value: selected.scope_node_name },
-                { label: "Marketing", value: MARKETING_STATUS_LABELS[selected.marketing_status] },
+                { label: "SAP Vendor ID", value: selected.sap_vendor_id ?? "-" },
+                { label: "Approval", value: MARKETING_STATUS_LABELS[selected.marketing_status] },
                 { label: "Operational", value: OPERATIONAL_STATUS_LABELS[selected.operational_status] },
               ].map(({ label, value }) => (
                 <div key={label} className="rounded-lg border border-border bg-secondary/20 p-2.5">
@@ -1232,8 +1217,8 @@ function VendorsTab({
                 <div className="rounded-lg border border-border bg-secondary/20 p-3 space-y-2">
                   <div className="grid grid-cols-2 gap-x-4 gap-y-1">
                     {[
-                      { label: "Portal Email", value: selected.portal_email || "â€”" },
-                      { label: "User ID", value: selected.portal_user_id || "â€”" },
+                      { label: "Portal Email", value: selected.portal_email || "-" },
+                      { label: "User ID", value: selected.portal_user_id || "-" },
                       { label: "Activated", value: selected.portal_activated ? "Yes" : "No" },
                       { label: "Last Sent", value: selected.portal_activation_sent_at
                         ? new Date(selected.portal_activation_sent_at).toLocaleString()
@@ -1254,7 +1239,7 @@ function VendorsTab({
 
             {/* Actions */}
             <div className="space-y-2">
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Marketing Actions</h3>
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Vendor Actions</h3>
               <div className="flex flex-wrap gap-2">
                 {selected.marketing_status === "pending" && (
                   <>
@@ -1341,14 +1326,6 @@ const VendorsPage = () => {
       titleIcon={<Users className="h-5 w-5 text-muted-foreground" />}
       actions={
         <div className="flex items-center gap-3">
-          {selectedOrg ? (
-            <div className="flex items-center gap-3">
-              <span className="text-[10px] font-bold tracking-widest uppercase text-muted-foreground/50">Context</span>
-              <span className="text-sm font-bold tracking-wide text-muted-foreground">
-                {selectedOrg.name}
-              </span>
-            </div>
-          ) : null}
           <CreateInvitationDialog orgId={orgId} />
         </div>
       }

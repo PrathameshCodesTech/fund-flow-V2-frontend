@@ -30,26 +30,23 @@ export function ShellContextBar({
         <div className="flex min-w-0 items-center gap-2">
           <h1 className="text-sm font-bold tracking-widest text-muted-foreground uppercase truncate">{title}</h1>
           {breadcrumbs && breadcrumbs.length > 0 && (
-            <>
-              <span className="shrink-0 text-muted-foreground">/</span>
-              <nav className="flex min-w-0 flex-wrap items-center gap-1 text-sm text-muted-foreground">
-                {breadcrumbs.map((crumb, i) => (
-                  <span key={i} className="flex min-w-0 items-center gap-1">
-                    {crumb.href ? (
-                      <a
-                        href={crumb.href}
-                        className="truncate hover:text-foreground transition-colors"
-                      >
-                        {crumb.label}
-                      </a>
-                    ) : (
-                      <span className="truncate">{crumb.label}</span>
-                    )}
-                    {i < breadcrumbs.length - 1 && <span className="shrink-0">/</span>}
-                  </span>
-                ))}
-              </nav>
-            </>
+            <nav className="flex min-w-0 flex-wrap items-center gap-1.5 text-sm text-muted-foreground">
+              {breadcrumbs.map((crumb, i) => (
+                <span key={i} className="flex min-w-0 items-center gap-1.5">
+                  {i > 0 && <span className="shrink-0 text-muted-foreground/40">›</span>}
+                  {crumb.href ? (
+                    <a
+                      href={crumb.href}
+                      className="truncate hover:text-foreground transition-colors"
+                    >
+                      {crumb.label}
+                    </a>
+                  ) : (
+                    <span className="truncate text-foreground/70">{crumb.label}</span>
+                  )}
+                </span>
+              ))}
+            </nav>
           )}
         </div>
         {orgSelector ? <div className="shrink-0">{orgSelector}</div> : null}

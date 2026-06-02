@@ -47,16 +47,8 @@ function apiErrorMessage(err: unknown): string {
 
 function BrandBar() {
   return (
-    <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-orange-50 border border-orange-200 mb-5">
-      <img src="/vims-brand.png" alt="VIMS" className="h-8 w-auto" />
-      <div>
-        <p className="text-xs font-bold tracking-widest text-orange-700 uppercase leading-tight">
-          VIMS
-        </p>
-        <p className="text-xs text-orange-600/80 leading-tight">
-          Vendor Invoice Management System
-        </p>
-      </div>
+    <div className="flex justify-center mb-4">
+      <img src="/hp.jpg" alt="Horizon Industrial Parks" className="h-12 w-auto" />
     </div>
   );
 }
@@ -299,6 +291,10 @@ function ReviewPage({
               <ReviewField label="IFSC Code" value={data.ifsc} />
               <ReviewField label="MICR Code" value={data.micr_code} />
               <ReviewField label="NEFT Code" value={data.neft_code} />
+              <ReviewField label="Beneficiary Account No" value={data.beneficiary_account_number} />
+              <ReviewField label="Bank Address" value={data.bank_address} />
+              <ReviewField label="Bank Account No" value={data.bank_account_number} />
+              <ReviewField label="Bank Email" value={data.bank_email} />
             </div>
             {(data.bank_branch_city || data.bank_branch_address_line1) && (
               <>
@@ -646,7 +642,8 @@ export default function VendorFinanceActionPage() {
   const approveToken = token!;
   const rejectToken = tokenData.reject_token;
 
-  // ?action=approve or ?action=reject pre-selects the decision form (set by email buttons)
+  // Older links may include ?action=approve or ?action=reject; new emails open
+  // the neutral review page and let finance choose inside the page.
   const actionParam = searchParams.get("action");
   const initialAction: "approve" | "reject" | null =
     actionParam === "approve" ? "approve"

@@ -312,18 +312,7 @@ export default function ManualExpensesPage() {
     <V2Shell
       title="Manual Expenses"
       titleIcon={<IndianRupee className="h-5 w-5 text-muted-foreground" />}
-      orgSelector={
-        orgsLoading ? (
-          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-        ) : selectedOrg ? (
-          <div className="flex items-center gap-3">
-            <span className="text-[10px] font-bold tracking-widest uppercase text-muted-foreground/50">Context</span>
-            <span className="text-sm font-bold tracking-wide text-muted-foreground">
-              {selectedOrg.name}
-            </span>
-          </div>
-        ) : null
-      }
+      orgSelector={orgsLoading ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /> : null}
       unitSelector={
         nodesLoading ? (
           <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
@@ -1263,14 +1252,8 @@ function ExpenseFormDialog({ expenseId, onClose, onSaved }: ExpenseFormProps) {
               </div>
             </div>
 
-            {/* Row 2: Fixed operational context + Payment Method */}
+            {/* Row 2: Payment Method + branch context */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              <div className="space-y-1.5">
-                <span className="text-[10px] font-bold tracking-widest uppercase text-muted-foreground/50">Context</span>
-                <div className="text-sm font-bold tracking-wide text-muted-foreground">
-                  {selectedOrganization?.name ?? "Horizon"} / Marketing
-                </div>
-              </div>
               <div className="space-y-1.5">
                 <span className="text-[10px] font-bold tracking-widest uppercase text-muted-foreground/50">Region</span>
                 <div className="text-sm font-bold tracking-wide text-muted-foreground">

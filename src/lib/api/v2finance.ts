@@ -6,6 +6,7 @@ import type {
   PublicFinanceToken,
   FinanceApproveRequest,
   FinanceRejectRequest,
+  FinanceHandoffResponse,
 } from "../types/v2finance";
 
 // ── Finance Handoff List ──────────────────────────────────────────────────────
@@ -42,4 +43,27 @@ export function financeReject(
   data: FinanceRejectRequest,
 ): Promise<{ handoff: FinanceHandoff }> {
   return apiClient.post<{ handoff: FinanceHandoff }>(`/api/v1/finance/public/${token}/reject/`, data);
+}
+
+// ── Authenticated Finance Handoff Endpoints ─────────────────────────────────────
+
+/** Get review data for a finance handoff (authenticated, no token required) */
+export function getFinanceHandoffReview(id: string): Promise<PublicFinanceToken> {
+  return apiClient.get<PublicFinanceToken>(`/api/v1/finance/handoffs/${id}/review/`);
+}
+
+/** Approve a finance handoff (authenticated, no token required) */
+export function approveFinanceHandoff(
+  id: string,
+  data: FinanceApproveRequest,
+): Promise<FinanceHandoffResponse> {
+  return apiClient.post<FinanceHandoffResponse>(`/api/v1/finance/handoffs/${id}/approve/`, data);
+}
+
+/** Reject a finance handoff (authenticated, no token required) */
+export function rejectFinanceHandoff(
+  id: string,
+  data: FinanceRejectRequest,
+): Promise<FinanceHandoffResponse> {
+  return apiClient.post<FinanceHandoffResponse>(`/api/v1/finance/handoffs/${id}/reject/`, data);
 }

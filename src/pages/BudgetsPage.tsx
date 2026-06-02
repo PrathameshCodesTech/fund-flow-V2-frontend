@@ -880,12 +880,6 @@ function CreateBudgetDialog({
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <span className="text-[10px] font-bold tracking-widest uppercase text-muted-foreground/50">Context</span>
-              <div className="text-sm font-bold tracking-wide text-muted-foreground">
-                Horizon / Marketing
-              </div>
-            </div>
-            <div className="space-y-1.5">
               <Label>Financial Year *</Label>
               <Input
                 value={financialYear}
@@ -3804,18 +3798,7 @@ export default function BudgetsPage() {
     <V2Shell
       title="Budgets"
       titleIcon={<Wallet className="h-5 w-5 text-muted-foreground" />}
-      orgSelector={
-        orgsLoading ? (
-          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-        ) : selectedOrg ? (
-          <div className="flex items-center gap-3">
-            <span className="text-[10px] font-bold tracking-widest uppercase text-muted-foreground/50">Context</span>
-            <span className="text-sm font-bold tracking-wide text-muted-foreground">
-              {selectedOrg.name}
-            </span>
-          </div>
-        ) : null
-      }
+      orgSelector={orgsLoading ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /> : null}
       unitSelector={
         nodesLoading ? (
           <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />

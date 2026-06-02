@@ -50,12 +50,7 @@ export default function LoginPage() {
 
         {/* Mobile-only: compact brand header */}
         <div className="flex flex-col items-center justify-center py-10 px-6 border-b border-white/15 lg:hidden">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/20">
-              <img src="/vims-brand.png" alt="VIMS" className="h-8 w-auto object-contain" />
-            </div>
-            <h1 className="text-3xl font-extrabold tracking-tight text-white">VIMS</h1>
-          </div>
+          <img src="/hp.jpg" alt="Horizon Industrial Parks" className="h-14 w-auto object-contain mb-2" />
           <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/55">
             Vendor Invoice Management System
           </p>
@@ -67,9 +62,8 @@ export default function LoginPage() {
             <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-gray-400">
               Vendor Invoice Management System
             </p>
-            <div className="flex items-center gap-2 mt-2">
-              <img src="/vims-brand.png" alt="VIMS" className="h-12 w-auto object-contain" />
-              <h1 className="text-4xl font-extrabold text-primary tracking-tight">VIMS</h1>
+            <div className="inline-block mt-3">
+              <img src="/hp.jpg" alt="Horizon Industrial Parks" className="h-12 w-auto object-contain" />
             </div>
           </div>
           <div className="flex flex-1 items-center justify-center px-10 pb-10">

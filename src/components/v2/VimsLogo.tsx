@@ -31,7 +31,7 @@ export function VimsLogo({
         {/* VIMS wordmark image */}
         <img
           src="/vims-logo.png"
-          alt="VIMS"
+          alt="Horizon Industrial Parks"
           className="h-auto w-auto object-contain"
           style={imgHeight ? { height: imgHeight } : undefined}
         />

@@ -6,12 +6,8 @@ export function V2Footer() {
       <div className="flex flex-wrap items-center justify-between gap-3">
 
         {/* Brand */}
-        <div className="flex items-center gap-2.5">
-          <img src="/vims-brand.png" alt="VIMS" className="h-8 w-auto object-contain" />
-          <div className="border-l border-border pl-2.5">
-            <p className="text-sm font-bold tracking-tight text-foreground leading-none">HORIZON</p>
-            <p className="text-[10px] text-muted-foreground leading-none mt-0.5">INDUSTRIAL PARKS</p>
-          </div>
+        <div className="flex items-center">
+          <img src="/hp.jpg" alt="Horizon Industrial Parks" className="h-7 w-auto object-contain" />
         </div>
 
         {/* Center nav links — hidden on mobile */}

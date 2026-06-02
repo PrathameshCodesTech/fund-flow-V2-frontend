@@ -56,6 +56,7 @@ export async function listSubmissions(params?: {
   org?: string;
   scope_node?: string;
   status?: string;
+  finance_reviewed?: boolean | string;
   invitation?: string;
   normalized_vendor_name?: string;
   normalized_email?: string;
@@ -112,7 +113,7 @@ export async function getMyVendor(): Promise<Vendor> {
 
 export async function updateVendor(
   id: string,
-  data: Partial<Pick<Vendor, "email" | "phone" | "po_mandate_enabled">>,
+  data: Partial<Pick<Vendor, "email" | "phone">>,
 ): Promise<Vendor> {
   return apiClient.patch(`/api/v1/vendors/${id}/`, data);
 }
@@ -218,6 +219,15 @@ export async function addAttachment(
   );
 }
 
+export async function removePublicAttachment(
+  token: string,
+  attachmentId: string | number,
+): Promise<void> {
+  return apiClient.delete(
+    `/api/v1/vendors/public/invitations/${token}/attachments/${attachmentId}/`,
+  );
+}
+
 export async function finalizeInvitation(
   token: string,
 ): Promise<VendorOnboardingSubmission> {
@@ -242,6 +252,29 @@ export async function financeReject(
   data: FinanceRejectRequest,
 ): Promise<VendorOnboardingSubmission> {
   return apiClient.post(`/api/v1/vendors/public/finance/${token}/reject/`, data);
+}
+
+// ── Authenticated Vendor Finance Endpoints (for logged-in finance users) ───────
+
+/** Get finance review data for a submission (authenticated, no token required) */
+export async function getSubmissionFinanceReview(id: string): Promise<PublicFinanceToken> {
+  return apiClient.get(`/api/v1/vendors/submissions/${id}/finance-review/`);
+}
+
+/** Approve a vendor submission (authenticated, no token required) */
+export async function approveSubmissionFinance(
+  id: string,
+  data: FinanceApproveRequest,
+): Promise<{ submission: VendorOnboardingSubmission; vendor: Vendor }> {
+  return apiClient.post(`/api/v1/vendors/submissions/${id}/finance-approve/`, data);
+}
+
+/** Reject a vendor submission (authenticated, no token required) */
+export async function rejectSubmissionFinance(
+  id: string,
+  data: FinanceRejectRequest,
+): Promise<VendorOnboardingSubmission> {
+  return apiClient.post(`/api/v1/vendors/submissions/${id}/finance-reject/`, data);
 }
 
 // ── Vendor Portal: Profile Revision ──────────────────────────────────────────
