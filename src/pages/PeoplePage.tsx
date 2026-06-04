@@ -49,6 +49,14 @@ function formatDate(iso: string | null): string {
   });
 }
 
+function getUserType(user: V2User): "vendor" | "internal" {
+  return user.user_type === "vendor" || user.is_vendor_portal_user ? "vendor" : "internal";
+}
+
+function getUserTypeLabel(user: V2User): string {
+  return getUserType(user) === "vendor" ? "Vendor" : "Internal";
+}
+
 // ── Shared UI ─────────────────────────────────────────────────────────────────
 
 function PageLoading() {
@@ -308,6 +316,9 @@ function PersonDetailPanel({
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
+          <Badge variant="outline">
+            {getUserTypeLabel(person)}
+          </Badge>
           <Badge
             variant={person.is_active ? "default" : "secondary"}
             className={person.is_active ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200" : ""}
@@ -345,6 +356,16 @@ function PersonDetailPanel({
             <p className="text-sm font-medium">
               {[person.first_name, person.last_name].filter(Boolean).join(" ") || "—"}
             </p>
+          </div>
+
+          <div className="rounded-lg border border-border bg-secondary/20 p-3">
+            <div className="mb-1 flex items-center gap-1">
+              <p className="text-xs text-muted-foreground">Account Type</p>
+            </div>
+            <p className="text-sm font-medium">{getUserTypeLabel(person)}</p>
+            {getUserType(person) === "vendor" && person.vendor_name && (
+              <p className="mt-1 text-xs text-muted-foreground">{person.vendor_name}</p>
+            )}
           </div>
 
           {/* Employee ID */}
@@ -428,14 +449,21 @@ const PeoplePage = () => {
   const [addOpen, setAddOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [userTypeFilter, setUserTypeFilter] = useState<string>("all");
 
-  const params = search.length >= 1
-    ? { q: search, ...(statusFilter !== "all" ? { is_active: statusFilter === "active" } : {}) }
-    : statusFilter !== "all"
-    ? { is_active: statusFilter === "active" }
-    : undefined;
+  const params: { q?: string; is_active?: boolean; user_type?: "internal" | "vendor" } = {};
+  if (search.trim().length >= 1) {
+    params.q = search.trim();
+  }
+  if (statusFilter !== "all") {
+    params.is_active = statusFilter === "active";
+  }
+  if (userTypeFilter === "internal" || userTypeFilter === "vendor") {
+    params.user_type = userTypeFilter;
+  }
+  const queryParams = Object.keys(params).length > 0 ? params : undefined;
 
-  const { data: people = [], isLoading, error } = useUsers(params);
+  const { data: people = [], isLoading, error } = useUsers(queryParams);
   const updateUser = useUpdateUser();
   const sendPasswordReset = useSendPasswordReset();
 
@@ -503,6 +531,16 @@ const PeoplePage = () => {
                   <SelectItem value="all">All status</SelectItem>
                   <SelectItem value="active">Active only</SelectItem>
                   <SelectItem value="inactive">Inactive only</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={userTypeFilter} onValueChange={setUserTypeFilter}>
+                <SelectTrigger className="text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All users</SelectItem>
+                  <SelectItem value="internal">Internal users</SelectItem>
+                  <SelectItem value="vendor">Vendor users</SelectItem>
                 </SelectContent>
               </Select>
               {!isLoading && (
@@ -589,6 +627,16 @@ const PeoplePage = () => {
                         <p className="truncate text-xs text-muted-foreground">
                           {person.email}
                         </p>
+                        <div className="mt-1 flex items-center gap-1.5">
+                          <Badge variant="outline" className="h-5 px-1.5 text-[10px]">
+                            {getUserTypeLabel(person)}
+                          </Badge>
+                          {getUserType(person) === "vendor" && person.vendor_name && (
+                            <span className="truncate text-[10px] text-muted-foreground">
+                              {person.vendor_name}
+                            </span>
+                          )}
+                        </div>
                       </div>
                       {person.is_active ? (
                         <UserCheck className="h-3.5 w-3.5 shrink-0 text-emerald-500" />

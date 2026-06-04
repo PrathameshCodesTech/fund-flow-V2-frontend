@@ -13,6 +13,10 @@ export interface V2User {
   employee_id: string | null;
   is_active: boolean;
   date_joined: string;
+  is_vendor_portal_user?: boolean;
+  user_type?: "internal" | "vendor";
+  vendor_id?: string | null;
+  vendor_name?: string | null;
 }
 
 export interface CreateUserRequest {

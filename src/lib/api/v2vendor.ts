@@ -23,6 +23,7 @@ import type {
   SubmissionListResponse,
   AttachmentListResponse,
   VendorListResponse,
+  VendorTrainingVideoResponse,
 } from "../types/v2vendor";
 
 // ── Internal: Invitations ─────────────────────────────────────────────────────
@@ -286,6 +287,10 @@ import type {
 
 export async function getPortalProfile(): Promise<VendorProfileSnapshot> {
   return apiClient.get("/api/v1/vendors/portal/profile/");
+}
+
+export async function getPortalTrainingVideo(): Promise<VendorTrainingVideoResponse> {
+  return apiClient.get("/api/v1/vendors/portal/training-video/");
 }
 
 export async function getPortalProfileRevision(): Promise<VendorProfileRevision> {

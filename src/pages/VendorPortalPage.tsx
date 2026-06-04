@@ -4,6 +4,7 @@
  * Tabs:
  *   A. My Invoices      — all submitted invoices and in-progress drafts
  *   B. Submit Invoice  — upload PDF invoice only
+ *   C. Training        — vendor invoice submission guide
  */
 
 import { useEffect, useState } from "react";
@@ -52,9 +53,10 @@ import {
   Ban,
   Trash2,
   Eye,
+  PlayCircle,
   User,
 } from "lucide-react";
-import { getPortalProfile } from "@/lib/api/v2vendor";
+import { getPortalProfile, getPortalTrainingVideo } from "@/lib/api/v2vendor";
 
 const invoiceInputCls = "w-full px-3 py-2 text-sm rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary disabled:opacity-50";
 const invoiceErrCls = "border-destructive";
@@ -1511,6 +1513,93 @@ function ProfileSection({ title, children }: { title: string; children: React.Re
   );
 }
 
+function TrainingTab({ onStartUpload }: { onStartUpload: () => void }) {
+  const trainingQ = useQuery({
+    queryKey: ["portal-training-video"],
+    queryFn: getPortalTrainingVideo,
+  });
+
+  const video = trainingQ.data?.video ?? null;
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold text-foreground">Training Video</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            Watch the invoice upload guide before submitting invoices.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onStartUpload}
+          className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors"
+        >
+          <Upload className="w-4 h-4" />
+          Submit Invoice
+        </button>
+      </div>
+
+      <div className="rounded-2xl border border-border bg-card shadow-sm overflow-hidden">
+        {trainingQ.isLoading && (
+          <div className="flex items-center justify-center gap-2 py-16 text-muted-foreground">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            <span className="text-sm">Loading training video...</span>
+          </div>
+        )}
+
+        {trainingQ.isError && (
+          <div className="flex flex-col items-center text-center gap-3 py-16 px-6">
+            <AlertCircle className="w-10 h-10 text-destructive/70" />
+            <div>
+              <p className="text-sm font-semibold text-foreground">Training video unavailable</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Please try again later or contact the internal support team.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {!trainingQ.isLoading && !trainingQ.isError && !video && (
+          <div className="flex flex-col items-center text-center gap-3 py-16 px-6">
+            <PlayCircle className="w-12 h-12 text-muted-foreground/40" />
+            <div>
+              <p className="text-sm font-semibold text-foreground">No training video configured</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                The invoice upload guide will appear here once it is uploaded by the admin team.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {video && (
+          <div className="p-4 sm:p-5 space-y-4">
+            <div className="aspect-video overflow-hidden rounded-xl bg-black">
+              <video
+                className="h-full w-full"
+                src={video.video_url}
+                controls
+                preload="metadata"
+              />
+            </div>
+            <div>
+              <p className="text-base font-semibold text-foreground">{video.title}</p>
+              {video.description && (
+                <p className="text-sm text-muted-foreground mt-1 leading-relaxed">
+                  {video.description}
+                </p>
+              )}
+              <p className="text-xs text-muted-foreground mt-2">
+                File: {video.file_name}
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function MyProfileTab({ vendor: _vendor }: { vendor: Vendor }) {
   const profileQ = useQuery({
     queryKey: ["portal-profile"],
@@ -1625,7 +1714,7 @@ function MyProfileTab({ vendor: _vendor }: { vendor: Vendor }) {
 // ── Portal ─────────────────────────────────────────────────────────────────────
 
 function Portal({ vendor, userName, onLogout }: { vendor: Vendor; userName: string; onLogout: () => void }) {
-  const [tab, setTab] = useState<"invoices" | "submit" | "profile">("invoices");
+  const [tab, setTab] = useState<"invoices" | "submit" | "training" | "profile">("invoices");
 
   return (
     <div className="min-h-screen bg-background">
@@ -1636,6 +1725,7 @@ function Portal({ vendor, userName, onLogout }: { vendor: Vendor; userName: stri
           {([
             { id: "invoices", label: "My Invoices", icon: <FileText className="w-4 h-4" /> },
             { id: "submit",   label: "Submit Invoice", icon: <Upload className="w-4 h-4" /> },
+            { id: "training", label: "Training", icon: <PlayCircle className="w-4 h-4" /> },
             { id: "profile",  label: "My Profile", icon: <User className="w-4 h-4" /> },
           ] as const).map(({ id, label, icon }) => (
             <button
@@ -1653,6 +1743,7 @@ function Portal({ vendor, userName, onLogout }: { vendor: Vendor; userName: stri
       <main className="max-w-4xl mx-auto px-4 sm:px-6 py-6">
         {tab === "invoices" && <MyInvoicesTab />}
         {tab === "submit"   && <SubmitInvoiceTab vendor={vendor} />}
+        {tab === "training" && <TrainingTab onStartUpload={() => setTab("submit")} />}
         {tab === "profile"  && <MyProfileTab vendor={vendor} />}
       </main>
     </div>

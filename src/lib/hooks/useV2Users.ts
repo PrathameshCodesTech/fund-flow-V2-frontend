@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { listUsers, getUser, createUser, updateUser, sendPasswordReset } from "../api/v2user";
 import type { CreateUserRequest, UpdateUserRequest } from "../types/v2user";
 
-export function useUsers(params?: { q?: string; is_active?: boolean }) {
+export function useUsers(params?: { q?: string; is_active?: boolean; user_type?: "internal" | "vendor" }) {
   return useQuery({
     queryKey: ["v2", "users", params],
     queryFn: async () => {

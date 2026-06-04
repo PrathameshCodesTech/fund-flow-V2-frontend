@@ -6,6 +6,7 @@ import type { V2User, UserListResponse, CreateUserRequest, UpdateUserRequest } f
 export function listUsers(params?: {
   q?: string;
   is_active?: boolean;
+  user_type?: "internal" | "vendor";
   page?: number;
 }): Promise<UserListResponse> {
   return apiClient.get<UserListResponse>("/api/v1/users/", params);

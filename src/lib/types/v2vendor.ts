@@ -210,6 +210,19 @@ export interface VendorAttachment {
   created_at: string;
 }
 
+export interface VendorTrainingVideo {
+  id: string;
+  title: string;
+  description: string;
+  video_url: string;
+  file_name: string;
+  updated_at: string;
+}
+
+export interface VendorTrainingVideoResponse {
+  video: VendorTrainingVideo | null;
+}
+
 export interface Vendor {
   id: string;
   org: string;
