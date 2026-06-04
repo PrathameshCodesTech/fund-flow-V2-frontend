@@ -199,7 +199,7 @@ const V2HomePage = () => {
           <KpiCard
             label="Vendor Submissions"
             value={kpis?.vendor_submissions_pending}
-            sub="awaiting marketing approval"
+            sub="awaiting vendor activation"
             icon={Users}
             to="/vendors"
             urgency={kpis && kpis.vendor_submissions_pending > 0 ? "warn" : "ok"}

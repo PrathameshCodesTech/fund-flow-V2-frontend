@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { listUsers, getUser, createUser, updateUser } from "../api/v2user";
+import { listUsers, getUser, createUser, updateUser, sendPasswordReset } from "../api/v2user";
 import type { CreateUserRequest, UpdateUserRequest } from "../types/v2user";
 
 export function useUsers(params?: { q?: string; is_active?: boolean }) {
@@ -39,5 +39,11 @@ export function useUpdateUser() {
       queryClient.invalidateQueries({ queryKey: ["v2", "users"] });
       queryClient.invalidateQueries({ queryKey: ["v2", "user", id] });
     },
+  });
+}
+
+export function useSendPasswordReset() {
+  return useMutation({
+    mutationFn: (id: string) => sendPasswordReset(id),
   });
 }

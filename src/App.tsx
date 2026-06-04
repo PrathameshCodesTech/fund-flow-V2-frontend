@@ -27,6 +27,7 @@ import InsightsPage from "./pages/InsightsPage.tsx";
 import ModuleActivationPage from "./pages/ModuleActivationPage.tsx";
 import VendorRegistrationPage from "./pages/VendorRegistrationPage.tsx";
 import VendorActivatePage from "./pages/VendorActivatePage.tsx";
+import PasswordResetPage from "./pages/PasswordResetPage.tsx";
 import ActivatePage from "./pages/ActivatePage.tsx";
 import WorkflowDraftAssignPage from "./pages/WorkflowDraftAssignPage.tsx";
 import NotificationsPage from "./pages/NotificationsPage.tsx";
@@ -122,6 +123,7 @@ function AppRoutes() {
         <Route path="/embed-login" element={<EmbedLoginPage />} />
         <Route path="/vendor/register" element={<VendorRegistrationPage />} />
         <Route path="/vendor/activate/:uid/:token" element={<VendorActivatePage />} />
+        <Route path="/password-reset/:uid/:token" element={<PasswordResetPage />} />
         <Route path="/vendor/onboarding/:token" element={<VendorOnboardingPage />} />
         <Route path="/vendor/finance/:token" element={<VendorFinanceActionPage />} />
         <Route path="/finance/review/:token" element={<FinanceReviewPage />} />
@@ -137,6 +139,7 @@ function AppRoutes() {
         <Route path="/embed-login" element={<EmbedLoginPage />} />
         <Route path="/vendor/register" element={<VendorRegistrationPage />} />
         <Route path="/vendor/activate/:uid/:token" element={<VendorActivatePage />} />
+        <Route path="/password-reset/:uid/:token" element={<PasswordResetPage />} />
         <Route path="/vendor/onboarding/:token" element={<VendorOnboardingPage />} />
         <Route path="/vendor/finance/:token" element={<VendorFinanceActionPage />} />
         <Route path="/finance/review/:token" element={<FinanceReviewPage />} />

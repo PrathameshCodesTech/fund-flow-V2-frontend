@@ -91,8 +91,8 @@ function SuccessScreen({
               </div>
               <h1 className="text-xl font-bold text-foreground mb-2">Vendor Approved</h1>
               <p className="text-sm text-muted-foreground mb-4">
-                <strong>{vendorName}</strong> has been approved. The submission has moved to
-                marketing review and the vendor will be notified.
+                <strong>{vendorName}</strong> has been approved. An activation email has been
+                sent so the vendor can set up portal access.
               </p>
               {sapVendorId && (
                 <div className="p-4 rounded-lg bg-secondary/30 text-left text-sm text-muted-foreground space-y-1">
@@ -493,6 +493,9 @@ function ReviewPage({
             {/* Approve form */}
             {action === "approve" && (
               <div className="space-y-3">
+                <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
+                  After approval, an activation email will be sent to the vendor so they can set up portal access.
+                </p>
                 <div className="space-y-1.5">
                   <Label htmlFor="sap-vendor-id">SAP Vendor ID *</Label>
                   <Input

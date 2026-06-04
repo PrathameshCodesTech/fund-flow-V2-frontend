@@ -2,7 +2,7 @@
 import { useForm } from "react-hook-form";
 import { useNavigate } from "react-router-dom";
 import { V2Shell } from "@/components/v2/V2Shell";
-import { useUsers, useCreateUser, useUpdateUser } from "@/lib/hooks/useV2Users";
+import { useUsers, useCreateUser, useUpdateUser, useSendPasswordReset } from "@/lib/hooks/useV2Users";
 import { getUserFullName, type V2User, type CreateUserRequest, type UpdateUserRequest } from "@/lib/types/v2user";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -278,13 +278,17 @@ function PersonDetailPanel({
   onClose,
   onEdit,
   onToggleActive,
+  onSendPasswordReset,
   togglingActive,
+  resettingPassword,
 }: {
   person: V2User;
   onClose: () => void;
   onEdit: () => void;
   onToggleActive: () => void;
+  onSendPasswordReset: () => void;
   togglingActive: boolean;
+  resettingPassword: boolean;
 }) {
   const navigate = useNavigate();
 
@@ -389,6 +393,20 @@ function PersonDetailPanel({
               variant="outline"
               size="sm"
               className="w-full gap-1.5"
+              onClick={onSendPasswordReset}
+              disabled={resettingPassword}
+            >
+              {resettingPassword ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Mail className="h-3.5 w-3.5" />
+              )}
+              Send Password Reset
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full gap-1.5"
               onClick={() => navigate("/access-control")}
             >
               <ShieldCheck className="h-3.5 w-3.5" />
@@ -419,6 +437,7 @@ const PeoplePage = () => {
 
   const { data: people = [], isLoading, error } = useUsers(params);
   const updateUser = useUpdateUser();
+  const sendPasswordReset = useSendPasswordReset();
 
   function handleToggleActive(person: V2User) {
     updateUser.mutate(
@@ -437,6 +456,17 @@ const PeoplePage = () => {
         },
       }
     );
+  }
+
+  function handleSendPasswordReset(person: V2User) {
+    sendPasswordReset.mutate(person.id, {
+      onSuccess: (res) => {
+        toast.success(`Password reset email sent to ${res.email}.`);
+      },
+      onError: (err) => {
+        toast.error(err instanceof Error ? err.message : "Failed to send password reset email.");
+      },
+    });
   }
 
   return (
@@ -581,7 +611,9 @@ const PeoplePage = () => {
               onClose={() => setSelectedPerson(null)}
               onEdit={() => setEditOpen(true)}
               onToggleActive={() => handleToggleActive(selectedPerson)}
+              onSendPasswordReset={() => handleSendPasswordReset(selectedPerson)}
               togglingActive={updateUser.isPending}
+              resettingPassword={sendPasswordReset.isPending}
             />
           ) : (
             <div className="flex h-full flex-col items-center justify-center gap-3 text-center px-8">
@@ -612,4 +644,3 @@ const PeoplePage = () => {
 };
 
 export default PeoplePage;
-

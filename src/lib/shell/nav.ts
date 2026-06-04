@@ -131,6 +131,7 @@ export const KNOWN_PUBLIC_ROUTES = [
   "/embed-login",
   "/vendor/register",
   "/vendor/activate",
+  "/password-reset",
   "/vendor/onboarding",
   "/vendor/finance",
   "/finance/review",

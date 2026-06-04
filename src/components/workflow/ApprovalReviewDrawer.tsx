@@ -1145,7 +1145,7 @@ function SplitAllocationPanel({
       category_id: singleEntity.default_category_id ?? null,
       subcategory_id: singleEntity.default_subcategory_id ?? null,
       campaign_id: singleEntity.default_campaign_id ?? null,
-      budget_id: singleEntity.default_budget_id ?? null,
+      budget_id: singleEntity.default_budget_id ?? (singleEntity.budgets?.length === 1 ? singleEntity.budgets[0].id : null),
       amount: "",
       approver_id: null,
       note: "",
@@ -1163,7 +1163,7 @@ function SplitAllocationPanel({
         category_id: singleEntity?.default_category_id ?? null,
         subcategory_id: singleEntity?.default_subcategory_id ?? null,
         campaign_id: singleEntity?.default_campaign_id ?? null,
-        budget_id: singleEntity?.default_budget_id ?? null,
+        budget_id: singleEntity?.default_budget_id ?? (singleEntity?.budgets?.length === 1 ? singleEntity.budgets[0].id : null),
         amount: "",
         approver_id: null,
         note: "",
@@ -1460,7 +1460,6 @@ function SplitAllocationPanel({
       <div className="space-y-3">
         <SectionLabel>Allocation Lines</SectionLabel>
         {rows.map((row, idx) => {
-          const budgetOptions = getBudgetOptionsForRow(idx);
           const regionOptions = getRegionOptions();
           const entityOptions = getEntityOptions(idx, row.region_entity_id);
           const approverOptions = getApproversForRow(row);
@@ -1505,6 +1504,16 @@ function SplitAllocationPanel({
           const selectedCampaign = (businessUnit?.campaigns ?? []).find(
             (c) => c.id === row.campaign_id,
           );
+          const amountSuffix = (amount: number) =>
+            amount > 0 ? ` | Available ${fmtAmount(String(amount), invoiceCurrency)}` : "";
+          const availableForCategory = (categoryId: number) =>
+            scopedBudgetLines
+              .filter((line) => line.category_id === categoryId)
+              .reduce((sum, line) => sum + parseFloat(line.available_amount ?? line.allocated_amount ?? "0"), 0);
+          const availableForSubcategory = (subcategoryId: number) =>
+            scopedBudgetLines
+              .filter((line) => line.subcategory_id === subcategoryId)
+              .reduce((sum, line) => sum + parseFloat(line.available_amount ?? line.allocated_amount ?? "0"), 0);
 
           return (
             <div key={idx} className="rounded-lg border border-border bg-card p-3 space-y-2 relative">
@@ -1562,29 +1571,6 @@ function SplitAllocationPanel({
                   </div>
                 )}
 
-                <div className="space-y-1">
-                  <Label className="text-[11px]">Funding Budget {config?.require_budget ? "*" : ""}</Label>
-                  <select
-                    className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
-                    value={row.budget_id ?? ""}
-                    onChange={(e) => {
-                      const budgetId = e.target.value ? Number(e.target.value) : null;
-                      updateBudget(idx, budgetId);
-                    }}
-                    disabled={!row.entity_id}
-                  >
-                    <option value="">
-                      {!row.entity_id ? "Select branch / park first" : "Select funding budget..."}
-                    </option>
-                    {budgetOptions.map((budget) => (
-                      <option key={budget.id} value={budget.id}>
-                        {budget.scope_node_name ? `${budget.scope_node_name} - ` : ""}
-                        {budget.name}
-                        {budget.available_amount ? ` | Available ${fmtAmount(budget.available_amount, budget.currency ?? invoiceCurrency)}` : ""}
-                      </option>
-                    ))}
-                  </select>
-                </div>
               </div>
 
               {row.entity_id && (
@@ -1604,11 +1590,11 @@ function SplitAllocationPanel({
                       }
                     >
                       <option value="">
-                        {!row.budget_id ? "Select funding budget first" : "Select category..."}
+                        {!row.budget_id ? "No active budget available" : "Select category..."}
                       </option>
                       {categories.map((c) => (
                         <option key={c.id} value={c.id}>
-                          {c.name}{c.code ? ` (${c.code})` : ""}
+                          {c.name}{c.code ? ` (${c.code})` : ""}{amountSuffix(availableForCategory(c.id))}
                         </option>
                       ))}
                     </select>
@@ -1632,7 +1618,7 @@ function SplitAllocationPanel({
                       </option>
                       {subcategories.map((s) => (
                         <option key={s.id} value={s.id}>
-                          {s.name}{s.category_name ? ` (${s.category_name})` : ""}
+                          {s.name}{amountSuffix(availableForSubcategory(s.id))}
                         </option>
                       ))}
                     </select>
