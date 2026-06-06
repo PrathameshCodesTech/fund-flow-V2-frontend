@@ -2,13 +2,31 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { listUsers, getUser, createUser, updateUser, sendPasswordReset } from "../api/v2user";
 import type { CreateUserRequest, UpdateUserRequest } from "../types/v2user";
 
-export function useUsers(params?: { q?: string; is_active?: boolean; user_type?: "internal" | "vendor" }) {
+type UseUsersParams = {
+  q?: string;
+  is_active?: boolean;
+  user_type?: "internal" | "vendor";
+};
+
+async function listAllUsers(params?: UseUsersParams) {
+  const pageSize = 100;
+  let page = 1;
+  const users = [];
+
+  while (true) {
+    const res = await listUsers({ ...params, page, page_size: pageSize });
+    users.push(...res.results);
+    if (!res.next || users.length >= res.count) {
+      return users;
+    }
+    page += 1;
+  }
+}
+
+export function useUsers(params?: UseUsersParams) {
   return useQuery({
     queryKey: ["v2", "users", params],
-    queryFn: async () => {
-      const res = await listUsers(params);
-      return res.results;
-    },
+    queryFn: () => listAllUsers(params),
   });
 }
 

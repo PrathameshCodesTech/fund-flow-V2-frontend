@@ -90,7 +90,7 @@ async function request<T>(
   method: string,
   path: string,
   body?: unknown,
-  params?: Record<string, string | number | undefined>,
+  params?: Record<string, string | number | boolean | undefined>,
 ): Promise<T> {
   let url = buildUrl(path);
 
@@ -136,7 +136,7 @@ async function request<T>(
 // ── Exported client ───────────────────────────────────────────────────────────
 
 export const apiClient = {
-  get<T>(path: string, params?: Record<string, string | number | undefined>): Promise<T> {
+  get<T>(path: string, params?: Record<string, string | number | boolean | undefined>): Promise<T> {
     return request<T>('GET', path, undefined, params);
   },
 

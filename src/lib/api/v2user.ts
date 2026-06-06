@@ -8,6 +8,7 @@ export function listUsers(params?: {
   is_active?: boolean;
   user_type?: "internal" | "vendor";
   page?: number;
+  page_size?: number;
 }): Promise<UserListResponse> {
   return apiClient.get<UserListResponse>("/api/v1/users/", params);
 }

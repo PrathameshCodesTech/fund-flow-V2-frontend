@@ -182,10 +182,10 @@ export default function PasswordResetPage() {
               </div>
             )}
 
-            <Button
+            <button
               type="submit"
               disabled={resetMutation.isPending}
-              className="w-full bg-white text-primary hover:bg-white/90"
+              className="flex h-12 w-full items-center justify-center gap-2 rounded-xl border border-white bg-white px-4 py-3 text-sm font-semibold text-primary shadow-md transition-colors hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {resetMutation.isPending ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -193,7 +193,7 @@ export default function PasswordResetPage() {
                 <ArrowRight className="mr-2 h-4 w-4" />
               )}
               Update Password
-            </Button>
+            </button>
           </form>
         </section>
       </div>
