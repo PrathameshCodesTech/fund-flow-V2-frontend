@@ -68,7 +68,7 @@ export const NAV_ITEMS: NavItem[] = [
   },
   {
     label: "Finance Reviews", to: "/finance", icon: Landmark, group: "Operations",
-    requiredCapability: "reporting.view_finance",
+    allowedRoles: ["finance_team"],
   },
   // ── Planning ────────────────────────────────────────────────────────────────
   {
@@ -119,11 +119,11 @@ const ROUTE_ACCESS: Record<string, RouteAccess> = {
   // ── Portal routes ──────────────────────────────────────────────────────────
   "/vendor-portal":              "portal.vendor",
   // ── Finance portal routes ────────────────────────────────────────────────────
-  "/finance":                    "reporting.view_finance",
-  "/finance/invoices":           "reporting.view_finance",
-  "/finance/invoices/:id":       "reporting.view_finance",
-  "/finance/vendors":            "reporting.view_finance",
-  "/finance/vendors/:id":        "reporting.view_finance",
+  "/finance":                    (user) => financeReviewAccess(user),
+  "/finance/invoices":           (user) => financeReviewAccess(user),
+  "/finance/invoices/:id":       (user) => financeReviewAccess(user),
+  "/finance/vendors":            (user) => financeReviewAccess(user),
+  "/finance/vendors/:id":        (user) => financeReviewAccess(user),
 };
 
 /** Routes that bypass all guards (public token pages). */
@@ -148,6 +148,9 @@ const _userCapabilities = (user: User | null): string[] =>
 
 const _hasFullAccess = (user: User | null): boolean =>
   !!user && (_userRoles(user).some((r) => FULL_ACCESS_ROLES.includes(r)) || !!user.is_superuser);
+
+const financeReviewAccess = (user: User | null): boolean =>
+  _hasFullAccess(user) || _userRoles(user).includes("finance_team");
 
 /** True when the user is allowed to see this nav item in the sidebar. */
 export function canSeeNavItem(user: User | null, item: NavItem): boolean {
