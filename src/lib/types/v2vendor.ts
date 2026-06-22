@@ -329,6 +329,47 @@ export interface UpdateVendorSubmissionRouteRequest {
   workflow_template?: string;
 }
 
+export interface RouteAssigneeCandidate {
+  id: string;
+  email: string;
+  first_name: string;
+  last_name: string;
+  display_name: string;
+}
+
+export interface RouteAffectedStep {
+  id: string;
+  name: string;
+  required_role: string;
+}
+
+export interface RouteCurrentAssignee extends RouteAssigneeCandidate {
+  affected_steps: RouteAffectedStep[];
+  candidates: RouteAssigneeCandidate[];
+}
+
+export interface RouteAssigneeReplacementOptions {
+  route_id: string;
+  route_code: string;
+  route_label: string;
+  published_version_id: string;
+  published_version_number: number;
+  assignees: RouteCurrentAssignee[];
+}
+
+export interface ReplaceRouteAssigneeRequest {
+  old_user: string;
+  new_user: string;
+  label: string;
+}
+
+export interface ReplaceRouteAssigneeResponse {
+  route: VendorSubmissionRoute;
+  published_version_id: string;
+  published_version_number: number;
+  affected_step_count: number;
+}
+
 export type ProfileRevisionStatus =
   | "draft"
   | "submitted"

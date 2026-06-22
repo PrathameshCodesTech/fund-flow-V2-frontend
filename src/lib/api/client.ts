@@ -140,6 +140,32 @@ export const apiClient = {
     return request<T>('GET', path, undefined, params);
   },
 
+  /** GET from a full URL (for pagination `next` links) */
+  async getUrl<T>(fullUrl: string): Promise<T> {
+    const token = getAccessToken();
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    const res = await fetch(fullUrl, { method: 'GET', headers });
+
+    if (res.status === 401) {
+      clearTokens();
+      let payload: DRFErrorPayload = { detail: 'Unauthorized' };
+      try { payload = await res.json(); } catch { /* ignore */ }
+      throw new ApiError(res.status, payload);
+    }
+
+    if (!res.ok) {
+      let payload: DRFErrorPayload = { detail: `HTTP ${res.status}` };
+      try { payload = await res.json(); } catch { /* ignore */ }
+      throw new ApiError(res.status, payload);
+    }
+
+    return res.json() as Promise<T>;
+  },
+
   post<T>(path: string, data?: unknown): Promise<T> {
     return request<T>('POST', path, data);
   },
@@ -154,6 +180,23 @@ export const apiClient = {
 
   delete<T = void>(path: string): Promise<T> {
     return request<T>('DELETE', path);
+  },
+
+  async blob(path: string): Promise<Blob> {
+    const token = getAccessToken();
+    const headers: Record<string, string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const res = await fetch(buildUrl(path), { headers });
+    if (res.status === 401) {
+      clearTokens();
+      throw new ApiError(401, { detail: 'Unauthorized' });
+    }
+    if (!res.ok) {
+      let payload: DRFErrorPayload = { detail: `HTTP ${res.status}` };
+      try { payload = await res.json() as DRFErrorPayload; } catch { /* non-JSON error */ }
+      throw new ApiError(res.status, payload);
+    }
+    return res.blob();
   },
 
   /**

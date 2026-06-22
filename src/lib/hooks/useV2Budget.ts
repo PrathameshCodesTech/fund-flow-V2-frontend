@@ -42,6 +42,12 @@ import {
   uploadImportBatch,
   validateImportBatch,
   commitImportBatch,
+  listBudgetRevisions,
+  getBudgetRevision,
+  createManualBudgetRevision,
+  createExcelBudgetRevision,
+  publishBudgetRevision,
+  cancelBudgetRevision,
 } from "../api/v2budget";
 import type { UploadImportBatchRequest } from "../api/v2budget";
 import type {
@@ -59,6 +65,8 @@ import type {
   CreateRuleRequest,
   UpdateRuleRequest,
   ReviewVarianceRequest,
+  CreateBudgetRevisionManualRequest,
+  CreateBudgetRevisionExcelRequest,
 } from "../types/v2budget";
 
 type PaginatedListResponse<T> = {
@@ -564,6 +572,76 @@ export function useCommitBudgetImportBatch() {
       queryClient.setQueryData(["v2", "budget", "importBatch", data.id], data);
       // Budgets may have been created/updated — invalidate the list
       queryClient.invalidateQueries({ queryKey: ["v2", "budget", "budgets"] });
+    },
+  });
+}
+
+// Scoped budget revisions
+export function useBudgetRevisions(budgetId: string | null) {
+  return useQuery({
+    queryKey: ["v2", "budget", "revisions", budgetId],
+    queryFn: () => fetchAllPages(listBudgetRevisions, { budget: budgetId! }),
+    enabled: !!budgetId,
+  });
+}
+
+export function useBudgetRevision(id: string | null) {
+  return useQuery({
+    queryKey: ["v2", "budget", "revision", id],
+    queryFn: () => getBudgetRevision(id!),
+    enabled: !!id,
+  });
+}
+
+function invalidateRevisionData(queryClient: ReturnType<typeof useQueryClient>, budgetId: string) {
+  queryClient.invalidateQueries({ queryKey: ["v2", "budget", "revisions", budgetId] });
+  queryClient.invalidateQueries({ queryKey: ["v2", "budget", "budgets"] });
+  queryClient.invalidateQueries({ queryKey: ["v2", "budget", "budget", budgetId] });
+  queryClient.invalidateQueries({ queryKey: ["v2", "budget", "lines"] });
+  queryClient.invalidateQueries({ queryKey: ["v2", "budget", "liveBalances", budgetId] });
+  queryClient.invalidateQueries({ queryKey: ["v2", "budget", "overview"] });
+}
+
+export function useCreateManualBudgetRevision() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: CreateBudgetRevisionManualRequest) => createManualBudgetRevision(data),
+    onSuccess: (revision) => {
+      invalidateRevisionData(queryClient, revision.budget);
+      queryClient.setQueryData(["v2", "budget", "revision", revision.id], revision);
+    },
+  });
+}
+
+export function useCreateExcelBudgetRevision() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: CreateBudgetRevisionExcelRequest) => createExcelBudgetRevision(data),
+    onSuccess: (revision) => {
+      invalidateRevisionData(queryClient, revision.budget);
+      queryClient.setQueryData(["v2", "budget", "revision", revision.id], revision);
+    },
+  });
+}
+
+export function usePublishBudgetRevision() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => publishBudgetRevision(id),
+    onSuccess: (revision) => {
+      invalidateRevisionData(queryClient, revision.budget);
+      queryClient.setQueryData(["v2", "budget", "revision", revision.id], revision);
+    },
+  });
+}
+
+export function useCancelBudgetRevision() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => cancelBudgetRevision(id),
+    onSuccess: (revision) => {
+      invalidateRevisionData(queryClient, revision.budget);
+      queryClient.setQueryData(["v2", "budget", "revision", revision.id], revision);
     },
   });
 }

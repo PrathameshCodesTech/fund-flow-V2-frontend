@@ -508,6 +508,70 @@ export interface BudgetImportBatch {
 
 export type BudgetImportBatchList = Omit<BudgetImportBatch, "rows" | "validation_errors">;
 
+// Scoped, versioned changes to one budget's allocation plan.
+export type BudgetRevisionSource = "manual" | "excel";
+export type BudgetRevisionStatus = "draft" | "validated" | "published" | "rejected" | "cancelled";
+export type BudgetRevisionLineChangeType = "added" | "updated" | "removed" | "unchanged";
+
+export interface BudgetRevisionLine {
+  id: string;
+  budget_line: string | null;
+  line_key: string;
+  category: string;
+  category_name: string;
+  category_code: string;
+  subcategory: string | null;
+  subcategory_name: string | null;
+  subcategory_code: string | null;
+  previous_allocated_amount: string;
+  proposed_allocated_amount: string;
+  change_type: BudgetRevisionLineChangeType;
+  created_at: string;
+}
+
+export interface BudgetRevision {
+  id: string;
+  budget: string;
+  budget_name: string;
+  budget_code: string;
+  budget_scope_node: string;
+  revision_number: number;
+  source: BudgetRevisionSource;
+  status: BudgetRevisionStatus;
+  change_reason: string;
+  source_file: string | null;
+  source_file_name: string;
+  before_snapshot: Record<string, unknown>;
+  after_snapshot: Record<string, unknown>;
+  validation_errors: string[];
+  created_by: string | null;
+  created_by_email: string | null;
+  published_by: string | null;
+  published_by_email: string | null;
+  published_at: string | null;
+  created_at: string;
+  updated_at: string;
+  lines: BudgetRevisionLine[];
+}
+
+export interface CreateBudgetRevisionManualRequest {
+  budget: string;
+  change_reason: string;
+  lines: Array<{
+    category: string;
+    subcategory: string | null;
+    allocated_amount: string;
+  }>;
+}
+
+export interface CreateBudgetRevisionExcelRequest {
+  budget: string;
+  change_reason: string;
+  file: File;
+}
+
+export type BudgetRevisionListResponse = PaginatedResponse<BudgetRevision>;
+
 // ── Live Balances ─────────────────────────────────────────────────────────────
 
 export interface BudgetLineLiveBalance {

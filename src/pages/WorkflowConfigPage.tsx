@@ -26,6 +26,8 @@ import {
   useVendorSubmissionRoutes,
   useCreateVendorSubmissionRoute,
   useUpdateVendorSubmissionRoute,
+  useRouteAssigneeReplacementOptions,
+  useReplaceRouteAssignee,
 } from "@/lib/hooks/useV2Vendor";
 import { UserPicker } from "@/components/v2/UserPicker";
 import { MultiSelectUnits } from "@/components/v2/MultiSelectUnits";
@@ -94,6 +96,7 @@ import {
   Building2,
   Info,
   X,
+  RefreshCw,
 } from "lucide-react";
 
 // ── Module options ──────────────────────────────────────────────────────────────
@@ -3158,6 +3161,205 @@ function SendToRouteDialog({
   );
 }
 
+function ReplaceRouteAssigneeDialog({
+  route,
+  open,
+  onOpenChange,
+}: {
+  route: VendorSubmissionRoute | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const [oldUserId, setOldUserId] = useState("");
+  const [newUserId, setNewUserId] = useState("");
+  const [label, setLabel] = useState("");
+  const optionsQuery = useRouteAssigneeReplacementOptions(route?.id ?? null, open);
+  const replaceAssignee = useReplaceRouteAssignee();
+  const options = optionsQuery.data;
+  const currentAssignee = options?.assignees.find(
+    (assignee) => String(assignee.id) === oldUserId,
+  );
+
+  useEffect(() => {
+    if (!open) return;
+    setOldUserId("");
+    setNewUserId("");
+    setLabel(route?.label ?? "");
+  }, [open, route]);
+
+  const handleReplacementChange = (userId: string) => {
+    setNewUserId(userId);
+    const candidate = currentAssignee?.candidates.find(
+      (item) => String(item.id) === userId,
+    );
+    if (candidate) setLabel(`Send To ${candidate.display_name}`);
+  };
+
+  const handleSubmit = async () => {
+    if (!route || !oldUserId || !newUserId || !label.trim()) return;
+    try {
+      const result = await replaceAssignee.mutateAsync({
+        id: route.id,
+        data: {
+          old_user: oldUserId,
+          new_user: newUserId,
+          label: label.trim(),
+        },
+      });
+      toast.success(
+        `Assignee replaced. Workflow version ${result.published_version_number} is now live.`,
+      );
+      onOpenChange(false);
+    } catch {
+      // API error is rendered below.
+    }
+  };
+
+  const mutationError =
+    replaceAssignee.error instanceof ApiError
+      ? replaceAssignee.error.message
+      : replaceAssignee.isError
+        ? "Failed to replace route assignee."
+        : null;
+  const optionsError =
+    optionsQuery.error instanceof ApiError
+      ? optionsQuery.error.message
+      : optionsQuery.isError
+        ? "Failed to load replacement options."
+        : null;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Replace Route Assignee</DialogTitle>
+          <DialogDescription>
+            This creates and publishes a new workflow version. Existing invoice workflows are unchanged.
+          </DialogDescription>
+        </DialogHeader>
+
+        {optionsQuery.isLoading ? (
+          <div className="flex min-h-32 items-center justify-center">
+            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+          </div>
+        ) : optionsError ? (
+          <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            {optionsError}
+          </p>
+        ) : (
+          <div className="space-y-4">
+            <div className="rounded-md border border-border/60 bg-secondary/30 px-3 py-2 text-xs text-muted-foreground">
+              Route code <span className="font-mono text-foreground">{options?.route_code}</span> remains unchanged.
+              Published version {options?.published_version_number} will be archived after replacement.
+            </div>
+
+            <FormField label="Current Assignee">
+              <Select
+                value={oldUserId}
+                onValueChange={(value) => {
+                  setOldUserId(value);
+                  setNewUserId("");
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select assignee to replace" />
+                </SelectTrigger>
+                <SelectContent>
+                  {options?.assignees.map((assignee) => (
+                    <SelectItem key={assignee.id} value={String(assignee.id)}>
+                      {assignee.display_name} | {assignee.email}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FormField>
+
+            {currentAssignee ? (
+              <div className="rounded-md border border-border px-3 py-2">
+                <p className="text-xs font-medium text-foreground">
+                  Steps that will change ({currentAssignee.affected_steps.length})
+                </p>
+                <div className="mt-2 space-y-1">
+                  {currentAssignee.affected_steps.map((step) => (
+                    <div key={step.id} className="flex items-center justify-between gap-3 text-xs">
+                      <span className="text-foreground">{step.name}</span>
+                      <span className="text-muted-foreground">{step.required_role}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            <FormField
+              label="Replacement User"
+              hint={oldUserId ? "Only users eligible for every affected step are listed." : "Select the current assignee first."}
+            >
+              <Select
+                value={newUserId}
+                onValueChange={handleReplacementChange}
+                disabled={!currentAssignee}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select eligible replacement" />
+                </SelectTrigger>
+                <SelectContent>
+                  {currentAssignee?.candidates.map((candidate) => (
+                    <SelectItem key={candidate.id} value={String(candidate.id)}>
+                      {candidate.display_name} | {candidate.email}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {currentAssignee && currentAssignee.candidates.length === 0 ? (
+                <p className="mt-1 text-xs text-amber-600">
+                  No other active user holds all required roles at this workflow scope.
+                </p>
+              ) : null}
+            </FormField>
+
+            <FormField label="Vendor-Facing Route Label">
+              <Input
+                value={label}
+                onChange={(event) => setLabel(event.target.value)}
+                placeholder="Send To New User"
+              />
+            </FormField>
+
+            {mutationError ? (
+              <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {mutationError}
+              </p>
+            ) : null}
+          </div>
+        )}
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button
+            onClick={handleSubmit}
+            disabled={
+              optionsQuery.isLoading ||
+              replaceAssignee.isPending ||
+              !oldUserId ||
+              !newUserId ||
+              !label.trim()
+            }
+          >
+            {replaceAssignee.isPending ? (
+              <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="mr-1.5 h-4 w-4" />
+            )}
+            Replace and Publish
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function SendToRoutesManager({
   orgId,
   nodeId,
@@ -3167,6 +3369,7 @@ function SendToRoutesManager({
 }) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingRoute, setEditingRoute] = useState<VendorSubmissionRoute | null>(null);
+  const [replacementRoute, setReplacementRoute] = useState<VendorSubmissionRoute | null>(null);
   const { data: routes = [], isLoading } = useVendorSubmissionRoutes(
     orgId ? { org: orgId } : undefined,
   );
@@ -3240,12 +3443,24 @@ function SendToRoutesManager({
                     </div>
                     <p className="mt-1 text-xs text-muted-foreground">{route.code}</p>
                   </div>
-                  <Button variant="outline" size="sm" onClick={() => {
-                    setEditingRoute(route);
-                    setDialogOpen(true);
-                  }}>
-                    Edit
-                  </Button>
+                  <div className="flex shrink-0 gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1.5"
+                      onClick={() => setReplacementRoute(route)}
+                      disabled={!route.published_version_id}
+                    >
+                      <RefreshCw className="h-3.5 w-3.5" />
+                      Replace Assignee
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => {
+                      setEditingRoute(route);
+                      setDialogOpen(true);
+                    }}>
+                      Edit
+                    </Button>
+                  </div>
                 </div>
 
                 <div className="mt-4 space-y-2 text-sm">
@@ -3285,9 +3500,15 @@ function SendToRoutesManager({
         templates={invoiceTemplates}
         route={editingRoute}
       />
+      <ReplaceRouteAssigneeDialog
+        route={replacementRoute}
+        open={!!replacementRoute}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) setReplacementRoute(null);
+        }}
+      />
     </div>
   );
 }
 
 export default WorkflowConfigPage;
-

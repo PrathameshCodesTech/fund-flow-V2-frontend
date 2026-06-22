@@ -39,6 +39,10 @@ import type {
   ConsumptionListResponse,
   VarianceRequestListResponse,
   BudgetOverviewPayload,
+  BudgetRevision,
+  BudgetRevisionListResponse,
+  CreateBudgetRevisionManualRequest,
+  CreateBudgetRevisionExcelRequest,
 } from "../types/v2budget";
 
 // ── Categories ───────────────────────────────────────────────────────────────
@@ -310,4 +314,46 @@ export async function validateImportBatch(id: number): Promise<BudgetImportBatch
 
 export async function commitImportBatch(id: number): Promise<BudgetImportBatch> {
   return apiClient.post(`/api/v1/budgets/import-batches/${id}/commit/`);
+}
+
+// Scoped budget revisions
+export async function listBudgetRevisions(params?: {
+  budget?: string;
+  status?: string;
+  page?: number;
+  page_size?: number;
+}): Promise<BudgetRevisionListResponse> {
+  return apiClient.get("/api/v1/budgets/revisions/", params);
+}
+
+export async function getBudgetRevision(id: string): Promise<BudgetRevision> {
+  return apiClient.get(`/api/v1/budgets/revisions/${id}/`);
+}
+
+export async function createManualBudgetRevision(
+  data: CreateBudgetRevisionManualRequest,
+): Promise<BudgetRevision> {
+  return apiClient.post("/api/v1/budgets/revisions/manual/", data);
+}
+
+export async function createExcelBudgetRevision(
+  data: CreateBudgetRevisionExcelRequest,
+): Promise<BudgetRevision> {
+  const form = new FormData();
+  form.append("budget", data.budget);
+  form.append("change_reason", data.change_reason);
+  form.append("file", data.file);
+  return apiClient.multipart("/api/v1/budgets/revisions/excel/", form);
+}
+
+export async function publishBudgetRevision(id: string): Promise<BudgetRevision> {
+  return apiClient.post(`/api/v1/budgets/revisions/${id}/publish/`);
+}
+
+export async function cancelBudgetRevision(id: string): Promise<BudgetRevision> {
+  return apiClient.post(`/api/v1/budgets/revisions/${id}/cancel/`);
+}
+
+export async function downloadBudgetRevisionTemplate(budgetId: string): Promise<Blob> {
+  return apiClient.blob(`/api/v1/budgets/${budgetId}/revision-template/`);
 }

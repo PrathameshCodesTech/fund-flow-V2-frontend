@@ -1,9 +1,25 @@
 ﻿import { useState } from "react";
 import { useForm } from "react-hook-form";
+import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { V2Shell } from "@/components/v2/V2Shell";
-import { useUsers, useCreateUser, useUpdateUser, useSendPasswordReset } from "@/lib/hooks/useV2Users";
-import { getUserFullName, type V2User, type CreateUserRequest, type UpdateUserRequest } from "@/lib/types/v2user";
+import {
+  useUsers,
+  useCreateUser,
+  useUpdateUser,
+  useSendPasswordReset,
+  useWorkflowResponsibilities,
+  useReassignWorkflowResponsibilities,
+} from "@/lib/hooks/useV2Users";
+import { useRoles } from "@/lib/hooks/useAccess";
+import { useScopeNodes } from "@/lib/hooks/useScopeNodes";
+import {
+  getUserFullName,
+  type V2User,
+  type CreateUserRequest,
+  type UpdateUserRequest,
+  type WorkflowResponsibilityPreview,
+} from "@/lib/types/v2user";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -24,6 +40,7 @@ import {
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import {
   Users,
@@ -36,6 +53,10 @@ import {
   ArrowRight,
   ShieldCheck,
   Pencil,
+  RefreshCw,
+  GitBranch,
+  ListChecks,
+  AlertTriangle,
 } from "lucide-react";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -74,6 +95,8 @@ interface AddPersonForm {
   last_name: string;
   email: string;
   employee_id: string;
+  role: string;
+  scope_node: string;
 }
 
 function AddPersonDialog({
@@ -84,14 +107,37 @@ function AddPersonDialog({
   onOpenChange: (v: boolean) => void;
 }) {
   const createUser = useCreateUser();
+  const { data: roles = [], isLoading: rolesLoading } = useRoles();
+  const { data: scopeNodes = [], isLoading: scopeNodesLoading } = useScopeNodes();
   const {
     register,
     handleSubmit,
     reset,
+    setValue,
+    watch,
     formState: { errors },
   } = useForm<AddPersonForm>({
-    defaultValues: { first_name: "", last_name: "", email: "", employee_id: "" },
+    defaultValues: {
+      first_name: "", last_name: "", email: "", employee_id: "", role: "", scope_node: "",
+    },
   });
+
+  const selectedScopeId = watch("scope_node");
+  const selectedRoleId = watch("role");
+  const selectedScope = useMemo(
+    () => scopeNodes.find((node) => String(node.id) === selectedScopeId),
+    [scopeNodes, selectedScopeId],
+  );
+  const availableRoles = useMemo(
+    () => roles.filter((role) => (
+      role.is_active
+      && (!selectedScope || (
+        String(role.org) === String(selectedScope.org)
+        && (!role.node_type_scope || role.node_type_scope === selectedScope.node_type)
+      ))
+    )),
+    [roles, selectedScope],
+  );
 
   function onSubmit(data: AddPersonForm) {
     const payload: CreateUserRequest = {
@@ -99,26 +145,28 @@ function AddPersonDialog({
       first_name: data.first_name || undefined,
       last_name: data.last_name || undefined,
       employee_id: data.employee_id || undefined,
+      role: data.role,
+      scope_node: data.scope_node,
     };
     createUser.mutate(payload, {
       onSuccess: () => {
-        toast.success("Person added successfully.");
+        toast.success("User added with role-based access.");
         reset();
         onOpenChange(false);
       },
       onError: (err) => {
-        toast.error(err instanceof Error ? err.message : "Failed to add person.");
+        toast.error(err instanceof Error ? err.message : "Failed to add user.");
       },
     });
   }
 
   return (
     <Dialog open={open} onOpenChange={(v) => { onOpenChange(v); if (!v) reset(); }} aria-describedby={undefined}>
-      <DialogContent className="max-w-md" aria-describedby={undefined}>
+      <DialogContent className="max-h-[90vh] max-w-md overflow-y-auto" aria-describedby={undefined}>
         <DialogHeader>
-          <DialogTitle>Add Person</DialogTitle>
+          <DialogTitle>Add User</DialogTitle>
           <DialogDescription>
-            Create a new person account. They can be assigned access roles separately.
+            Create an internal user and assign their role-based access in one step.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
@@ -160,6 +208,52 @@ function AddPersonDialog({
               {...register("employee_id")}
             />
           </div>
+          <div className="space-y-1">
+            <Label htmlFor="ap-scope">Scope <span className="text-destructive">*</span></Label>
+            <Select
+              value={selectedScopeId}
+              onValueChange={(value) => {
+                setValue("scope_node", value, { shouldValidate: true });
+                setValue("role", "", { shouldValidate: true });
+              }}
+              disabled={scopeNodesLoading}
+            >
+              <SelectTrigger id="ap-scope">
+                <SelectValue placeholder={scopeNodesLoading ? "Loading scopes..." : "Select scope"} />
+              </SelectTrigger>
+              <SelectContent>
+                {scopeNodes.filter((node) => node.is_active).map((node) => (
+                  <SelectItem key={node.id} value={String(node.id)}>
+                    {node.name} ({node.node_type})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <input type="hidden" {...register("scope_node", { required: "Scope is required" })} />
+            {errors.scope_node && <p className="text-xs text-destructive">{errors.scope_node.message}</p>}
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="ap-role">Role <span className="text-destructive">*</span></Label>
+            <Select
+              value={selectedRoleId}
+              onValueChange={(value) => setValue("role", value, { shouldValidate: true })}
+              disabled={!selectedScope || rolesLoading}
+            >
+              <SelectTrigger id="ap-role">
+                <SelectValue placeholder={rolesLoading ? "Loading roles..." : "Select role"} />
+              </SelectTrigger>
+              <SelectContent>
+                {availableRoles.map((role) => (
+                  <SelectItem key={role.id} value={String(role.id)}>{role.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <input type="hidden" {...register("role", { required: "Role is required" })} />
+            {errors.role && <p className="text-xs text-destructive">{errors.role.message}</p>}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            The selected role automatically applies its configured capabilities at this scope.
+          </p>
           <DialogFooter>
             <Button
               type="button"
@@ -170,7 +264,7 @@ function AddPersonDialog({
             </Button>
             <Button type="submit" disabled={createUser.isPending}>
               {createUser.isPending && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
-              Add Person
+              Add User
             </Button>
           </DialogFooter>
         </form>
@@ -279,6 +373,161 @@ function EditPersonDialog({
   );
 }
 
+// ── Workflow Responsibility Reassignment ─────────────────────────────────────
+
+function WorkflowReassignmentDialog({
+  person,
+  preview,
+  open,
+  onOpenChange,
+}: {
+  person: V2User;
+  preview: WorkflowResponsibilityPreview;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const [replacementUserId, setReplacementUserId] = useState("");
+  const [reason, setReason] = useState("");
+  const reassign = useReassignWorkflowResponsibilities();
+
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen) {
+      setReplacementUserId("");
+      setReason("");
+      reassign.reset();
+    }
+    onOpenChange(nextOpen);
+  };
+
+  const handleSubmit = async () => {
+    if (!replacementUserId || !reason.trim()) return;
+    try {
+      const result = await reassign.mutateAsync({
+        id: person.id,
+        newUser: replacementUserId,
+        reason: reason.trim(),
+      });
+      toast.success(`${result.total_reassigned} workflow responsibilities reassigned.`);
+      handleOpenChange(false);
+    } catch {
+      // Mutation error is displayed below.
+    }
+  };
+
+  const errorMessage = reassign.isError
+    ? reassign.error instanceof Error
+      ? reassign.error.message
+      : "Failed to reassign workflow responsibilities."
+    : null;
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Reassign Workflow Responsibilities</DialogTitle>
+          <DialogDescription>
+            Move all pending workflow work from {getUserFullName(person)} to one eligible user.
+            Completed history remains with the original user.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          <div className="grid grid-cols-3 gap-3">
+            <div className="rounded-md border border-border p-3 text-center">
+              <p className="text-lg font-semibold">{preview.counts.total}</p>
+              <p className="text-xs text-muted-foreground">Total pending</p>
+            </div>
+            <div className="rounded-md border border-border p-3 text-center">
+              <p className="text-lg font-semibold">{preview.counts.steps}</p>
+              <p className="text-xs text-muted-foreground">Steps</p>
+            </div>
+            <div className="rounded-md border border-border p-3 text-center">
+              <p className="text-lg font-semibold">{preview.counts.branches}</p>
+              <p className="text-xs text-muted-foreground">Branches</p>
+            </div>
+          </div>
+
+          <div className="max-h-56 space-y-2 overflow-y-auto rounded-md border border-border p-2">
+            {preview.responsibilities.map((item) => (
+              <div key={`${item.task_kind}-${item.task_id}`} className="rounded-md bg-secondary/30 p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">
+                      {item.subject_label}
+                      {item.vendor_name ? ` | ${item.vendor_name}` : ""}
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {item.step_name} | {item.required_role}
+                    </p>
+                  </div>
+                  <Badge variant="outline" className="shrink-0 capitalize">
+                    {item.task_kind}
+                  </Badge>
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">{item.scope_node_name}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Replacement User *</Label>
+            <Select value={replacementUserId} onValueChange={setReplacementUserId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select eligible replacement" />
+              </SelectTrigger>
+              <SelectContent>
+                {preview.eligible_replacements.map((candidate) => (
+                  <SelectItem key={candidate.id} value={String(candidate.id)}>
+                    {candidate.display_name} | {candidate.email}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {preview.eligible_replacements.length === 0 ? (
+              <p className="text-xs text-amber-600">
+                No active user is eligible for every pending responsibility.
+              </p>
+            ) : null}
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Reason *</Label>
+            <Textarea
+              value={reason}
+              onChange={(event) => setReason(event.target.value)}
+              placeholder="Reason for replacing this workflow assignee"
+              rows={3}
+            />
+          </div>
+
+          {errorMessage ? (
+            <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {errorMessage}
+            </p>
+          ) : null}
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => handleOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button
+            onClick={handleSubmit}
+            disabled={reassign.isPending || !replacementUserId || !reason.trim()}
+          >
+            {reassign.isPending ? (
+              <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="mr-1.5 h-4 w-4" />
+            )}
+            Reassign All Pending Work
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ── Person Detail Panel ────────────────────────────────────────────────────────
 
 function PersonDetailPanel({
@@ -299,6 +548,10 @@ function PersonDetailPanel({
   resettingPassword: boolean;
 }) {
   const navigate = useNavigate();
+  const [reassignOpen, setReassignOpen] = useState(false);
+  const isInternalUser = getUserType(person) === "internal";
+  const responsibilities = useWorkflowResponsibilities(person.id, isInternalUser);
+  const pendingResponsibilityCount = responsibilities.data?.counts.total ?? 0;
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
@@ -378,6 +631,52 @@ function PersonDetailPanel({
             </div>
           )}
 
+          {isInternalUser ? (
+            <div className="rounded-lg border border-border bg-secondary/20 p-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <ListChecks className="h-3.5 w-3.5 text-muted-foreground" />
+                    <p className="text-xs font-medium">Workflow Responsibilities</p>
+                  </div>
+                  {responsibilities.isLoading ? (
+                    <p className="mt-2 text-xs text-muted-foreground">Loading pending work...</p>
+                  ) : responsibilities.isError ? (
+                    <p className="mt-2 text-xs text-destructive">Unable to load workflow responsibilities.</p>
+                  ) : (
+                    <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground">
+                      <span className="flex items-center gap-1">
+                        <ListChecks className="h-3 w-3" />
+                        {responsibilities.data?.counts.steps ?? 0} steps
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <GitBranch className="h-3 w-3" />
+                        {responsibilities.data?.counts.branches ?? 0} branches
+                      </span>
+                    </div>
+                  )}
+                </div>
+                {responsibilities.data && pendingResponsibilityCount > 0 ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="shrink-0 gap-1.5"
+                    onClick={() => setReassignOpen(true)}
+                  >
+                    <RefreshCw className="h-3.5 w-3.5" />
+                    Reassign
+                  </Button>
+                ) : null}
+              </div>
+              {pendingResponsibilityCount > 0 ? (
+                <div className="mt-3 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-2 text-xs text-amber-800">
+                  <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  Reassign pending work before deactivating this user.
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
           {/* Actions */}
           <div className="space-y-2">
             <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
@@ -398,7 +697,7 @@ function PersonDetailPanel({
                 size="sm"
                 className="flex-1 gap-1.5"
                 onClick={onToggleActive}
-                disabled={togglingActive}
+                disabled={togglingActive || (person.is_active && pendingResponsibilityCount > 0)}
               >
                 {togglingActive ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -437,6 +736,14 @@ function PersonDetailPanel({
           </div>
         </div>
       </ScrollArea>
+      {responsibilities.data ? (
+        <WorkflowReassignmentDialog
+          person={person}
+          preview={responsibilities.data}
+          open={reassignOpen}
+          onOpenChange={setReassignOpen}
+        />
+      ) : null}
     </div>
   );
 }
@@ -504,7 +811,7 @@ const PeoplePage = () => {
       actions={
         <Button size="sm" className="gap-1.5" onClick={() => setAddOpen(true)}>
           <Plus className="h-3.5 w-3.5" />
-          Add Person
+          Add User
         </Button>
       }
     >
@@ -590,7 +897,7 @@ const PeoplePage = () => {
                 {!search && (
                   <Button size="sm" className="gap-1.5 mt-1" onClick={() => setAddOpen(true)}>
                     <Plus className="h-3.5 w-3.5" />
-                    Add Person
+                    Add User
                   </Button>
                 )}
               </div>

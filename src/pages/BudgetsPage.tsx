@@ -5,6 +5,7 @@ import {
   Tooltip, ResponsiveContainer, Cell,
 } from "recharts";
 import { V2Shell } from "@/components/v2/V2Shell";
+import { BudgetRevisionPanel } from "@/components/budgets/BudgetRevisionPanel";
 import { useAuth } from "@/contexts/AuthContext";
 import { useWorkingScope } from "@/contexts/WorkingScopeContext";
 import { ApiError } from "@/lib/api/client";
@@ -142,6 +143,7 @@ import {
   Send,
   Info,
   RotateCcw,
+  History,
 } from "lucide-react";
 
 // ── Status Badges ─────────────────────────────────────────────────────────────
@@ -3787,6 +3789,16 @@ export default function BudgetsPage() {
             ),
           }
         );
+      case "revisions":
+        return {
+          left: (
+            <div className="flex min-h-11 items-center">
+              <p className="text-xs text-muted-foreground">
+                Versioned allocation changes for one selected budget.
+              </p>
+            </div>
+          ),
+        };
       default:
         return { left: null };
     }
@@ -3854,6 +3866,10 @@ export default function BudgetsPage() {
               <TabsTrigger value="categories">Categories</TabsTrigger>
               <TabsTrigger value="subcategories">Subcategories</TabsTrigger>
               <TabsTrigger value="consumptions">Consumptions</TabsTrigger>
+              <TabsTrigger value="revisions">
+                <History className="mr-1 h-3.5 w-3.5" />
+                Revisions
+              </TabsTrigger>
               <TabsTrigger value="imports">
                 <FileSpreadsheet className="mr-1 h-3.5 w-3.5" />
                 Imports
@@ -3900,6 +3916,13 @@ export default function BudgetsPage() {
           <TabsContent value="consumptions" className="m-0 data-[state=inactive]:hidden flex min-h-0 flex-1 flex-col overflow-hidden">
             <ScrollArea className="flex-1">
               <ConsumptionList consumptions={consumptions} isLoading={consumptionsLoading} />
+            </ScrollArea>
+          </TabsContent>
+
+          {/* REVISIONS TAB */}
+          <TabsContent value="revisions" className="m-0 data-[state=inactive]:hidden flex min-h-0 flex-1 flex-col overflow-hidden">
+            <ScrollArea className="flex-1">
+              <BudgetRevisionPanel budgets={visibleBudgets} canManage={canManageBudgetModule} />
             </ScrollArea>
           </TabsContent>
 

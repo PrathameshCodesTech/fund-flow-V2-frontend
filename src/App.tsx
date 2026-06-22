@@ -48,6 +48,8 @@ import FinanceInvoiceListPage from "./pages/FinanceInvoiceListPage.tsx";
 import FinanceInvoiceReviewPage from "./pages/FinanceInvoiceReviewPage.tsx";
 import FinanceVendorListPage from "./pages/FinanceVendorListPage.tsx";
 import FinanceVendorReviewPage from "./pages/FinanceVendorReviewPage.tsx";
+import DocumentIngestionQueuePage from "./pages/DocumentIngestionQueuePage.tsx";
+import DocumentIngestionDetailPage from "./pages/DocumentIngestionDetailPage.tsx";
 
 const queryClient = new QueryClient();
 
@@ -171,6 +173,8 @@ function AppRoutes() {
         <Route path="/finance/invoices/:id" element={<FinanceInvoiceReviewPage />} />
         <Route path="/finance/vendors" element={<FinanceVendorListPage />} />
         <Route path="/finance/vendors/:id" element={<FinanceVendorReviewPage />} />
+        <Route path="/finance/document-ingestion" element={<DocumentIngestionQueuePage />} />
+        <Route path="/finance/document-ingestion/:id" element={<DocumentIngestionDetailPage />} />
         <Route path="*" element={<Navigate to="/finance" replace />} />
       </Routes>
     );
@@ -250,6 +254,8 @@ function AppRoutes() {
       <Route path="/finance/invoices/:id" element={<GuardedRoute navPath="/finance" element={<FinanceInvoiceReviewPage />} />} />
       <Route path="/finance/vendors" element={<GuardedRoute navPath="/finance" element={<FinanceVendorListPage />} />} />
       <Route path="/finance/vendors/:id" element={<GuardedRoute navPath="/finance" element={<FinanceVendorReviewPage />} />} />
+      <Route path="/finance/document-ingestion" element={<GuardedRoute navPath="/finance/document-ingestion" element={<DocumentIngestionQueuePage />} />} />
+      <Route path="/finance/document-ingestion/:id" element={<GuardedRoute navPath="/finance/document-ingestion/:id" element={<DocumentIngestionDetailPage />} />} />
 
       {/* Catch-all: unknown internal route → first allowed or Forbidden */}
       <Route path="*" element={<Navigate to={fallback} replace />} />

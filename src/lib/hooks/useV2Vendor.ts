@@ -22,6 +22,8 @@ import {
   listVendorSubmissionRoutes,
   createVendorSubmissionRoute,
   updateVendorSubmissionRoute,
+  getRouteAssigneeReplacementOptions,
+  replaceRouteAssignee,
 } from "../api/v2vendor";
 import type {
   CreateInvitationRequest,
@@ -31,6 +33,7 @@ import type {
   MarketingRejectRequest,
   Vendor,
   UpdateVendorSubmissionRouteRequest,
+  ReplaceRouteAssigneeRequest,
 } from "../types/v2vendor";
 
 // ── Invitations ─────────────────────────────────────────────────────────────
@@ -267,6 +270,34 @@ export function useUpdateVendorSubmissionRoute() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["v2", "vendor", "send-to-routes"] });
       queryClient.invalidateQueries({ queryKey: ["v2", "vendor-send-to-options"] });
+    },
+  });
+}
+
+export function useRouteAssigneeReplacementOptions(routeId: string | null, enabled = true) {
+  return useQuery({
+    queryKey: ["v2", "vendor", "send-to-routes", routeId, "replacement-options"],
+    queryFn: () => getRouteAssigneeReplacementOptions(routeId!),
+    enabled: enabled && !!routeId,
+  });
+}
+
+export function useReplaceRouteAssignee() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      data,
+    }: {
+      id: string;
+      data: ReplaceRouteAssigneeRequest;
+    }) => replaceRouteAssignee(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["v2", "vendor", "send-to-routes"] });
+      queryClient.invalidateQueries({ queryKey: ["v2", "vendor-send-to-options"] });
+      queryClient.invalidateQueries({ queryKey: ["v2", "workflowTemplates"] });
+      queryClient.invalidateQueries({ queryKey: ["v2", "workflowVersions"] });
+      queryClient.invalidateQueries({ queryKey: ["v2", "workflowTemplate"] });
     },
   });
 }

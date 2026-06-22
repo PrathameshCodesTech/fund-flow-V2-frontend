@@ -124,6 +124,8 @@ const ROUTE_ACCESS: Record<string, RouteAccess> = {
   "/finance/invoices/:id":       (user) => financeReviewAccess(user),
   "/finance/vendors":            (user) => financeReviewAccess(user),
   "/finance/vendors/:id":        (user) => financeReviewAccess(user),
+  "/finance/document-ingestion": (user) => financeReviewAccess(user),
+  "/finance/document-ingestion/:id": (user) => financeReviewAccess(user),
 };
 
 /** Routes that bypass all guards (public token pages). */

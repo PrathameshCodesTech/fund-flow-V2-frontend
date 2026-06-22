@@ -1,5 +1,13 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { listUsers, getUser, createUser, updateUser, sendPasswordReset } from "../api/v2user";
+import {
+  listUsers,
+  getUser,
+  createUser,
+  updateUser,
+  sendPasswordReset,
+  getWorkflowResponsibilities,
+  reassignWorkflowResponsibilities,
+} from "../api/v2user";
 import type { CreateUserRequest, UpdateUserRequest } from "../types/v2user";
 
 type UseUsersParams = {
@@ -63,5 +71,38 @@ export function useUpdateUser() {
 export function useSendPasswordReset() {
   return useMutation({
     mutationFn: (id: string) => sendPasswordReset(id),
+  });
+}
+
+export function useWorkflowResponsibilities(id?: string | null, enabled = true) {
+  return useQuery({
+    queryKey: ["v2", "users", id, "workflow-responsibilities"],
+    queryFn: () => getWorkflowResponsibilities(id!),
+    enabled: enabled && !!id,
+  });
+}
+
+export function useReassignWorkflowResponsibilities() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      newUser,
+      reason,
+    }: {
+      id: string;
+      newUser: string;
+      reason: string;
+    }) => reassignWorkflowResponsibilities(id, {
+      new_user: newUser,
+      reason,
+    }),
+    onSuccess: (_data, { id }) => {
+      queryClient.invalidateQueries({
+        queryKey: ["v2", "users", id, "workflow-responsibilities"],
+      });
+      queryClient.invalidateQueries({ queryKey: ["v2", "users"] });
+      queryClient.invalidateQueries({ queryKey: ["v2", "workflow", "tasks"] });
+    },
   });
 }

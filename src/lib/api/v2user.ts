@@ -1,5 +1,12 @@
 import { apiClient } from "./client";
-import type { V2User, UserListResponse, CreateUserRequest, UpdateUserRequest } from "../types/v2user";
+import type {
+  V2User,
+  UserListResponse,
+  CreateUserRequest,
+  UpdateUserRequest,
+  WorkflowResponsibilityPreview,
+  BulkWorkflowReassignmentResponse,
+} from "../types/v2user";
 
 // ── List / Search ─────────────────────────────────────────────────────────────
 
@@ -31,6 +38,24 @@ export function updateUser(id: string, data: UpdateUserRequest): Promise<V2User>
 
 export function sendPasswordReset(id: string): Promise<{ detail: string; email: string }> {
   return apiClient.post<{ detail: string; email: string }>(`/api/v1/users/${id}/send-password-reset/`);
+}
+
+export function getWorkflowResponsibilities(
+  id: string,
+): Promise<WorkflowResponsibilityPreview> {
+  return apiClient.get<WorkflowResponsibilityPreview>(
+    `/api/v1/users/${id}/workflow-responsibilities/`,
+  );
+}
+
+export function reassignWorkflowResponsibilities(
+  id: string,
+  data: { new_user: string; reason: string },
+): Promise<BulkWorkflowReassignmentResponse> {
+  return apiClient.post<BulkWorkflowReassignmentResponse>(
+    `/api/v1/users/${id}/reassign-workflow-responsibilities/`,
+    data,
+  );
 }
 
 export function validatePasswordReset(uid: string, token: string): Promise<{ email: string; name: string }> {

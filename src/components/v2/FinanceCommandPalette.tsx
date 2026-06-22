@@ -8,7 +8,7 @@ import {
   CommandGroup,
   CommandItem,
 } from "@/components/ui/command";
-import { LayoutDashboard, FileText, Users } from "lucide-react";
+import { LayoutDashboard, FileText, Users, Inbox } from "lucide-react";
 import { useHotkey } from "@/lib/hooks/useHotkey";
 
 interface FinanceCommandPaletteProps {
@@ -21,6 +21,7 @@ const FINANCE_NAV_ITEMS = [
   { label: "Finance Dashboard", to: "/finance", icon: LayoutDashboard },
   { label: "Invoice Reviews", to: "/finance/invoices", icon: FileText },
   { label: "Vendor Reviews", to: "/finance/vendors", icon: Users },
+  { label: "Document Ingestion", to: "/finance/document-ingestion", icon: Inbox },
 ];
 
 export function FinanceCommandPalette({ open, onOpenChange }: FinanceCommandPaletteProps) {

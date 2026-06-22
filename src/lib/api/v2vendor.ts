@@ -19,6 +19,9 @@ import type {
   FinanceApproveRequest,
   FinanceRejectRequest,
   UpdateVendorSubmissionRouteRequest,
+  RouteAssigneeReplacementOptions,
+  ReplaceRouteAssigneeRequest,
+  ReplaceRouteAssigneeResponse,
   InvitationListResponse,
   SubmissionListResponse,
   AttachmentListResponse,
@@ -166,6 +169,19 @@ export async function updateVendorSubmissionRoute(
   data: UpdateVendorSubmissionRouteRequest,
 ): Promise<VendorSubmissionRoute> {
   return apiClient.patch(`/api/v1/vendors/send-to-options/${id}/`, data);
+}
+
+export async function getRouteAssigneeReplacementOptions(
+  id: string,
+): Promise<RouteAssigneeReplacementOptions> {
+  return apiClient.get(`/api/v1/vendors/send-to-options/${id}/replacement-options/`);
+}
+
+export async function replaceRouteAssignee(
+  id: string,
+  data: ReplaceRouteAssigneeRequest,
+): Promise<ReplaceRouteAssigneeResponse> {
+  return apiClient.post(`/api/v1/vendors/send-to-options/${id}/replace-assignee/`, data);
 }
 
 export async function getPublicInvitation(token: string): Promise<VendorInvitation> {

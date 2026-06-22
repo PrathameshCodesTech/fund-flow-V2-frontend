@@ -8,7 +8,7 @@ import { ShellContextBar } from "@/components/v2/ShellContextBar";
 import { FinanceCommandPalette } from "@/components/v2/FinanceCommandPalette";
 import { V2Footer } from "@/components/v2/V2Footer";
 import { useAuth } from "@/contexts/AuthContext";
-import { LayoutDashboard, FileText, Users, X } from "lucide-react";
+import { LayoutDashboard, FileText, Users, X, FileStack } from "lucide-react";
 
 interface Breadcrumb {
   label: string;
@@ -28,6 +28,7 @@ const FINANCE_NAV_ITEMS = [
   { label: "Dashboard", to: "/finance", icon: LayoutDashboard },
   { label: "Invoice Reviews", to: "/finance/invoices", icon: FileText },
   { label: "Vendor Reviews", to: "/finance/vendors", icon: Users },
+  { label: "Document Ingestion", to: "/finance/document-ingestion", icon: FileStack },
 ];
 
 export function FinanceShell({
