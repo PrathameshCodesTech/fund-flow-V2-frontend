@@ -3539,6 +3539,9 @@ function BudgetImportPanel({ orgId }: { orgId: string | null }) {
 export default function BudgetsPage() {
   const { user } = useAuth();
   const canManageBudgetModule = canManageBudget(user);
+  const canManageBulkBudgetImports = Boolean(
+    user?.is_superuser || user?.roles.includes("tenant_admin"),
+  );
   const {
     orgId: selectedOrgId,
     nodeId: selectedNodeId,
@@ -3549,6 +3552,12 @@ export default function BudgetsPage() {
   const [budgetRegionFilter, setBudgetRegionFilter] = useState<string>("__all__");
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("budgets");
+
+  useEffect(() => {
+    if (activeTab === "imports" && !canManageBulkBudgetImports) {
+      setActiveTab("budgets");
+    }
+  }, [activeTab, canManageBulkBudgetImports]);
   const [budgetViewMode, setBudgetViewMode] = useState<"dashboard" | "list">("dashboard");
 
   // Filter states per tab
@@ -3870,10 +3879,12 @@ export default function BudgetsPage() {
                 <History className="mr-1 h-3.5 w-3.5" />
                 Revisions
               </TabsTrigger>
-              <TabsTrigger value="imports">
-                <FileSpreadsheet className="mr-1 h-3.5 w-3.5" />
-                Imports
-              </TabsTrigger>
+              {canManageBulkBudgetImports ? (
+                <TabsTrigger value="imports">
+                  <FileSpreadsheet className="mr-1 h-3.5 w-3.5" />
+                  Imports
+                </TabsTrigger>
+              ) : null}
             </TabsList>
           </div>
 
@@ -3927,11 +3938,13 @@ export default function BudgetsPage() {
           </TabsContent>
 
           {/* IMPORTS TAB */}
-          <TabsContent value="imports" className="m-0 data-[state=inactive]:hidden flex min-h-0 flex-1 flex-col overflow-hidden">
-            <ScrollArea className="flex-1">
-              <BudgetImportPanel orgId={selectedOrgId} />
-            </ScrollArea>
-          </TabsContent>
+          {canManageBulkBudgetImports ? (
+            <TabsContent value="imports" className="m-0 data-[state=inactive]:hidden flex min-h-0 flex-1 flex-col overflow-hidden">
+              <ScrollArea className="flex-1">
+                <BudgetImportPanel orgId={selectedOrgId} />
+              </ScrollArea>
+            </TabsContent>
+          ) : null}
         </Tabs>
       </div>
     </V2Shell>
