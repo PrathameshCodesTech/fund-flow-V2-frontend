@@ -100,6 +100,14 @@ export function V2Shell({
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { user } = useAuth();
   const embedded = isEmbedSession() && isRunningInIframe();
+  const visibleNavItems = NAV_GROUPS.flatMap((group) => itemsForGroup(group.label as NavGroup, user));
+  const activeNavTo = visibleNavItems
+    .filter((item) =>
+      item.to === "/"
+        ? location.pathname === "/"
+        : location.pathname === item.to || location.pathname.startsWith(`${item.to}/`),
+    )
+    .sort((a, b) => b.to.length - a.to.length)[0]?.to;
   const contextActions = embedded ? (
     <>
       {actions}
@@ -120,10 +128,7 @@ export function V2Shell({
             <div className="space-y-0.5">
               {itemsForGroup(group.label as NavGroup, user).map(
                 ({ label, to, icon: Icon }) => {
-                  const isActive =
-                    to === "/"
-                      ? location.pathname === "/"
-                      : location.pathname.startsWith(to);
+                  const isActive = activeNavTo === to;
                   return (
                     <NavLink
                       key={to}

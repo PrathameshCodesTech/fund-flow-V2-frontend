@@ -56,6 +56,7 @@ const NONE = "__none__";
 
 type AllocationLine = {
   id: string;
+  regionId: string;
   entityId: string;
   budgetId: string;
   categoryId: string;
@@ -95,6 +96,7 @@ function flattenEntities(options: HistoricalAllowedEntity[] | undefined): Histor
 function newAllocationLine(): AllocationLine {
   return {
     id: crypto.randomUUID(),
+    regionId: "",
     entityId: "",
     budgetId: "",
     categoryId: "",
@@ -261,9 +263,10 @@ export default function HistoricalInvoicesPage() {
   }, [vendorSearch, vendors]);
 
   const selectedVendor = vendors.find((vendor) => String(vendor.id) === selectedVendorId);
+  const regionOptions = optionsQuery.data?.allowed_entities ?? [];
   const entityOptions = useMemo(
-    () => flattenEntities(optionsQuery.data?.allowed_entities),
-    [optionsQuery.data],
+    () => flattenEntities(regionOptions),
+    [regionOptions],
   );
   const entityById = useMemo(() => {
     const map = new Map<string, HistoricalAllowedEntity>();
@@ -284,6 +287,35 @@ export default function HistoricalInvoicesPage() {
     setAllocations((rows) =>
       rows.map((row) => (row.id === id ? { ...row, ...patch } : row)),
     );
+  }
+
+  function defaultBudgetId(entity: HistoricalAllowedEntity | undefined): string {
+    return entity?.budgets.length === 1 ? String(entity.budgets[0].id) : "";
+  }
+
+  function updateRegion(lineId: string, regionId: string) {
+    const region = entityById.get(regionId);
+    const branchOptions = region?.child_entities ?? [];
+    const finalEntity = branchOptions.length === 0 ? region : undefined;
+    updateLine(lineId, {
+      regionId,
+      entityId: finalEntity ? String(finalEntity.entity_id) : "",
+      budgetId: defaultBudgetId(finalEntity),
+      categoryId: "",
+      subcategoryId: NONE,
+      campaignId: NONE,
+    });
+  }
+
+  function updateBranch(lineId: string, entityId: string) {
+    const entity = entityById.get(entityId);
+    updateLine(lineId, {
+      entityId,
+      budgetId: defaultBudgetId(entity),
+      categoryId: "",
+      subcategoryId: NONE,
+      campaignId: NONE,
+    });
   }
 
   function resetForVendor(vendorId: string) {
@@ -488,10 +520,14 @@ export default function HistoricalInvoicesPage() {
 
                 <div className="space-y-4 p-5">
                   {allocations.map((line, index) => {
+                    const region = entityById.get(line.regionId);
+                    const branchOptions = region?.child_entities ?? [];
                     const entity = entityById.get(line.entityId);
+                    const effectiveBudgetId =
+                      line.budgetId || (entity?.budgets.length === 1 ? String(entity.budgets[0].id) : "");
                     const budgetLines = entity?.budget_lines.filter(
                       (budgetLine) =>
-                        String(budgetLine.budget_id) === line.budgetId &&
+                        String(budgetLine.budget_id) === effectiveBudgetId &&
                         String(budgetLine.category_id) === line.categoryId,
                     ) ?? [];
                     const subcategories = budgetLines
@@ -503,7 +539,7 @@ export default function HistoricalInvoicesPage() {
                       }));
                     const selectedLine = entity?.budget_lines.find(
                       (budgetLine) =>
-                        String(budgetLine.budget_id) === line.budgetId &&
+                        String(budgetLine.budget_id) === effectiveBudgetId &&
                         String(budgetLine.category_id) === line.categoryId &&
                         (line.subcategoryId === NONE
                           ? budgetLine.subcategory_id == null
@@ -529,31 +565,41 @@ export default function HistoricalInvoicesPage() {
                         </div>
                         <div className="grid gap-4 md:grid-cols-2">
                           <div>
-                            <Label>Region / Branch *</Label>
+                            <Label>Region *</Label>
                             <Select
-                              value={line.entityId}
-                              onValueChange={(value) =>
-                                updateLine(line.id, {
-                                  entityId: value,
-                                  budgetId: "",
-                                  categoryId: "",
-                                  subcategoryId: NONE,
-                                  campaignId: NONE,
-                                })
-                              }
+                              value={line.regionId}
+                              onValueChange={(value) => updateRegion(line.id, value)}
                             >
-                              <SelectTrigger><SelectValue placeholder="Select scope" /></SelectTrigger>
+                              <SelectTrigger><SelectValue placeholder="Select region" /></SelectTrigger>
                               <SelectContent>
-                                {entityOptions.map((option) => (
+                                {regionOptions.map((option) => (
                                   <SelectItem key={option.entity_id} value={String(option.entity_id)}>
-                                    {option.parent_entity_name ? `${option.parent_entity_name} - ` : ""}
                                     {option.entity_name}
                                   </SelectItem>
                                 ))}
                               </SelectContent>
                             </Select>
                           </div>
-                          <div>
+                          {branchOptions.length > 0 && (
+                            <div>
+                              <Label>Branch / Park *</Label>
+                              <Select
+                                value={line.entityId}
+                                onValueChange={(value) => updateBranch(line.id, value)}
+                              >
+                                <SelectTrigger><SelectValue placeholder="Select branch / park" /></SelectTrigger>
+                                <SelectContent>
+                                  {branchOptions.map((option) => (
+                                    <SelectItem key={option.entity_id} value={String(option.entity_id)}>
+                                      {option.entity_name}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          )}
+                          {entity && entity.budgets.length > 1 && (
+                            <div>
                             <Label>Funding Budget *</Label>
                             <Select
                               value={line.budgetId}
@@ -576,6 +622,7 @@ export default function HistoricalInvoicesPage() {
                               </SelectContent>
                             </Select>
                           </div>
+                          )}
                           <div>
                             <Label>Category *</Label>
                             <Select
@@ -593,13 +640,14 @@ export default function HistoricalInvoicesPage() {
                                 {entity?.categories.map((category) => {
                                   const lineForCategory = entity.budget_lines.find(
                                     (budgetLine) =>
-                                      String(budgetLine.budget_id) === line.budgetId &&
+                                      String(budgetLine.budget_id) === effectiveBudgetId &&
                                       budgetLine.category_id === category.id,
                                   );
                                   if (!lineForCategory) return null;
                                   return (
                                     <SelectItem key={category.id} value={String(category.id)}>
-                                      {category.name} | Available {formatCurrency(lineForCategory.available_amount)}
+                                      {category.name}
+                                      {category.code ? ` (${category.code})` : ""} | Available {formatCurrency(lineForCategory.available_amount)}
                                     </SelectItem>
                                   );
                                 })}
@@ -641,6 +689,11 @@ export default function HistoricalInvoicesPage() {
                                 ))}
                               </SelectContent>
                             </Select>
+                          </div>
+                          <div className="md:col-span-2 flex items-center gap-2 rounded-md border border-green-200 bg-green-50 px-3 py-2">
+                            <CheckCircle2 className="h-4 w-4 shrink-0 text-green-600" />
+                            <span className="text-sm font-medium text-green-700">Auto-approved</span>
+                            <span className="text-xs text-green-600/75">No branch approval required</span>
                           </div>
                           <div>
                             <Label>Line Amount *</Label>
