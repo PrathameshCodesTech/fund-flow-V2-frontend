@@ -6,6 +6,12 @@ import type {
   SubmissionSubmitResponse,
   VendorSendToOption,
   InvoiceDocument, InvoiceDocumentCreateRequest,
+  HistoricalInvoiceOptions,
+  HistoricalInvoicePostRequest,
+  HistoricalInvoicePreview,
+  HistoricalInvoicePostResponse,
+  HistoricalInvoiceReverseRequest,
+  HistoricalInvoiceReverseResponse,
 } from "../types/v2invoice";
 
 // ── Invoice List ─────────────────────────────────────────────────────────────
@@ -14,6 +20,8 @@ export function listInvoices(params?: {
   scope_node?: string;
   status?: string;
   search?: string;
+  entry_source?: string;
+  vendor?: string;
   page?: number;
 }): Promise<InvoiceListResponse> {
   return apiClient.get<InvoiceListResponse>("/api/v1/invoices/", params);
@@ -56,6 +64,52 @@ export function createInvoice(data: CreateInvoiceRequest): Promise<Invoice> {
 
 export function submitInvoice(id: string): Promise<Invoice> {
   return apiClient.post<Invoice>(`/api/v1/invoices/${id}/submit/`, {});
+}
+
+export function getHistoricalInvoiceOptions(vendorId: string): Promise<HistoricalInvoiceOptions> {
+  return apiClient.get<HistoricalInvoiceOptions>("/api/v1/invoices/historical/options/", {
+    vendor: vendorId,
+  });
+}
+
+export function previewHistoricalInvoice(
+  data: HistoricalInvoicePostRequest,
+): Promise<HistoricalInvoicePreview> {
+  const { document: _document, ...payload } = data;
+  return apiClient.post<HistoricalInvoicePreview>(
+    "/api/v1/invoices/historical/preview/",
+    payload,
+  );
+}
+
+export function postHistoricalInvoice(
+  data: HistoricalInvoicePostRequest,
+): Promise<HistoricalInvoicePostResponse> {
+  const fd = new FormData();
+  fd.append("vendor", String(data.vendor));
+  fd.append("invoice_number", data.invoice_number);
+  fd.append("po_number", data.po_number ?? "");
+  fd.append("finance_reference_number", data.finance_reference_number);
+  fd.append("invoice_date", data.invoice_date);
+  fd.append("amount", data.amount);
+  fd.append("currency", data.currency ?? "INR");
+  fd.append("posting_reason", data.posting_reason ?? "Historical invoice posting");
+  fd.append("allocations", JSON.stringify(data.allocations));
+  if (data.document) fd.append("document", data.document);
+  return apiClient.multipart<HistoricalInvoicePostResponse>(
+    "/api/v1/invoices/historical/post/",
+    fd,
+  );
+}
+
+export function reverseHistoricalInvoice(
+  invoiceId: string,
+  data: HistoricalInvoiceReverseRequest,
+): Promise<HistoricalInvoiceReverseResponse> {
+  return apiClient.post<HistoricalInvoiceReverseResponse>(
+    `/api/v1/invoices/${invoiceId}/historical/reverse/`,
+    data,
+  );
 }
 
 // ── Invoice Update ────────────────────────────────────────────────────────────

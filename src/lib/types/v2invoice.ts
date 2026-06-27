@@ -15,7 +15,9 @@ export type InvoiceStatus =
   | "finance_approved"
   | "finance_rejected"
   | "rejected"
-  | "paid";
+  | "paid"
+  | "historical_posted"
+  | "historical_reversed";
 
 export const INVOICE_STATUS_LABELS: Record<InvoiceStatus, string> = {
   draft: "Draft",
@@ -28,6 +30,8 @@ export const INVOICE_STATUS_LABELS: Record<InvoiceStatus, string> = {
   finance_rejected: "Finance Rejected",
   rejected: "Rejected",
   paid: "Paid",
+  historical_posted: "Historical Posted",
+  historical_reversed: "Historical Reversed",
 };
 
 // ── Invoice ──────────────────────────────────────────────────────────────────
@@ -39,9 +43,11 @@ export interface Invoice {
   amount: string; // DecimalField → string
   currency: string;
   status: InvoiceStatus;
+  entry_source?: "standard" | "historical_import";
   po_number: string;
   vendor: string | null;
   vendor_name?: string | null;
+  finance_reference_number?: string;
   send_to_route_label?: string | null;
   vendor_invoice_number?: string;
   invoice_date?: string;
@@ -62,6 +68,12 @@ export interface Invoice {
   created_at: string;
   updated_at: string;
   can_record_payment?: boolean;
+  historical_posting_reason?: string;
+  historical_posted_by?: string | null;
+  historical_posted_at?: string | null;
+  historical_reversed_by?: string | null;
+  historical_reversed_at?: string | null;
+  historical_reversal_reason?: string;
 }
 
 // ── Vendor Invoice Submission ─────────────────────────────────────────────────
@@ -206,7 +218,7 @@ export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
 export interface InvoiceDocument {
   id: string;
   invoice: string | null;
-  submission: string;
+  submission: string | null;
   file_name: string;
   file_type: string;
   document_type: DocumentType;
@@ -236,6 +248,154 @@ export interface UpdateInvoiceRequest {
   amount?: string;
   currency?: string;
   po_number?: string;
+}
+
+export interface HistoricalBudgetOption {
+  id: number;
+  name: string;
+  code: string;
+  scope_node_id: number;
+  scope_node_name: string;
+  allocated_amount: string;
+  available_amount: string;
+  currency: string;
+  reserved_amount: string;
+  consumed_amount: string;
+}
+
+export interface HistoricalCategoryOption {
+  id: number;
+  name: string;
+  code?: string;
+}
+
+export interface HistoricalSubcategoryOption {
+  id: number;
+  name: string;
+  category_id: number;
+  category_name: string;
+}
+
+export interface HistoricalCampaignOption {
+  id: number;
+  name: string;
+  code?: string;
+}
+
+export interface HistoricalBudgetLineOption {
+  id: number;
+  budget_id: number;
+  category_id: number;
+  category_name: string;
+  subcategory_id: number | null;
+  subcategory_name: string | null;
+  allocated_amount: string;
+  reserved_amount: string;
+  consumed_amount: string;
+  available_amount: string;
+}
+
+export interface HistoricalAllowedEntity {
+  split_option_id?: number;
+  entity_id: number;
+  entity_name: string;
+  business_unit_id?: number;
+  business_unit_name?: string;
+  node_type?: string;
+  parent_entity_id?: number | null;
+  parent_entity_name?: string | null;
+  categories: HistoricalCategoryOption[];
+  subcategories: HistoricalSubcategoryOption[];
+  campaigns: HistoricalCampaignOption[];
+  budgets: HistoricalBudgetOption[];
+  budget_lines: HistoricalBudgetLineOption[];
+  child_entities: HistoricalAllowedEntity[];
+}
+
+export interface HistoricalInvoiceOptions {
+  vendor: {
+    id: number;
+    name: string;
+    email: string;
+    scope_node_id: number;
+  };
+  allowed_entities: HistoricalAllowedEntity[];
+  rules: {
+    currency: "INR";
+    amount_required: boolean;
+    document_required: boolean;
+    allocation_total_policy: "MUST_EQUAL_INVOICE_TOTAL";
+    workflow_bypassed: boolean;
+  };
+}
+
+export interface HistoricalInvoiceAllocationInput {
+  entity: number;
+  budget: number;
+  category: number;
+  subcategory?: number | null;
+  campaign?: number | null;
+  amount: string;
+  note?: string;
+}
+
+export interface HistoricalInvoicePostRequest {
+  vendor: number;
+  invoice_number: string;
+  po_number?: string;
+  finance_reference_number: string;
+  invoice_date: string;
+  amount: string;
+  currency?: "INR";
+  posting_reason?: string;
+  allocations: HistoricalInvoiceAllocationInput[];
+  document?: File | null;
+}
+
+export interface HistoricalInvoicePreviewAllocation {
+  entity_id: number;
+  entity_name: string;
+  budget_id: number;
+  budget_name: string;
+  budget_line_id: number;
+  category_id: number;
+  category_name: string;
+  subcategory_id: number | null;
+  subcategory_name: string | null;
+  campaign_id: number | null;
+  campaign_name: string | null;
+  amount: string;
+  available_before: string;
+  available_after: string;
+}
+
+export interface HistoricalInvoicePreview {
+  vendor: {
+    id: number;
+    name: string;
+    email: string;
+  };
+  invoice_number: string;
+  invoice_amount: string;
+  currency: string;
+  allocation_total: string;
+  allocations: HistoricalInvoicePreviewAllocation[];
+}
+
+export interface HistoricalInvoicePostResponse {
+  invoice: Invoice;
+  allocations: unknown[];
+  consumptions: unknown[];
+  document: InvoiceDocument | null;
+}
+
+export interface HistoricalInvoiceReverseRequest {
+  reason: string;
+}
+
+export interface HistoricalInvoiceReverseResponse {
+  invoice: Invoice;
+  adjustments: unknown[];
 }
 
 // ── Paginated response ────────────────────────────────────────────────────────

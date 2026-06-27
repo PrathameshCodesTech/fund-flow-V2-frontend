@@ -21,6 +21,7 @@ import ScopeNodesPage from "./pages/ScopeNodesPage.tsx";
 import AccessControlPage from "./pages/AccessControlPage.tsx";
 import WorkflowConfigPage from "./pages/WorkflowConfigPage.tsx";
 import InvoicesPage from "./pages/InvoicesPage.tsx";
+import HistoricalInvoicesPage from "./pages/HistoricalInvoicesPage.tsx";
 import InvoiceControlTowerPage from "./pages/InvoiceControlTowerPage.tsx";
 import TasksPage from "./pages/TasksPage.tsx";
 import InsightsPage from "./pages/InsightsPage.tsx";
@@ -190,6 +191,10 @@ function AppRoutes() {
 
       {/* Operations */}
       <Route path="/invoices" element={<GuardedRoute navPath="/invoices" element={<InvoicesPage />} />} />
+      <Route
+        path="/invoices/historical"
+        element={<GuardedRoute navPath="/invoices/historical" element={<HistoricalInvoicesPage />} />}
+      />
       <Route
         path="/invoices/:id/control-tower"
         element={<GuardedRoute navPath="/invoices" element={<InvoiceControlTowerPage />} />}

@@ -13,6 +13,7 @@ import {
   ToggleLeft,
   ListChecks,
   IndianRupee,
+  FileClock,
 } from "lucide-react";
 import type { Icon } from "lucide-react";
 import type { User } from "@/contexts/AuthContext";
@@ -49,6 +50,10 @@ export const NAV_ITEMS: NavItem[] = [
   {
     label: "Invoices", to: "/invoices", icon: FileText, group: "Operations",
     requiredCapability: "invoice.view",
+  },
+  {
+    label: "Historical Invoices", to: "/invoices/historical", icon: FileClock, group: "Operations",
+    requiredCapability: "invoice.historical_post",
   },
   {
     label: "Invoice Pending for Approval", to: "/tasks", icon: Inbox, group: "Operations",
@@ -99,6 +104,8 @@ const ROUTE_ACCESS: Record<string, RouteAccess> = {
   // ── Sidebar nav routes ────────────────────────────────────────────────────
   "/":                            "budget.view",
   "/invoices":                    "invoice.view",
+  "/invoices/historical":         (user) =>
+    _hasFullAccess(user) || _userCapabilities(user).includes("invoice.historical_post"),
   "/pending-review":              "workflow.task.view",
   "/tasks":                       "workflow.task.view",
   "/finance-handoffs":            "reporting.view_finance",

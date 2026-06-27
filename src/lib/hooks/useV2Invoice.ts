@@ -21,6 +21,10 @@ import {
   beginInvoiceReview,
   getInvoicePayment,
   recordInvoicePayment,
+  getHistoricalInvoiceOptions,
+  previewHistoricalInvoice,
+  postHistoricalInvoice,
+  reverseHistoricalInvoice,
 } from "../api/v2invoice";
 import type {
   CreateInvoiceRequest,
@@ -28,11 +32,19 @@ import type {
   SubmissionUpdateRequest,
   InvoiceDocumentCreateRequest,
   SubmissionSubmitRequest,
+  HistoricalInvoicePostRequest,
+  HistoricalInvoiceReverseRequest,
 } from "../types/v2invoice";
 
 // ── Invoice List ─────────────────────────────────────────────────────────────
 
-export function useInvoices(params?: { scope_node?: string; status?: string; search?: string }) {
+export function useInvoices(params?: {
+  scope_node?: string;
+  status?: string;
+  search?: string;
+  entry_source?: string;
+  vendor?: string;
+}) {
   return useQuery({
     queryKey: ["v2", "invoices", params],
     queryFn: async () => {
@@ -69,6 +81,47 @@ export function useSubmitInvoice() {
   return useMutation({
     mutationFn: (id: string) => submitInvoice(id),
     onSuccess: (_result, id) => {
+      queryClient.invalidateQueries({ queryKey: ["v2", "invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["v2", "invoice", id] });
+    },
+  });
+}
+
+export function useHistoricalInvoiceOptions(vendorId: string | null) {
+  return useQuery({
+    queryKey: ["v2", "invoices", "historical-options", vendorId],
+    queryFn: () => getHistoricalInvoiceOptions(vendorId!),
+    enabled: !!vendorId,
+  });
+}
+
+export function usePreviewHistoricalInvoice() {
+  return useMutation({
+    mutationFn: (data: HistoricalInvoicePostRequest) => previewHistoricalInvoice(data),
+  });
+}
+
+export function usePostHistoricalInvoice() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: HistoricalInvoicePostRequest) => postHistoricalInvoice(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["v2", "invoices"] });
+    },
+  });
+}
+
+export function useReverseHistoricalInvoice() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      data,
+    }: {
+      id: string;
+      data: HistoricalInvoiceReverseRequest;
+    }) => reverseHistoricalInvoice(id, data),
+    onSuccess: (_data, { id }) => {
       queryClient.invalidateQueries({ queryKey: ["v2", "invoices"] });
       queryClient.invalidateQueries({ queryKey: ["v2", "invoice", id] });
     },
